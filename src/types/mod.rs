@@ -1,4 +1,4 @@
-use crate::OperationType;
+use crate::{FieldResolver, OperationType};
 
 pub enum Type {
     Object(ObjectType),
@@ -94,10 +94,15 @@ impl TypeInterface for StringType {
 pub struct Field {
     pub name: String,
     pub type_: Type,
+    pub resolver: FieldResolver,
 }
 
 impl Field {
-    pub fn new(name: String, type_: Type) -> Self {
-        Self { name, type_ }
+    pub fn new(name: String, type_: Type, resolver: FieldResolver) -> Self {
+        Self {
+            name,
+            type_,
+            resolver,
+        }
     }
 }

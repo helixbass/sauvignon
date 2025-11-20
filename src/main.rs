@@ -1,8 +1,8 @@
 use sauvignon::{
-    BuiltInScalarType, DependencyType, Document, Error as SauvignonError, ExecutableDefinition,
-    ExternalDependency, InternalDependency, ObjectType, OperationDefinition, OperationType,
-    Request, ScalarType, Schema, Selection, SelectionField, SelectionSet, StringType, Type,
-    TypeField,
+    BuiltInScalarType, CarverOrPopulator, DependencyType, Document, Error as SauvignonError,
+    ExecutableDefinition, ExternalDependency, FieldResolver, IdPopulator, InternalDependency,
+    ObjectType, OperationDefinition, OperationType, Request, ScalarType, Schema, Selection,
+    SelectionField, SelectionSet, StringColumnCarver, StringType, Type, TypeField,
 };
 
 #[tokio::main]
@@ -28,6 +28,7 @@ async fn main() -> Result<(), SauvignonError> {
                     "name".to_owned(),
                     DependencyType::Omg,
                 )],
+                CarverOrPopulator::Carver(Box::new(StringColumnCarver::new("name".to_owned()))),
             ),
         )],
         None,
@@ -41,6 +42,14 @@ async fn main() -> Result<(), SauvignonError> {
             // external_dependencies => None,
             // internal_dependencies => ,
             // populator => {"id" => 4}
+            FieldResolver::new(
+                vec![],
+                vec![InternalDependency::new(
+                    "name".to_owned(),
+                    DependencyType::Omg,
+                )],
+                CarverOrPopulator::Populator(Box::new(IdPopulator::new())),
+            ),
         )],
         Some(OperationType::Query),
     ));

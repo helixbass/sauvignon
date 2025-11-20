@@ -3,14 +3,24 @@ use thiserror::Error;
 mod dependencies;
 mod operation;
 mod request;
+mod resolve;
+mod response;
 mod types;
 
-pub use crate::dependencies::{DependencyType, ExternalDependency, InternalDependency};
+pub use indexmap::IndexMap;
+
+pub use crate::dependencies::{
+    DependencyType, ExternalDependency, ExternalDependencyValue, InternalDependency,
+};
 pub use crate::operation::OperationType;
 pub use crate::request::{
     Document, ExecutableDefinition, Field as SelectionField, OperationDefinition, Request,
     Selection, SelectionSet,
 };
+pub use crate::resolve::{
+    Carver, CarverOrPopulator, FieldResolver, IdPopulator, StringColumnCarver,
+};
+pub use crate::response::{Response, ResponseValue};
 pub use crate::types::{
     BuiltInScalarType, Field as TypeField, ObjectType, ScalarType, StringType, Type,
 };
@@ -45,8 +55,6 @@ impl Schema {
         unimplemented!()
     }
 }
-
-pub struct Response {}
 
 // #[cfg(test)]
 // mod tests {

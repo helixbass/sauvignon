@@ -23,3 +23,5 @@ impl InternalDependency {
         Self { name, type_ }
     }
 }
+
+pub struct ExternalDependencyValue {}
