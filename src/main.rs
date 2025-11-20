@@ -1,8 +1,9 @@
 use sauvignon::{
-    BuiltInScalarType, CarverOrPopulator, DependencyType, Document, Error as SauvignonError,
-    ExecutableDefinition, ExternalDependency, FieldResolver, IdPopulator, InternalDependency,
-    ObjectType, OperationDefinition, OperationType, Request, ScalarType, Schema, Selection,
-    SelectionField, SelectionSet, StringColumnCarver, StringType, Type, TypeField,
+    BuiltInScalarType, CarverOrPopulator, ColumnGetter, DependencyType, Document,
+    Error as SauvignonError, ExecutableDefinition, ExternalDependency, FieldResolver, IdPopulator,
+    InternalDependency, InternalDependencyResolver, ObjectType, OperationDefinition, OperationType,
+    Request, ScalarType, Schema, Selection, SelectionField, SelectionSet, StringColumnCarver,
+    StringType, Type, TypeField,
 };
 
 #[tokio::main]
@@ -27,6 +28,10 @@ async fn main() -> Result<(), SauvignonError> {
                 vec![InternalDependency::new(
                     "name".to_owned(),
                     DependencyType::Omg,
+                    InternalDependencyResolver::ColumnGetter(ColumnGetter::new(
+                        "actors".to_owned(),
+                        "name".to_owned(),
+                    )),
                 )],
                 CarverOrPopulator::Carver(Box::new(StringColumnCarver::new("name".to_owned()))),
             ),
@@ -45,8 +50,11 @@ async fn main() -> Result<(), SauvignonError> {
             FieldResolver::new(
                 vec![],
                 vec![InternalDependency::new(
-                    "name".to_owned(),
+                    "id".to_owned(),
                     DependencyType::Omg,
+                    InternalDependencyResolver::Variable(VariableInternalDependencyResolver::new(
+                        "id",
+                    )),
                 )],
                 CarverOrPopulator::Populator(Box::new(IdPopulator::new())),
             ),

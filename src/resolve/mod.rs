@@ -1,4 +1,9 @@
-use crate::{ExternalDependency, ExternalDependencyValue, InternalDependency, ResponseValue};
+use std::collections::HashMap;
+
+use crate::{
+    ExternalDependency, ExternalDependencyValue, InternalDependency, InternalDependencyValue,
+    ResponseValue,
+};
 
 pub struct FieldResolver {
     pub external_dependencies: Vec<ExternalDependency>,
@@ -23,8 +28,8 @@ impl FieldResolver {
 pub trait Carver {
     fn carve(
         &self,
-        external_dependencies: &[ExternalDependency],
-        internal_dependencies: &[InternalDependency],
+        external_dependencies: &HashMap<String, ExternalDependencyValue>,
+        internal_dependencies: &HashMap<String, InternalDependencyValue>,
     ) -> ResponseValue;
 }
 
@@ -41,8 +46,8 @@ impl StringColumnCarver {
 impl Carver for StringColumnCarver {
     fn carve(
         &self,
-        external_dependencies: &[ExternalDependency],
-        internal_dependencies: &[InternalDependency],
+        external_dependencies: &HashMap<String, ExternalDependencyValue>,
+        internal_dependencies: &HashMap<String, InternalDependencyValue>,
     ) -> ResponseValue {
         unimplemented!()
     }
@@ -56,8 +61,8 @@ pub enum CarverOrPopulator {
 pub trait Populator {
     fn populate(
         &self,
-        external_dependencies: &[ExternalDependency],
-        internal_dependencies: &[InternalDependency],
+        external_dependencies: &HashMap<String, ExternalDependencyValue>,
+        internal_dependencies: &HashMap<String, InternalDependencyValue>,
     ) -> Vec<ExternalDependencyValue>;
 }
 
@@ -72,8 +77,8 @@ impl IdPopulator {
 impl Populator for IdPopulator {
     fn populate(
         &self,
-        external_dependencies: &[ExternalDependency],
-        internal_dependencies: &[InternalDependency],
+        external_dependencies: &HashMap<String, ExternalDependencyValue>,
+        internal_dependencies: &HashMap<String, InternalDependencyValue>,
     ) -> Vec<ExternalDependencyValue> {
         unimplemented!()
     }

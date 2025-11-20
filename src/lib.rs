@@ -10,7 +10,8 @@ mod types;
 pub use indexmap::IndexMap;
 
 pub use crate::dependencies::{
-    DependencyType, ExternalDependency, ExternalDependencyValue, InternalDependency,
+    ColumnGetter, DependencyType, ExternalDependency, ExternalDependencyValue, InternalDependency,
+    InternalDependencyResolver, InternalDependencyValue,
 };
 pub use crate::operation::OperationType;
 pub use crate::request::{
