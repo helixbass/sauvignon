@@ -1,9 +1,11 @@
 use thiserror::Error;
 
+mod dependencies;
 mod operation;
 mod request;
 mod types;
 
+pub use crate::dependencies::{DependencyType, ExternalDependency, InternalDependency};
 pub use crate::operation::OperationType;
 pub use crate::request::{
     Document, ExecutableDefinition, Field as SelectionField, OperationDefinition, Request,
