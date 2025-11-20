@@ -1,5 +1,11 @@
 use thiserror::Error;
 
+mod request;
+mod types;
+
+pub use crate::request::Request;
+pub use crate::types::OperationType;
+
 #[derive(Error, Debug)]
 pub enum Error {
     #[error("must provide query type")]
@@ -26,7 +32,7 @@ impl Schema {
         })
     }
 
-    pub async fn request(request: Request) -> Response {
+    pub async fn request(&self, request: Request) -> Response {
         unimplemented!()
     }
 }
@@ -56,12 +62,6 @@ impl TypeInterface for Type {
             Self::Scalar(type_) => type_.name(),
         }
     }
-}
-
-pub enum OperationType {
-    Query,
-    Mutation,
-    Subscription,
 }
 
 pub struct ObjectType {
@@ -138,8 +138,6 @@ impl Field {
         Self { name, type_ }
     }
 }
-
-pub struct Request {}
 
 pub struct Response {}
 

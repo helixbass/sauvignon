@@ -3,7 +3,8 @@ use sauvignon::{
     Schema, StringType, Type,
 };
 
-fn main() -> Result<(), SauvignonError> {
+#[tokio::main]
+async fn main() -> Result<(), SauvignonError> {
     let actor_type = Type::Object(ObjectType::new(
         "Actor".to_owned(),
         vec![Field::new(
@@ -22,6 +23,8 @@ fn main() -> Result<(), SauvignonError> {
     ));
 
     let schema = Schema::try_new(vec![query_type])?;
+
+    let response = schema.request().await;
 
     Ok(())
 }
