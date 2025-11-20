@@ -31,7 +31,8 @@ impl InternalDependency {
 
 pub enum InternalDependencyResolver {
     ColumnGetter(ColumnGetter),
-    Variable(VariableInternalDependencyResolver),
+    Argument(ArgumentInternalDependencyResolver),
+    ColumnGetterList(ColumnGetterList),
 }
 
 pub struct ColumnGetter {
@@ -48,13 +49,27 @@ impl ColumnGetter {
     }
 }
 
-pub struct VariableInternalDependencyResolver {
+pub struct ArgumentInternalDependencyResolver {
     pub name: String,
 }
 
-impl VariableInternalDependencyResolver {
+impl ArgumentInternalDependencyResolver {
     pub fn new(name: String) -> Self {
         Self { name }
+    }
+}
+
+pub struct ColumnGetterList {
+    pub table_name: String,
+    pub column_name: String,
+}
+
+impl ColumnGetterList {
+    pub fn new(table_name: String, column_name: String) -> Self {
+        Self {
+            table_name,
+            column_name,
+        }
     }
 }
 

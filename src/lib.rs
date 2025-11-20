@@ -10,8 +10,9 @@ mod types;
 pub use indexmap::IndexMap;
 
 pub use crate::dependencies::{
-    ColumnGetter, DependencyType, ExternalDependency, ExternalDependencyValue, InternalDependency,
-    InternalDependencyResolver, InternalDependencyValue,
+    ArgumentInternalDependencyResolver, ColumnGetter, ColumnGetterList, DependencyType,
+    ExternalDependency, ExternalDependencyValue, InternalDependency, InternalDependencyResolver,
+    InternalDependencyValue,
 };
 pub use crate::operation::OperationType;
 pub use crate::request::{
@@ -23,7 +24,7 @@ pub use crate::resolve::{
 };
 pub use crate::response::{Response, ResponseValue};
 pub use crate::types::{
-    BuiltInScalarType, Field as TypeField, ObjectType, ScalarType, StringType, Type,
+    BuiltInScalarType, Field as TypeField, ObjectType, ScalarType, StringType, Type, TypeFull,
 };
 
 #[derive(Error, Debug)]

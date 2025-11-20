@@ -1,5 +1,11 @@
 use crate::{FieldResolver, OperationType};
 
+pub enum TypeFull {
+    Type(Type),
+    List(Type),
+    NonNull(Type),
+}
+
 pub enum Type {
     Object(ObjectType),
     Scalar(ScalarType),

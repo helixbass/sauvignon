@@ -1,9 +1,9 @@
 use sauvignon::{
-    BuiltInScalarType, CarverOrPopulator, ColumnGetter, DependencyType, Document,
-    Error as SauvignonError, ExecutableDefinition, ExternalDependency, FieldResolver, IdPopulator,
-    InternalDependency, InternalDependencyResolver, ObjectType, OperationDefinition, OperationType,
-    Request, ScalarType, Schema, Selection, SelectionField, SelectionSet, StringColumnCarver,
-    StringType, Type, TypeField,
+    ArgumentInternalDependencyResolver, BuiltInScalarType, CarverOrPopulator, ColumnGetter,
+    DependencyType, Document, Error as SauvignonError, ExecutableDefinition, ExternalDependency,
+    FieldResolver, IdPopulator, InternalDependency, InternalDependencyResolver, ObjectType,
+    OperationDefinition, OperationType, Request, ScalarType, Schema, Selection, SelectionField,
+    SelectionSet, StringColumnCarver, StringType, Type, TypeField, TypeFull,
 };
 
 #[tokio::main]
@@ -12,8 +12,8 @@ async fn main() -> Result<(), SauvignonError> {
         "Actor".to_owned(),
         vec![TypeField::new(
             "name".to_owned(),
-            Type::Scalar(ScalarType::BuiltIn(BuiltInScalarType::String(
-                StringType::new(),
+            TypeFull::Type(Type::Scalar(ScalarType::BuiltIn(
+                BuiltInScalarType::String(StringType::new()),
             ))),
             // {
             //   external_dependencies => ["id" => ID],
@@ -41,49 +41,74 @@ async fn main() -> Result<(), SauvignonError> {
 
     let query_type = Type::Object(ObjectType::new(
         "Query".to_owned(),
-        vec![TypeField::new(
-            "actor".to_owned(),
-            actor_type,
-            // external_dependencies => None,
-            // internal_dependencies => ,
-            // populator => {"id" => 4}
-            FieldResolver::new(
-                vec![],
-                vec![InternalDependency::new(
-                    "id".to_owned(),
-                    DependencyType::Omg,
-                    InternalDependencyResolver::Variable(VariableInternalDependencyResolver::new(
-                        "id",
-                    )),
-                )],
-                CarverOrPopulator::Populator(Box::new(IdPopulator::new())),
+        vec![
+            TypeField::new(
+                "actor".to_owned(),
+                TypeFull::Type(actor_type),
+                // external_dependencies => None,
+                // internal_dependencies => ,
+                // populator => {"id" => 4}
+                FieldResolver::new(
+                    vec![],
+                    vec![InternalDependency::new(
+                        "id".to_owned(),
+                        DependencyType::Id,
+                        InternalDependencyResolver::Argument(
+                            ArgumentInternalDependencyResolver::new("id".to_owned()),
+                        ),
+                    )],
+                    CarverOrPopulator::Populator(Box::new(IdPopulator::new())),
+                ),
             ),
-        )],
+            TypeField::new(
+                "actors".to_owned(),
+                TypeFull::List(actor_type),
+                // {
+                //   external_dependencies => None,
+                //   internal_dependencies => [
+                //      column_fetcher_list!("actors", "id"),
+                //   ],
+                //   populator =>
+                // }
+                FieldResolver::new(
+                    vec![],
+                    vec![InternalDependency::new(
+                        "ids".to_owned(),
+                        DependencyType::ListOfIds,
+                        InternalDependencyResolver::ColumnGetterList(ColumnGetterList::new(
+                            "actors".to_owned(),
+                            "id".to_owned(),
+                        )),
+                    )],
+                    CarverOrPopulator::Populator(Box::new(IdPopulator::new())),
+                ),
+            ),
+        ],
         Some(OperationType::Query),
     ));
 
     let schema = Schema::try_new(vec![query_type])?;
 
-    let response = schema
-        .request(Request::new(Document::new(vec![
-            // query {
-            //   actor {
-            //     name
-            //   }
-            // }
-            ExecutableDefinition::Operation(OperationDefinition::new(
-                OperationType::Query,
+    let request = Request::new(Document::new(vec![
+        // query {
+        //   actor {
+        //     name
+        //   }
+        // }
+        ExecutableDefinition::Operation(OperationDefinition::new(
+            OperationType::Query,
+            None,
+            SelectionSet::new(vec![Selection::Field(SelectionField::new(
                 None,
-                SelectionSet::new(vec![Selection::Field(SelectionField::new(
-                    None,
-                    "actor".to_owned(),
-                    Some(SelectionSet::new(vec![Selection::Field(
-                        SelectionField::new(None, "name".to_owned(), None),
-                    )])),
-                ))]),
-            )),
-        ])))
-        .await;
+                "actor".to_owned(),
+                Some(SelectionSet::new(vec![Selection::Field(
+                    SelectionField::new(None, "name".to_owned(), None),
+                )])),
+            ))]),
+        )),
+    ]));
+
+    let response = schema.request(request).await;
 
     Ok(())
 }
