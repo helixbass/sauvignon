@@ -37,8 +37,10 @@ async fn main() -> Result<(), SauvignonError> {
                 None,
                 SelectionSet::new(vec![Selection::Field(SelectionField::new(
                     None,
-                    "name".to_owned(),
-                    None,
+                    "actor".to_owned(),
+                    Some(SelectionSet::new(vec![Selection::Field(
+                        SelectionField::new(None, "name".to_owned(), None),
+                    )])),
                 ))]),
             )),
         ])))
