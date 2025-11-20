@@ -1,6 +1,14 @@
 use crate::OperationType;
 
-pub struct Request {}
+pub struct Request {
+    pub document: Document,
+}
+
+impl Request {
+    pub fn new(document: Document) -> Self {
+        Self { document }
+    }
+}
 
 pub struct Document {
     pub definitions: Vec<ExecutableDefinition>,
@@ -12,7 +20,7 @@ impl Document {
     }
 }
 
-enum ExecutableDefinition {
+pub enum ExecutableDefinition {
     Operation(OperationDefinition),
     Fragment(FragmentDefinition),
 }
@@ -21,6 +29,20 @@ pub struct OperationDefinition {
     pub operation_type: OperationType,
     pub name: Option<String>,
     pub selection_set: SelectionSet,
+}
+
+impl OperationDefinition {
+    pub fn new(
+        operation_type: OperationType,
+        name: Option<String>,
+        selection_set: SelectionSet,
+    ) -> Self {
+        Self {
+            operation_type,
+            name,
+            selection_set,
+        }
+    }
 }
 
 pub struct FragmentDefinition {}
