@@ -8,6 +8,10 @@ impl Request {
     pub fn new(document: Document) -> Self {
         Self { document }
     }
+
+    pub fn chosen_operation(&self) -> &OperationDefinition {
+        self.document.chosen_operation()
+    }
 }
 
 pub struct Document {
@@ -17,6 +21,18 @@ pub struct Document {
 impl Document {
     pub fn new(definitions: Vec<ExecutableDefinition>) -> Self {
         Self { definitions }
+    }
+
+    pub fn chosen_operation(&self) -> &OperationDefinition {
+        for definition in self.definitions.iter() {
+            match definition {
+                ExecutableDefinition::Operation(operation_definition) => {
+                    return operation_definition;
+                }
+                _ => continue,
+            }
+        }
+        panic!()
     }
 }
 

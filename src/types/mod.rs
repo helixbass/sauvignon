@@ -1,9 +1,21 @@
-use crate::{FieldResolver, OperationType};
+use std::collections::HashMap;
+
+use crate::{FieldResolver, IndexMap, OperationType};
 
 pub enum TypeFull {
     Type(String),
     List(String),
     NonNull(String),
+}
+
+impl TypeFull {
+    pub fn name(&self) -> &str {
+        match self {
+            Self::Type(name) => name,
+            Self::List(name) => name,
+            Self::NonNull(name) => name,
+        }
+    }
 }
 
 pub enum Type {
@@ -36,14 +48,17 @@ impl TypeInterface for Type {
 pub struct ObjectType {
     name: String,
     pub is_top_level_type: Option<OperationType>,
-    pub fields: Vec<Field>,
+    // TODO: are the fields on a type ordered?
+    pub fields: IndexMap<String, Field>,
 }
 
 impl ObjectType {
     pub fn new(name: String, fields: Vec<Field>, is_top_level_type: Option<OperationType>) -> Self {
         Self {
             name,
-            fields,
+            fields: IndexMap::from_iter(
+                fields.into_iter().map(|field| (field.name.clone(), field)),
+            ),
             is_top_level_type,
         }
     }
@@ -111,4 +126,14 @@ impl Field {
             resolver,
         }
     }
+}
+
+pub fn builtin_types() -> HashMap<String, Type> {
+    HashMap::from_iter([("String".to_owned(), string_type())])
+}
+
+pub fn string_type() -> Type {
+    Type::Scalar(ScalarType::BuiltIn(BuiltInScalarType::String(
+        StringType::new(),
+    )))
 }

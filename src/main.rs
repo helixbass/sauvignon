@@ -8,11 +8,6 @@ use sauvignon::{
     StringColumnCarver, Type, TypeField, TypeFull,
 };
 
-// global string_type() =
-//   Type::Scalar(ScalarType::BuiltIn(
-//     BuiltInScalarType::String(StringType::new()),
-//   ))
-
 #[tokio::main]
 async fn main() -> Result<(), SauvignonError> {
     let actor_type = Type::Object(ObjectType::new(
