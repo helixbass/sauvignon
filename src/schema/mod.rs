@@ -68,11 +68,11 @@ fn progress_fields<'a>(fields_in_progress: FieldsInProgress<'a>) -> (bool, Field
         .values()
         .all(|field| matches!(field, ResponseValueOrInProgress::ResponseValue(_)));
     if is_done {
-        return (false, fields_in_progress);
+        return (true, fields_in_progress);
     }
 
     (
-        unimplemented!(),
+        false,
         IndexMap::from_iter(fields_in_progress.into_iter().map(
             |(field_name, response_value_or_in_progress)| {
                 (
