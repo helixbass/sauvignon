@@ -176,8 +176,9 @@ fn test_any_hash_map() {
     let dbg = format!("{any_hash_map:?}");
     // map order is NOT deterministic
     assert!(
-        (dbg == "{http::extensions::test_extensions::MyType, i32}")
-            || (dbg == "{i32, http::extensions::test_extensions::MyType}"),
+        (dbg == r#"{("bar", sauvignon::any_hash_map::test_any_hash_map::MyType), ("foo", i32)}"#)
+            || (dbg
+                == r#"{("foo", i32), ("bar", sauvignon::any_hash_map::test_any_hash_map::MyType)}"#),
         "{}",
         dbg
     );
