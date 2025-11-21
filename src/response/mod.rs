@@ -13,6 +13,22 @@ pub enum ResponseValue {
     EnumValue(String),
 }
 
+impl From<FieldsInProgress<'_>> for ResponseValue {
+    fn from(fields_in_progress: FieldsInProgress) -> Self {
+        Self::Map(IndexMap::from_iter(fields_in_progress.into_iter().map(
+            |(name, response_value_or_in_progress)| {
+                (
+                    name,
+                    match response_value_or_in_progress {
+                        ResponseValueOrInProgress::ResponseValue(response_value) => response_value,
+                        _ => unreachable!(),
+                    },
+                )
+            },
+        )))
+    }
+}
+
 pub type FieldsInProgress<'a> = IndexMap<String, ResponseValueOrInProgress<'a>>;
 
 pub fn fields_in_progress_new<'a>(field_plans: &'a [FieldPlan<'a>]) -> FieldsInProgress<'a> {

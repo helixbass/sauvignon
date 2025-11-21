@@ -3,8 +3,8 @@ use std::collections::HashMap;
 use crate::{
     builtin_types, fields_in_progress_new, CarverOrPopulator, Error, ExternalDependencyValues,
     FieldsInProgress, InProgress, InProgressRecursing, IndexMap, InternalDependencyValues,
-    QueryPlan, Request, Response, ResponseValueOrInProgress, Result as SauvignonResult, Type,
-    TypeInterface,
+    QueryPlan, Request, Response, ResponseValue, ResponseValueOrInProgress,
+    Result as SauvignonResult, Type, TypeInterface,
 };
 
 pub struct Schema {
@@ -33,9 +33,7 @@ impl Schema {
     }
 
     pub async fn request(&self, request: Request) -> Response {
-        let query_plan = QueryPlan::new(&request, self);
-        let mut is_complete = false;
-        let mut response_in_progress = query_plan.initial_response_in_progress();
+        let response = compute_response(self, &request);
         unimplemented!()
     }
 
@@ -48,6 +46,18 @@ impl Schema {
             .get(name)
             .or_else(|| self.builtin_types.get(name))
             .unwrap()
+    }
+}
+
+fn compute_response(schema: &Schema, request: &Request) -> ResponseValue {
+    let query_plan = QueryPlan::new(&request, schema);
+    let response_in_progress = query_plan.initial_response_in_progress();
+    let mut fields_in_progress = response_in_progress.fields;
+    loop {
+        let (is_done, fields_in_progress) = progress_fields(fields_in_progress);
+        if is_done {
+            return fields_in_progress.into();
+        }
     }
 }
 
