@@ -27,7 +27,7 @@ async fn main() -> Result<(), SauvignonError> {
                 vec![ExternalDependency::new("id".to_owned(), DependencyType::Id)],
                 vec![InternalDependency::new(
                     "name".to_owned(),
-                    DependencyType::Omg,
+                    DependencyType::String,
                     InternalDependencyResolver::ColumnGetter(ColumnGetter::new(
                         "actors".to_owned(),
                         "name".to_owned(),

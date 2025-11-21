@@ -31,6 +31,8 @@ pub use crate::types::{
 pub enum Error {
     #[error("must provide query type")]
     NoQueryTypeSpecified,
+    #[error("dependency already populated: `{0}`")]
+    DependencyAlreadyPopulated(String),
 }
 
 type SauvignonResult<TSuccess> = Result<TSuccess, Error>;

@@ -28,8 +28,8 @@ impl FieldResolver {
 pub trait Carver {
     fn carve(
         &self,
-        external_dependencies: &HashMap<String, ExternalDependencyValue>,
-        internal_dependencies: &HashMap<String, InternalDependencyValue>,
+        external_dependencies: &ExternalDependencyValues, //HashMap<String, ExternalDependencyValue>,
+        internal_dependencies: &InternalDependencyValues, //HashMap<String, InternalDependencyValue>,
     ) -> ResponseValue;
 }
 
@@ -46,8 +46,8 @@ impl StringColumnCarver {
 impl Carver for StringColumnCarver {
     fn carve(
         &self,
-        external_dependencies: &HashMap<String, ExternalDependencyValue>,
-        internal_dependencies: &HashMap<String, InternalDependencyValue>,
+        external_dependencies: &ExternalDependencyValues, //HashMap<String, ExternalDependencyValue>,
+        internal_dependencies: &InternalDependencyValues, //HashMap<String, InternalDependencyValue>,
     ) -> ResponseValue {
         unimplemented!()
     }
@@ -61,9 +61,10 @@ pub enum CarverOrPopulator {
 pub trait Populator {
     fn populate(
         &self,
-        external_dependencies: &HashMap<String, ExternalDependencyValue>,
-        internal_dependencies: &HashMap<String, InternalDependencyValue>,
-    ) -> Vec<ExternalDependencyValue>;
+        into: &mut ExternalDependencyValues,
+        external_dependencies: &ExternalDependencyValues, //HashMap<String, ExternalDependencyValue>,
+        internal_dependencies: &InternalDependencyValues, //HashMap<String, InternalDependencyValue>,
+    );
 }
 
 pub struct IdPopulator {}
@@ -77,9 +78,10 @@ impl IdPopulator {
 impl Populator for IdPopulator {
     fn populate(
         &self,
-        external_dependencies: &HashMap<String, ExternalDependencyValue>,
-        internal_dependencies: &HashMap<String, InternalDependencyValue>,
-    ) -> Vec<ExternalDependencyValue> {
+        into: &mut ExternalDependencyValues,
+        external_dependencies: &ExternalDependencyValues, //HashMap<String, ExternalDependencyValue>,
+        internal_dependencies: &InternalDependencyValues, //HashMap<String, InternalDependencyValue>,
+    ) {
         unimplemented!()
     }
 }

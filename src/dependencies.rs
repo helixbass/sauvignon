@@ -1,5 +1,10 @@
+use std::collections::HashMap;
+
+use crate::Error;
+
 pub enum DependencyType {
     Id,
+    String,
 }
 
 pub struct ExternalDependency {
@@ -86,4 +91,54 @@ pub enum DependencyValue {
 pub struct InternalDependencyValue {
     pub name: String,
     pub value: DependencyValue,
+}
+
+pub struct ExternalDependencyValues {
+    knowns: HashMap<String, DependencyValue>,
+    anys: AnyHashMap,
+}
+
+impl ExternalDependencyValues {
+    pub fn new() -> Self {
+        Self {
+            knowns: Default::default(),
+            anys: Default::default(),
+        }
+    }
+
+    pub fn insert(&mut self, name: String, value: DependencyValue) -> Result<(), Error> {
+        if self.knowns.contains_key(&name) {
+            return Err(Error::DependencyAlreadyPopulated(name));
+        }
+        self.knowns.insert(name, value).unwrap();
+        Ok(())
+    }
+
+    pub fn insert_any<TValue: Clone + Send + Sync + 'static>(
+        &mut self,
+        name: String,
+        value: TValue,
+    ) -> Result<(), Error> {
+        if self.anys.contains_key(&name) {
+            return Err(Error::DependencyAlreadyPopulated(name));
+        }
+        self.anys.insert(name, value).unwrap();
+        Ok(())
+    }
+
+    pub fn get(&self, name: &str) -> Option<&DependencyValue> {
+        self.knowns.get(name)
+    }
+
+    pub fn get_any<TValue: Send + Sync + 'static>(&self, name: &str) -> Option<&TValue> {
+        self.anys.get(name)
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.knowns.is_empty() && self.anys.is_empty()
+    }
+
+    pub fn len(&self) -> usize {
+        self.knowns.len() + self.anys.len()
+    }
 }
