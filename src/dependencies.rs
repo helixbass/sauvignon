@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::Error;
+use crate::{AnyHashMap, Error};
 
 pub enum DependencyType {
     Id,
@@ -84,14 +84,10 @@ pub struct ExternalDependencyValue {
 }
 
 pub enum DependencyValue {
-    DbValue(Omg),
-    VariableValue(Omg),
+    String(String),
 }
 
-pub struct InternalDependencyValue {
-    pub name: String,
-    pub value: DependencyValue,
-}
+pub type InternalDependencyValue = ExternalDependencyValue;
 
 pub struct ExternalDependencyValues {
     knowns: HashMap<String, DependencyValue>,
@@ -142,3 +138,5 @@ impl ExternalDependencyValues {
         self.knowns.len() + self.anys.len()
     }
 }
+
+pub type InternalDependencyValues = ExternalDependencyValues;

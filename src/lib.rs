@@ -1,5 +1,6 @@
 use thiserror::Error;
 
+mod any_hash_map;
 mod dependencies;
 mod operation;
 mod request;
@@ -9,10 +10,11 @@ mod types;
 
 pub use indexmap::IndexMap;
 
+pub use crate::any_hash_map::AnyHashMap;
 pub use crate::dependencies::{
     ArgumentInternalDependencyResolver, ColumnGetter, ColumnGetterList, DependencyType,
-    ExternalDependency, ExternalDependencyValue, InternalDependency, InternalDependencyResolver,
-    InternalDependencyValue,
+    ExternalDependency, ExternalDependencyValue, ExternalDependencyValues, InternalDependency,
+    InternalDependencyResolver, InternalDependencyValue, InternalDependencyValues,
 };
 pub use crate::operation::OperationType;
 pub use crate::request::{

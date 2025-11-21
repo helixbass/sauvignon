@@ -1,7 +1,5 @@
-use std::collections::HashMap;
-
 use crate::{
-    ExternalDependency, ExternalDependencyValue, InternalDependency, InternalDependencyValue,
+    ExternalDependency, ExternalDependencyValues, InternalDependency, InternalDependencyValues,
     ResponseValue,
 };
 
@@ -28,8 +26,8 @@ impl FieldResolver {
 pub trait Carver {
     fn carve(
         &self,
-        external_dependencies: &ExternalDependencyValues, //HashMap<String, ExternalDependencyValue>,
-        internal_dependencies: &InternalDependencyValues, //HashMap<String, InternalDependencyValue>,
+        external_dependencies: &ExternalDependencyValues,
+        internal_dependencies: &InternalDependencyValues,
     ) -> ResponseValue;
 }
 
@@ -46,8 +44,8 @@ impl StringColumnCarver {
 impl Carver for StringColumnCarver {
     fn carve(
         &self,
-        external_dependencies: &ExternalDependencyValues, //HashMap<String, ExternalDependencyValue>,
-        internal_dependencies: &InternalDependencyValues, //HashMap<String, InternalDependencyValue>,
+        external_dependencies: &ExternalDependencyValues,
+        internal_dependencies: &InternalDependencyValues,
     ) -> ResponseValue {
         unimplemented!()
     }
@@ -62,8 +60,8 @@ pub trait Populator {
     fn populate(
         &self,
         into: &mut ExternalDependencyValues,
-        external_dependencies: &ExternalDependencyValues, //HashMap<String, ExternalDependencyValue>,
-        internal_dependencies: &InternalDependencyValues, //HashMap<String, InternalDependencyValue>,
+        external_dependencies: &ExternalDependencyValues,
+        internal_dependencies: &InternalDependencyValues,
     );
 }
 
@@ -79,8 +77,8 @@ impl Populator for IdPopulator {
     fn populate(
         &self,
         into: &mut ExternalDependencyValues,
-        external_dependencies: &ExternalDependencyValues, //HashMap<String, ExternalDependencyValue>,
-        internal_dependencies: &InternalDependencyValues, //HashMap<String, InternalDependencyValue>,
+        external_dependencies: &ExternalDependencyValues,
+        internal_dependencies: &InternalDependencyValues,
     ) {
         unimplemented!()
     }
