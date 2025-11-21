@@ -54,7 +54,9 @@ fn compute_response(schema: &Schema, request: &Request) -> ResponseValue {
     let response_in_progress = query_plan.initial_response_in_progress();
     let mut fields_in_progress = response_in_progress.fields;
     loop {
-        let (is_done, fields_in_progress) = progress_fields(fields_in_progress);
+        let ret = progress_fields(fields_in_progress);
+        let is_done = ret.0;
+        fields_in_progress = ret.1;
         if is_done {
             return fields_in_progress.into();
         }
