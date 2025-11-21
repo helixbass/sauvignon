@@ -91,6 +91,7 @@ pub enum DependencyValue {
 
 pub type InternalDependencyValue = ExternalDependencyValue;
 
+#[derive(Default)]
 pub struct ExternalDependencyValues {
     knowns: HashMap<String, DependencyValue>,
     anys: AnyHashMap,

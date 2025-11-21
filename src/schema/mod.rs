@@ -1,7 +1,9 @@
 use std::collections::HashMap;
 
 use crate::{
-    builtin_types, Error, QueryPlan, Request, Response, Result as SauvignonResult, Type,
+    builtin_types, fields_in_progress_new, CarverOrPopulator, Error, ExternalDependencyValues,
+    FieldsInProgress, InProgress, InProgressRecursing, IndexMap, InternalDependencyValues,
+    QueryPlan, Request, Response, ResponseValueOrInProgress, Result as SauvignonResult, Type,
     TypeInterface,
 };
 
@@ -47,4 +49,74 @@ impl Schema {
             .or_else(|| self.builtin_types.get(name))
             .unwrap()
     }
+}
+
+fn progress_fields<'a>(fields_in_progress: FieldsInProgress<'a>) -> (bool, FieldsInProgress<'a>) {
+    let is_done = fields_in_progress
+        .values()
+        .all(|field| matches!(field, ResponseValueOrInProgress::ResponseValue(_)));
+    if is_done {
+        return (false, fields_in_progress);
+    }
+
+    (
+        unimplemented!(),
+        IndexMap::from_iter(fields_in_progress.into_iter().map(
+            |(field_name, response_value_or_in_progress)| {
+                (
+                    field_name,
+                    match response_value_or_in_progress {
+                        ResponseValueOrInProgress::ResponseValue(response_value) => {
+                            ResponseValueOrInProgress::ResponseValue(response_value)
+                        }
+                        ResponseValueOrInProgress::InProgress(InProgress {
+                            field_plan,
+                            external_dependency_values,
+                        }) => {
+                            let internal_dependency_values =
+                                populate_internal_dependencies(&external_dependency_values);
+                            match &field_plan.field_type.resolver.carver_or_populator {
+                                CarverOrPopulator::Populator(populator) => {
+                                    let mut populated = ExternalDependencyValues::default();
+                                    populator.populate(
+                                        &mut populated,
+                                        &external_dependency_values,
+                                        &internal_dependency_values,
+                                    );
+                                    ResponseValueOrInProgress::InProgressRecursing(
+                                        InProgressRecursing::new(
+                                            field_plan,
+                                            populated,
+                                            fields_in_progress_new(
+                                                field_plan.selection_set.as_ref().unwrap(),
+                                            ),
+                                        ),
+                                    )
+                                }
+                                CarverOrPopulator::Carver(carver) => {
+                                    ResponseValueOrInProgress::ResponseValue(carver.carve(
+                                        &external_dependency_values,
+                                        &internal_dependency_values,
+                                    ))
+                                }
+                            }
+                        }
+                        ResponseValueOrInProgress::InProgressRecursing(InProgressRecursing {
+                            field_plan,
+                            populated,
+                            selection,
+                        }) => {
+                            unimplemented!()
+                        }
+                    },
+                )
+            },
+        )),
+    )
+}
+
+fn populate_internal_dependencies(
+    external_dependency_values: &ExternalDependencyValues,
+) -> InternalDependencyValues {
+    unimplemented!()
 }

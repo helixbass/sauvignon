@@ -27,7 +27,10 @@ pub use crate::request::{
 pub use crate::resolve::{
     Carver, CarverOrPopulator, FieldResolver, IdPopulator, StringColumnCarver,
 };
-pub use crate::response::{Response, ResponseInProgress, ResponseValue, ResponseValueOrInProgress};
+pub use crate::response::{
+    fields_in_progress_new, FieldsInProgress, InProgress, InProgressRecursing, Response,
+    ResponseInProgress, ResponseValue, ResponseValueOrInProgress,
+};
 pub use crate::schema::Schema;
 pub use crate::types::{
     builtin_types, string_type, BuiltInScalarType, Field as TypeField, ObjectType, ScalarType,

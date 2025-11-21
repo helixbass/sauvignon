@@ -1,6 +1,6 @@
 use crate::{
-    request, types, IndexMap, OperationType, Request, ResponseInProgress,
-    ResponseValueOrInProgress, Schema, Selection, SelectionSet, Type,
+    fields_in_progress_new, request, types, OperationType, Request, ResponseInProgress, Schema,
+    Selection, SelectionSet, Type,
 };
 
 pub struct QueryPlan<'a> {
@@ -12,27 +12,17 @@ impl<'a> QueryPlan<'a> {
         let chosen_operation = request.chosen_operation();
         assert_eq!(chosen_operation.operation_type, OperationType::Query);
 
-        let query_type = schema.query_type();
-        let current_type_fields = match query_type {
-            Type::Object(query_type) => &query_type.fields,
-            _ => panic!(),
-        };
-
-        let field_plans =
-            create_field_plans(&chosen_operation.selection_set, current_type_fields, schema);
-
-        Self { field_plans }
+        Self {
+            field_plans: create_field_plans(
+                &chosen_operation.selection_set,
+                schema.query_type(),
+                schema,
+            ),
+        }
     }
 
     pub fn initial_response_in_progress(&self) -> ResponseInProgress<'_> {
-        ResponseInProgress::new(IndexMap::from_iter(self.field_plans.iter().map(
-            |field_plan| {
-                (
-                    field_plan.request_field.name.clone(),
-                    ResponseValueOrInProgress::InProgress(field_plan),
-                )
-            },
-        )))
+        ResponseInProgress::new(fields_in_progress_new(&self.field_plans))
     }
 }
 
@@ -47,20 +37,14 @@ impl<'a> FieldPlan<'a> {
         request_field: &'a request::Field,
         field_type: &'a types::Field,
         schema: &'a Schema,
-        // selection_set: Vec<FieldPlan<'a>>,
     ) -> Self {
-        let type_ = schema.get_type(field_type.type_.name());
-
         Self {
             request_field,
             field_type,
             selection_set: request_field.selection_set.as_ref().map(|selection_set| {
                 create_field_plans(
                     selection_set,
-                    match type_ {
-                        Type::Object(type_) => &type_.fields,
-                        _ => panic!(),
-                    },
+                    schema.get_type(field_type.type_.name()),
                     schema,
                 )
             }),
@@ -70,9 +54,14 @@ impl<'a> FieldPlan<'a> {
 
 fn create_field_plans<'a>(
     selection_set: &'a SelectionSet,
-    type_fields: &'a IndexMap<String, types::Field>,
+    type_: &'a Type,
     schema: &'a Schema,
 ) -> Vec<FieldPlan<'a>> {
+    let type_fields = match type_ {
+        Type::Object(type_) => &type_.fields,
+        _ => unreachable!(),
+    };
+
     selection_set
         .selections
         .iter()
