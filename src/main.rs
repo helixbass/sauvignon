@@ -1,10 +1,17 @@
+use std::collections::HashMap;
+
 use sauvignon::{
-    ArgumentInternalDependencyResolver, BuiltInScalarType, CarverOrPopulator, ColumnGetter,
+    ArgumentInternalDependencyResolver, CarverOrPopulator, ColumnGetter, ColumnGetterList,
     DependencyType, Document, Error as SauvignonError, ExecutableDefinition, ExternalDependency,
     FieldResolver, IdPopulator, InternalDependency, InternalDependencyResolver, ObjectType,
-    OperationDefinition, OperationType, Request, ScalarType, Schema, Selection, SelectionField,
-    SelectionSet, StringColumnCarver, StringType, Type, TypeField, TypeFull,
+    OperationDefinition, OperationType, Request, Schema, Selection, SelectionField, SelectionSet,
+    StringColumnCarver, Type, TypeField, TypeFull,
 };
+
+// global string_type() =
+//   Type::Scalar(ScalarType::BuiltIn(
+//     BuiltInScalarType::String(StringType::new()),
+//   ))
 
 #[tokio::main]
 async fn main() -> Result<(), SauvignonError> {
@@ -12,9 +19,7 @@ async fn main() -> Result<(), SauvignonError> {
         "Actor".to_owned(),
         vec![TypeField::new(
             "name".to_owned(),
-            TypeFull::Type(Type::Scalar(ScalarType::BuiltIn(
-                BuiltInScalarType::String(StringType::new()),
-            ))),
+            TypeFull::Type("String".to_owned()),
             // {
             //   external_dependencies => ["id" => ID],
             //   internal_dependencies => [
@@ -44,7 +49,7 @@ async fn main() -> Result<(), SauvignonError> {
         vec![
             TypeField::new(
                 "actor".to_owned(),
-                TypeFull::Type(actor_type),
+                TypeFull::Type("Actor".to_owned()),
                 // external_dependencies => None,
                 // internal_dependencies => ,
                 // populator => {"id" => 4}
@@ -62,7 +67,7 @@ async fn main() -> Result<(), SauvignonError> {
             ),
             TypeField::new(
                 "actors".to_owned(),
-                TypeFull::List(actor_type),
+                TypeFull::List("Actor".to_owned()),
                 // {
                 //   external_dependencies => None,
                 //   internal_dependencies => [
@@ -87,7 +92,7 @@ async fn main() -> Result<(), SauvignonError> {
         Some(OperationType::Query),
     ));
 
-    let schema = Schema::try_new(vec![query_type])?;
+    let schema = Schema::try_new(vec![query_type, actor_type])?;
 
     let request = Request::new(Document::new(vec![
         // query {

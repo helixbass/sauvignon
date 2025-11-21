@@ -2,9 +2,11 @@ use std::collections::HashMap;
 
 use crate::{AnyHashMap, Error};
 
+#[derive(Copy, Clone, Eq, PartialEq)]
 pub enum DependencyType {
     Id,
     String,
+    ListOfIds,
 }
 
 pub struct ExternalDependency {

@@ -1,9 +1,9 @@
 use crate::{FieldResolver, OperationType};
 
 pub enum TypeFull {
-    Type(Type),
-    List(Type),
-    NonNull(Type),
+    Type(String),
+    List(String),
+    NonNull(String),
 }
 
 pub enum Type {
@@ -99,12 +99,12 @@ impl TypeInterface for StringType {
 
 pub struct Field {
     pub name: String,
-    pub type_: Type,
+    pub type_: TypeFull,
     pub resolver: FieldResolver,
 }
 
 impl Field {
-    pub fn new(name: String, type_: Type, resolver: FieldResolver) -> Self {
+    pub fn new(name: String, type_: TypeFull, resolver: FieldResolver) -> Self {
         Self {
             name,
             type_,
