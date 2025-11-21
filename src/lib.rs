@@ -19,7 +19,7 @@ pub use crate::dependencies::{
 };
 pub use crate::error::{Error, Result};
 pub use crate::operation::OperationType;
-pub use crate::plan::QueryPlan;
+pub use crate::plan::{FieldPlan, QueryPlan};
 pub use crate::request::{
     Document, ExecutableDefinition, Field as SelectionField, OperationDefinition, Request,
     Selection, SelectionSet,
@@ -27,7 +27,7 @@ pub use crate::request::{
 pub use crate::resolve::{
     Carver, CarverOrPopulator, FieldResolver, IdPopulator, StringColumnCarver,
 };
-pub use crate::response::{Response, ResponseValue};
+pub use crate::response::{Response, ResponseInProgress, ResponseValue, ResponseValueOrInProgress};
 pub use crate::schema::Schema;
 pub use crate::types::{
     builtin_types, string_type, BuiltInScalarType, Field as TypeField, ObjectType, ScalarType,

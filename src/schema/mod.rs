@@ -32,6 +32,8 @@ impl Schema {
 
     pub async fn request(&self, request: Request) -> Response {
         let query_plan = QueryPlan::new(&request, self);
+        let mut is_complete = false;
+        let mut response_in_progress = query_plan.initial_response_in_progress();
         unimplemented!()
     }
 

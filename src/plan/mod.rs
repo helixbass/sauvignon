@@ -1,29 +1,10 @@
 use crate::{
-    request, types, IndexMap, OperationType, Request, Schema, Selection, SelectionSet, Type,
+    request, types, IndexMap, OperationType, Request, ResponseInProgress,
+    ResponseValueOrInProgress, Schema, Selection, SelectionSet, Type,
 };
 
 pub struct QueryPlan<'a> {
     field_plans: Vec<FieldPlan<'a>>,
-}
-
-fn create_field_plans<'a>(
-    selection_set: &'a SelectionSet,
-    type_fields: &'a IndexMap<String, types::Field>,
-    schema: &'a Schema,
-) -> Vec<FieldPlan<'a>> {
-    selection_set
-        .selections
-        .iter()
-        .map(|selection| {
-            let field = match selection {
-                Selection::Field(field) => field,
-                _ => panic!(),
-            };
-
-            let field_type = &type_fields[&field.name];
-            FieldPlan::new(field, field_type, schema)
-        })
-        .collect()
 }
 
 impl<'a> QueryPlan<'a> {
@@ -42,12 +23,23 @@ impl<'a> QueryPlan<'a> {
 
         Self { field_plans }
     }
+
+    pub fn initial_response_in_progress(&self) -> ResponseInProgress<'_> {
+        ResponseInProgress::new(IndexMap::from_iter(self.field_plans.iter().map(
+            |field_plan| {
+                (
+                    field_plan.request_field.name.clone(),
+                    ResponseValueOrInProgress::InProgress(field_plan),
+                )
+            },
+        )))
+    }
 }
 
 pub struct FieldPlan<'a> {
-    request_field: &'a request::Field,
-    field_type: &'a types::Field,
-    selection_set: Option<Vec<FieldPlan<'a>>>,
+    pub request_field: &'a request::Field,
+    pub field_type: &'a types::Field,
+    pub selection_set: Option<Vec<FieldPlan<'a>>>,
 }
 
 impl<'a> FieldPlan<'a> {
@@ -74,4 +66,24 @@ impl<'a> FieldPlan<'a> {
             }),
         }
     }
+}
+
+fn create_field_plans<'a>(
+    selection_set: &'a SelectionSet,
+    type_fields: &'a IndexMap<String, types::Field>,
+    schema: &'a Schema,
+) -> Vec<FieldPlan<'a>> {
+    selection_set
+        .selections
+        .iter()
+        .map(|selection| {
+            let field = match selection {
+                Selection::Field(field) => field,
+                _ => panic!(),
+            };
+
+            let field_type = &type_fields[&field.name];
+            FieldPlan::new(field, field_type, schema)
+        })
+        .collect()
 }
