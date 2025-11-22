@@ -14,6 +14,7 @@ impl Response {
 }
 
 #[derive(Serialize)]
+#[serde(untagged)]
 pub enum ResponseValue {
     Null,
     List(Vec<ResponseValue>),
