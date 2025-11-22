@@ -61,7 +61,21 @@ impl OperationDefinition {
     }
 }
 
-pub struct FragmentDefinition {}
+pub struct FragmentDefinition {
+    pub name: String,
+    pub on: String,
+    pub selection_set: SelectionSet,
+}
+
+impl FragmentDefinition {
+    pub fn new(name: String, on: String, selection_set: SelectionSet) -> Self {
+        Self {
+            name,
+            on,
+            selection_set,
+        }
+    }
+}
 
 pub struct SelectionSet {
     pub selections: Vec<Selection>,
@@ -95,6 +109,14 @@ impl Field {
     }
 }
 
-pub struct FragmentSpread {}
+pub struct FragmentSpread {
+    pub name: String,
+}
+
+impl FragmentSpread {
+    pub fn new(name: String) -> Self {
+        Self { name }
+    }
+}
 
 pub struct InlineFragment {}

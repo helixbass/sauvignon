@@ -3,10 +3,11 @@ use sqlx::postgres::PgPoolOptions;
 use sauvignon::{
     json_from_response, ArgumentInternalDependencyResolver, CarverOrPopulator, ColumnGetter,
     ColumnGetterList, DependencyType, DependencyValue, Document, ExecutableDefinition,
-    ExternalDependency, FieldResolver, Id, IdPopulator, IdPopulatorList, InternalDependency,
-    InternalDependencyResolver, LiteralValueInternalDependencyResolver, ObjectType,
-    OperationDefinition, OperationType, Request, Schema, Selection, SelectionField, SelectionSet,
-    StringColumnCarver, Type, TypeField, TypeFull,
+    ExternalDependency, FieldResolver, FragmentDefinition, FragmentSpread, Id, IdPopulator,
+    IdPopulatorList, InternalDependency, InternalDependencyResolver,
+    LiteralValueInternalDependencyResolver, ObjectType, OperationDefinition, OperationType,
+    Request, Schema, Selection, SelectionField, SelectionSet, StringColumnCarver, Type, TypeField,
+    TypeFull,
 };
 
 #[tokio::main]
@@ -171,6 +172,38 @@ async fn main() -> anyhow::Result<()> {
     let json = json_from_response(&response);
 
     println!("actors response: {}", pretty_print_json(&json));
+
+    let request = Request::new(Document::new(vec![
+        // query {
+        //   actors {
+        //     ...nameFragment
+        //   }
+        // }
+        //
+        // fragment nameFragment on Actor {
+        //   name
+        // }
+        ExecutableDefinition::Operation(OperationDefinition::new(
+            OperationType::Query,
+            None,
+            SelectionSet::new(vec![Selection::Field(SelectionField::new(
+                None,
+                "actors".to_owned(),
+                Some(SelectionSet::new(vec![Selection::FragmentSpread(
+                    FragmentSpread::new("nameFragment".to_owned()),
+                )])),
+            ))]),
+        )),
+        ExecutableDefinition::Fragment(FragmentDefinition::new(
+            "nameFragment".to_owned(),
+            "Actor".to_owned(),
+            SelectionSet::new(vec![Selection::Field(SelectionField::new(
+                None,
+                "name".to_owned(),
+                None,
+            ))]),
+        )),
+    ]));
 
     Ok(())
 }

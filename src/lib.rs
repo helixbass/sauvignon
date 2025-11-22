@@ -24,8 +24,8 @@ pub use crate::inscribe::json_from_response;
 pub use crate::operation::OperationType;
 pub use crate::plan::{FieldPlan, QueryPlan};
 pub use crate::request::{
-    Document, ExecutableDefinition, Field as SelectionField, OperationDefinition, Request,
-    Selection, SelectionSet,
+    Document, ExecutableDefinition, Field as SelectionField, FragmentDefinition, FragmentSpread,
+    OperationDefinition, Request, Selection, SelectionSet,
 };
 pub use crate::resolve::{
     Carver, CarverOrPopulator, FieldResolver, IdPopulator, IdPopulatorList, StringColumnCarver,
