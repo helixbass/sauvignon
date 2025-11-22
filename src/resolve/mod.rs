@@ -44,10 +44,16 @@ impl StringColumnCarver {
 impl Carver for StringColumnCarver {
     fn carve(
         &self,
-        external_dependencies: &ExternalDependencyValues,
+        _external_dependencies: &ExternalDependencyValues,
         internal_dependencies: &InternalDependencyValues,
     ) -> ResponseValue {
-        unimplemented!()
+        ResponseValue::String(
+            internal_dependencies
+                .get(&self.column_name)
+                .unwrap()
+                .as_string()
+                .clone(),
+        )
     }
 }
 
@@ -77,9 +83,13 @@ impl Populator for IdPopulator {
     fn populate(
         &self,
         into: &mut ExternalDependencyValues,
-        external_dependencies: &ExternalDependencyValues,
+        _external_dependencies: &ExternalDependencyValues,
         internal_dependencies: &InternalDependencyValues,
     ) {
-        unimplemented!()
+        into.insert(
+            "id".to_owned(),
+            internal_dependencies.get("id").unwrap().clone(),
+        )
+        .unwrap();
     }
 }

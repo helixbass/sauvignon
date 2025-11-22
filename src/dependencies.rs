@@ -85,9 +85,19 @@ pub struct ExternalDependencyValue {
     pub value: DependencyValue,
 }
 
+#[derive(Clone)]
 pub enum DependencyValue {
     Id(i64),
     String(String),
+}
+
+impl DependencyValue {
+    pub fn as_string(&self) -> &String {
+        match self {
+            Self::String(string) => string,
+            _ => panic!("Expected string"),
+        }
+    }
 }
 
 pub type InternalDependencyValue = ExternalDependencyValue;
