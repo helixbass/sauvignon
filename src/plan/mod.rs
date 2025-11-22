@@ -17,6 +17,7 @@ impl<'a> QueryPlan<'a> {
                 &chosen_operation.selection_set,
                 schema.query_type(),
                 schema,
+                request,
             ),
         }
     }
@@ -40,6 +41,7 @@ impl<'a> FieldPlan<'a> {
         request_field: &'a request::Field,
         field_type: &'a types::Field,
         schema: &'a Schema,
+        request: &'a Request,
     ) -> Self {
         Self {
             request_field,
@@ -49,6 +51,7 @@ impl<'a> FieldPlan<'a> {
                     selection_set,
                     schema.get_type(field_type.type_.name()),
                     schema,
+                    request,
                 )
             }),
         }
@@ -59,23 +62,25 @@ fn create_field_plans<'a>(
     selection_set: &'a SelectionSet,
     type_: &'a Type,
     schema: &'a Schema,
+    request: &'a Request,
 ) -> Vec<FieldPlan<'a>> {
-    let type_fields = match type_ {
-        Type::Object(type_) => &type_.fields,
-        _ => unreachable!(),
-    };
+    let type_fields = &type_.as_object().fields;
 
     selection_set
         .selections
         .iter()
-        .map(|selection| {
-            let field = match selection {
-                Selection::Field(field) => field,
-                _ => panic!(),
-            };
-
-            let field_type = &type_fields[&field.name];
-            FieldPlan::new(field, field_type, schema)
+        .flat_map(|selection| match selection {
+            Selection::Field(field) => {
+                let field_type = &type_fields[&field.name];
+                vec![FieldPlan::new(field, field_type, schema, request)]
+            }
+            Selection::FragmentSpread(fragment_spread) => create_field_plans(
+                &request.fragment(&fragment_spread.name).selection_set,
+                type_,
+                schema,
+                request,
+            ),
+            _ => panic!(),
         })
         .collect()
 }

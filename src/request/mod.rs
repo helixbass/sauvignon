@@ -14,6 +14,10 @@ impl Request {
     pub fn chosen_operation(&self) -> &OperationDefinition {
         self.document.chosen_operation()
     }
+
+    pub fn fragment(&self, name: &str) -> &FragmentDefinition {
+        self.document.fragment(name)
+    }
 }
 
 pub struct Document {
