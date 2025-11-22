@@ -31,8 +31,9 @@ pub use crate::resolve::{
     Carver, CarverOrPopulator, FieldResolver, IdPopulator, StringColumnCarver,
 };
 pub use crate::response::{
-    fields_in_progress_new, FieldsInProgress, InProgress, InProgressRecursing, Response,
-    ResponseInProgress, ResponseValue, ResponseValueOrInProgress,
+    fields_in_progress_new, FieldsInProgress, InProgress, InProgressRecursing,
+    InProgressRecursingList, Response, ResponseInProgress, ResponseValue,
+    ResponseValueOrInProgress,
 };
 pub use crate::schema::Schema;
 pub use crate::types::{

@@ -3,4 +3,6 @@ CREATE TABLE actors (
   name TEXT
 );
 
-INSERT INTO actors (name) VALUES ('Katie Cassidy');
+INSERT INTO actors (name) VALUES
+  ('Katie Cassidy'),
+  ('Jessica Szohr');
