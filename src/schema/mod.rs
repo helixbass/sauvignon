@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use async_recursion::async_recursion;
 use sqlx::{Pool, Postgres};
 
 use crate::{
@@ -69,6 +70,7 @@ async fn compute_response(
     }
 }
 
+#[async_recursion(?Send)]
 async fn progress_fields<'a>(
     fields_in_progress: FieldsInProgress<'a>,
     db_pool: &Pool<Postgres>,
@@ -106,14 +108,12 @@ async fn progress_fields<'a>(
                                 &external_dependency_values,
                                 &internal_dependency_values,
                             );
+                            let fields_in_progress = fields_in_progress_new(
+                                field_plan.selection_set.as_ref().unwrap(),
+                                &populated,
+                            );
                             ResponseValueOrInProgress::InProgressRecursing(
-                                InProgressRecursing::new(
-                                    field_plan,
-                                    populated,
-                                    fields_in_progress_new(
-                                        field_plan.selection_set.as_ref().unwrap(),
-                                    ),
-                                ),
+                                InProgressRecursing::new(field_plan, populated, fields_in_progress),
                             )
                         }
                         CarverOrPopulator::Carver(carver) => {
@@ -131,7 +131,17 @@ async fn progress_fields<'a>(
                     populated,
                     selection,
                 }) => {
-                    unimplemented!()
+                    let (is_done, fields_in_progress) = progress_fields(selection, db_pool).await;
+
+                    if is_done {
+                        ResponseValueOrInProgress::ResponseValue(fields_in_progress.into())
+                    } else {
+                        ResponseValueOrInProgress::InProgressRecursing(InProgressRecursing {
+                            field_plan,
+                            populated,
+                            selection: fields_in_progress,
+                        })
+                    }
                 }
             },
         );

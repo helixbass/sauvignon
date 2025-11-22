@@ -102,7 +102,7 @@ impl DependencyValue {
 
 pub type InternalDependencyValue = ExternalDependencyValue;
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct ExternalDependencyValues {
     knowns: HashMap<String, DependencyValue>,
     anys: AnyHashMap,

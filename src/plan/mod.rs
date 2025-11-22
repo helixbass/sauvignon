@@ -22,7 +22,10 @@ impl<'a> QueryPlan<'a> {
     }
 
     pub fn initial_response_in_progress(&self) -> ResponseInProgress<'_> {
-        ResponseInProgress::new(fields_in_progress_new(&self.field_plans))
+        ResponseInProgress::new(fields_in_progress_new(
+            &self.field_plans,
+            &Default::default(),
+        ))
     }
 }
 
