@@ -169,14 +169,15 @@ async fn populate_internal_dependencies(
                         DependencyValue::Id(id) => id,
                         _ => unreachable!(),
                     };
-                    let (column_value,): (String,) =
-                        sqlx::query_as("SELECT $1 FROM $2 WHERE id = $3")
-                            .bind(&column_getter.column_name)
-                            .bind(&column_getter.table_name)
-                            .bind(row_id)
-                            .fetch_one(db_pool)
-                            .await
-                            .unwrap();
+                    // TODO: should check that table names can never be SQL injection?
+                    let query =
+                        format!("SELECT $1 FROM {} WHERE id = $3", column_getter.table_name);
+                    let (column_value,): (String,) = sqlx::query_as(&query)
+                        .bind(&column_getter.column_name)
+                        .bind(row_id)
+                        .fetch_one(db_pool)
+                        .await
+                        .unwrap();
                     DependencyValue::String(column_value)
                 }
                 InternalDependencyResolver::LiteralValue(literal_value) => literal_value.0.clone(),
