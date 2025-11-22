@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use crate::OperationType;
 
 pub struct Request {
@@ -16,11 +18,21 @@ impl Request {
 
 pub struct Document {
     pub definitions: Vec<ExecutableDefinition>,
+    pub fragments_by_name: HashMap<String, usize>,
 }
 
 impl Document {
     pub fn new(definitions: Vec<ExecutableDefinition>) -> Self {
-        Self { definitions }
+        let fragments_by_name = HashMap::from_iter(definitions.iter().enumerate().filter_map(
+            |(index, definition)| match definition {
+                ExecutableDefinition::Fragment(fragment) => Some((fragment.name.clone(), index)),
+                _ => None,
+            },
+        ));
+        Self {
+            definitions,
+            fragments_by_name,
+        }
     }
 
     pub fn chosen_operation(&self) -> &OperationDefinition {
@@ -34,11 +46,24 @@ impl Document {
         }
         panic!()
     }
+
+    pub fn fragment(&self, name: &str) -> &FragmentDefinition {
+        self.definitions[*self.fragments_by_name.get(name).unwrap()].as_fragment_definition()
+    }
 }
 
 pub enum ExecutableDefinition {
     Operation(OperationDefinition),
     Fragment(FragmentDefinition),
+}
+
+impl ExecutableDefinition {
+    pub fn as_fragment_definition(&self) -> &FragmentDefinition {
+        match self {
+            Self::Fragment(fragment_definition) => fragment_definition,
+            _ => panic!("expected fragment"),
+        }
+    }
 }
 
 pub struct OperationDefinition {

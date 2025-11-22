@@ -205,6 +205,12 @@ async fn main() -> anyhow::Result<()> {
         )),
     ]));
 
+    let response = schema.request(request, &db_pool).await;
+
+    let json = json_from_response(&response);
+
+    println!("nameFragment response: {}", pretty_print_json(&json));
+
     Ok(())
 }
 
