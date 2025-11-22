@@ -37,7 +37,7 @@ impl Schema {
 
     pub async fn request(&self, request: Request, db_pool: &Pool<Postgres>) -> Response {
         let response = compute_response(self, &request, db_pool).await;
-        unimplemented!()
+        Response { data: response }
     }
 
     pub fn query_type(&self) -> &Type {

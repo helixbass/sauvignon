@@ -1,6 +1,7 @@
 mod any_hash_map;
 mod dependencies;
 mod error;
+mod inscribe;
 mod operation;
 mod plan;
 mod request;
@@ -19,6 +20,7 @@ pub use crate::dependencies::{
     InternalDependencyValues, LiteralValueInternalDependencyResolver,
 };
 pub use crate::error::{Error, Result};
+pub use crate::inscribe::json_from_response;
 pub use crate::operation::OperationType;
 pub use crate::plan::{FieldPlan, QueryPlan};
 pub use crate::request::{

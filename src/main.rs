@@ -1,9 +1,9 @@
 use sqlx::postgres::PgPoolOptions;
 
 use sauvignon::{
-    ArgumentInternalDependencyResolver, CarverOrPopulator, ColumnGetter, ColumnGetterList,
-    DependencyType, DependencyValue, Document, ExecutableDefinition, ExternalDependency,
-    FieldResolver, IdPopulator, InternalDependency, InternalDependencyResolver,
+    json_from_response, ArgumentInternalDependencyResolver, CarverOrPopulator, ColumnGetter,
+    ColumnGetterList, DependencyType, DependencyValue, Document, ExecutableDefinition,
+    ExternalDependency, FieldResolver, IdPopulator, InternalDependency, InternalDependencyResolver,
     LiteralValueInternalDependencyResolver, ObjectType, OperationDefinition, OperationType,
     Request, Schema, Selection, SelectionField, SelectionSet, StringColumnCarver, Type, TypeField,
     TypeFull,
@@ -142,6 +142,10 @@ async fn main() -> anyhow::Result<()> {
     ]));
 
     let response = schema.request(request, &db_pool).await;
+
+    let json = json_from_response(&response);
+
+    println!("Response: {json}");
 
     Ok(())
 }

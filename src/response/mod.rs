@@ -1,7 +1,19 @@
+use serde::Serialize;
+
 use crate::{ExternalDependencyValues, FieldPlan, IndexMap};
 
-pub struct Response {}
+#[derive(Serialize)]
+pub struct Response {
+    pub data: ResponseValue,
+}
 
+impl Response {
+    pub fn new(data: ResponseValue) -> Self {
+        Self { data }
+    }
+}
+
+#[derive(Serialize)]
 pub enum ResponseValue {
     Null,
     List(Vec<ResponseValue>),
