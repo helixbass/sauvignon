@@ -30,6 +30,13 @@ impl Type {
             Self::Object(type_) if type_.is_query_type()
         )
     }
+
+    pub fn as_object(&self) -> &ObjectType {
+        match self {
+            Self::Object(object) => object,
+            _ => panic!("expected object"),
+        }
+    }
 }
 
 pub trait TypeInterface {
