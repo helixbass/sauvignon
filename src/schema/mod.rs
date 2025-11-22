@@ -169,11 +169,12 @@ async fn populate_internal_dependencies(
                         DependencyValue::Id(id) => id,
                         _ => unreachable!(),
                     };
-                    // TODO: should check that table names can never be SQL injection?
-                    let query =
-                        format!("SELECT $1 FROM {} WHERE id = $2", column_getter.table_name);
+                    // TODO: should check that table names and column names can never be SQL injection?
+                    let query = format!(
+                        "SELECT {} FROM {} WHERE id = $1",
+                        column_getter.column_name, column_getter.table_name
+                    );
                     let (column_value,): (String,) = sqlx::query_as(&query)
-                        .bind(&column_getter.column_name)
                         .bind(row_id)
                         .fetch_one(db_pool)
                         .await
