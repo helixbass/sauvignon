@@ -148,4 +148,13 @@ impl FragmentSpread {
     }
 }
 
-pub struct InlineFragment {}
+pub struct InlineFragment {
+    pub on: Option<String>,
+    pub selection_set: SelectionSet,
+}
+
+impl InlineFragment {
+    pub fn new(on: Option<String>, selection_set: SelectionSet) -> Self {
+        Self { on, selection_set }
+    }
+}
