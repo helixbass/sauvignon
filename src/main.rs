@@ -145,7 +145,7 @@ async fn main() -> anyhow::Result<()> {
 
     let json = json_from_response(&response);
 
-    println!("actorKatie response: {json}");
+    println!("actorKatie response: {}", pretty_print_json(&json));
 
     let request = Request::new(Document::new(vec![
         // query {
@@ -170,7 +170,12 @@ async fn main() -> anyhow::Result<()> {
 
     let json = json_from_response(&response);
 
-    println!("actors response: {json}");
+    println!("actors response: {}", pretty_print_json(&json));
 
     Ok(())
+}
+
+fn pretty_print_json(json: &str) -> String {
+    let parsed: serde_json::Value = serde_json::from_str(json).unwrap();
+    serde_json::to_string_pretty(&parsed).unwrap()
 }
