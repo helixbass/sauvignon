@@ -1,5 +1,7 @@
 use std::collections::HashMap;
 
+use squalid::OptionExt;
+
 use crate::{AnyHashMap, Error};
 
 #[derive(Copy, Clone, Eq, PartialEq)]
@@ -123,7 +125,7 @@ impl ExternalDependencyValues {
         if self.knowns.contains_key(&name) {
             return Err(Error::DependencyAlreadyPopulated(name));
         }
-        self.knowns.insert(name, value).unwrap();
+        self.knowns.insert(name, value).assert_none();
         Ok(())
     }
 
@@ -135,7 +137,7 @@ impl ExternalDependencyValues {
         if self.anys.contains_key(&name) {
             return Err(Error::DependencyAlreadyPopulated(name));
         }
-        self.anys.insert(name, value).unwrap();
+        self.anys.insert(name, value).assert_none();
         Ok(())
     }
 
