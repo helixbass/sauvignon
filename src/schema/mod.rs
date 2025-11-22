@@ -5,7 +5,7 @@ use sqlx::{Pool, Postgres};
 
 use crate::{
     builtin_types, fields_in_progress_new, CarverOrPopulator, DependencyValue, Error,
-    ExternalDependencyValues, FieldPlan, FieldsInProgress, InProgress, InProgressRecursing,
+    ExternalDependencyValues, FieldPlan, FieldsInProgress, Id, InProgress, InProgressRecursing,
     InProgressRecursingList, IndexMap, InternalDependencyResolver, InternalDependencyValues,
     QueryPlan, Request, Response, ResponseValue, ResponseValueOrInProgress,
     Result as SauvignonResult, Type, TypeInterface,
@@ -238,13 +238,13 @@ async fn populate_internal_dependencies(
                         "SELECT {} FROM {}",
                         column_getter_list.column_name, column_getter_list.table_name
                     );
-                    let rows = sqlx::query_as::<_, (String,)>(&query)
+                    let rows = sqlx::query_as::<_, (Id,)>(&query)
                         .fetch_all(db_pool)
                         .await
                         .unwrap();
                     DependencyValue::List(
                         rows.into_iter()
-                            .map(|(column_value,)| DependencyValue::String(column_value))
+                            .map(|(column_value,)| DependencyValue::Id(column_value))
                             .collect(),
                     )
                 }
