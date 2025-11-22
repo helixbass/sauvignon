@@ -100,10 +100,7 @@ async fn main() -> anyhow::Result<()> {
                         "id".to_owned(),
                         DependencyType::Id,
                         InternalDependencyResolver::LiteralValue(
-                            LiteralValueInternalDependencyResolver::new(
-                                "id".to_owned(),
-                                DependencyValue::Id(4),
-                            ),
+                            LiteralValueInternalDependencyResolver(DependencyValue::Id(4)),
                         ),
                     )],
                     CarverOrPopulator::Populator(Box::new(IdPopulator::new())),

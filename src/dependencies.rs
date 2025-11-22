@@ -81,16 +81,7 @@ impl ColumnGetterList {
     }
 }
 
-pub struct LiteralValueInternalDependencyResolver {
-    pub name: String,
-    pub value: DependencyValue,
-}
-
-impl LiteralValueInternalDependencyResolver {
-    pub fn new(name: String, value: DependencyValue) -> Self {
-        Self { name, value }
-    }
-}
+pub struct LiteralValueInternalDependencyResolver(pub DependencyValue);
 
 pub struct ExternalDependencyValue {
     pub name: String,

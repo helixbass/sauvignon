@@ -179,6 +179,7 @@ async fn populate_internal_dependencies(
                             .unwrap();
                     DependencyValue::String(column_value)
                 }
+                InternalDependencyResolver::LiteralValue(literal_value) => literal_value.0.clone(),
                 _ => unimplemented!(),
             },
         )
