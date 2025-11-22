@@ -40,6 +40,7 @@ pub enum InternalDependencyResolver {
     ColumnGetter(ColumnGetter),
     Argument(ArgumentInternalDependencyResolver),
     ColumnGetterList(ColumnGetterList),
+    LiteralValue(LiteralValueInternalDependencyResolver),
 }
 
 pub struct ColumnGetter {
@@ -77,6 +78,17 @@ impl ColumnGetterList {
             table_name,
             column_name,
         }
+    }
+}
+
+pub struct LiteralValueInternalDependencyResolver {
+    pub name: String,
+    pub value: DependencyValue,
+}
+
+impl LiteralValueInternalDependencyResolver {
+    pub fn new(name: String, value: DependencyValue) -> Self {
+        Self { name, value }
     }
 }
 

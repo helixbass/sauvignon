@@ -2,8 +2,9 @@ use sqlx::postgres::PgPoolOptions;
 
 use sauvignon::{
     ArgumentInternalDependencyResolver, CarverOrPopulator, ColumnGetter, ColumnGetterList,
-    DependencyType, Document, ExecutableDefinition, ExternalDependency, FieldResolver, IdPopulator,
-    InternalDependency, InternalDependencyResolver, ObjectType, OperationDefinition, OperationType,
+    DependencyType, DependencyValue, Document, ExecutableDefinition, ExternalDependency,
+    FieldResolver, IdPopulator, InternalDependency, InternalDependencyResolver,
+    LiteralValueInternalDependencyResolver, ObjectType, OperationDefinition, OperationType,
     Request, Schema, Selection, SelectionField, SelectionSet, StringColumnCarver, Type, TypeField,
     TypeFull,
 };
@@ -45,9 +46,11 @@ async fn main() -> anyhow::Result<()> {
             TypeField::new(
                 "actor".to_owned(),
                 TypeFull::Type("Actor".to_owned()),
-                // external_dependencies => None,
-                // internal_dependencies => ,
-                // populator => {"id" => 4}
+                // {
+                //   external_dependencies => None,
+                //   internal_dependencies => {"id" => Argument},
+                //   populator => IdPopulator,
+                // }
                 FieldResolver::new(
                     vec![],
                     vec![InternalDependency::new(
@@ -83,6 +86,29 @@ async fn main() -> anyhow::Result<()> {
                     CarverOrPopulator::Populator(Box::new(IdPopulator::new())),
                 ),
             ),
+            TypeField::new(
+                "actorKatie".to_owned(),
+                TypeFull::Type("Actor".to_owned()),
+                // {
+                //   external_dependencies => None,
+                //   internal_dependencies => {"id" => LiteralValue(4)},
+                //   populator => IdPopulator,
+                // }
+                FieldResolver::new(
+                    vec![],
+                    vec![InternalDependency::new(
+                        "id".to_owned(),
+                        DependencyType::Id,
+                        InternalDependencyResolver::LiteralValue(
+                            LiteralValueInternalDependencyResolver::new(
+                                "id".to_owned(),
+                                DependencyValue::Id(4),
+                            ),
+                        ),
+                    )],
+                    CarverOrPopulator::Populator(Box::new(IdPopulator::new())),
+                ),
+            ),
         ],
         Some(OperationType::Query),
     ));
@@ -91,7 +117,7 @@ async fn main() -> anyhow::Result<()> {
 
     let request = Request::new(Document::new(vec![
         // query {
-        //   actor {
+        //   actorKatie {
         //     name
         //   }
         // }
@@ -100,7 +126,7 @@ async fn main() -> anyhow::Result<()> {
             None,
             SelectionSet::new(vec![Selection::Field(SelectionField::new(
                 None,
-                "actor".to_owned(),
+                "actorKatie".to_owned(),
                 Some(SelectionSet::new(vec![Selection::Field(
                     SelectionField::new(None, "name".to_owned(), None),
                 )])),

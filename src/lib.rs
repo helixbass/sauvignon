@@ -16,7 +16,7 @@ pub use crate::dependencies::{
     ArgumentInternalDependencyResolver, ColumnGetter, ColumnGetterList, DependencyType,
     DependencyValue, ExternalDependency, ExternalDependencyValue, ExternalDependencyValues,
     InternalDependency, InternalDependencyResolver, InternalDependencyValue,
-    InternalDependencyValues,
+    InternalDependencyValues, LiteralValueInternalDependencyResolver,
 };
 pub use crate::error::{Error, Result};
 pub use crate::operation::OperationType;
