@@ -92,7 +92,7 @@ pub struct ExternalDependencyValue {
 
 #[derive(Clone)]
 pub enum DependencyValue {
-    Id(i64),
+    Id(i32),
     String(String),
 }
 

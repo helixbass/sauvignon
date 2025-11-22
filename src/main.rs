@@ -11,6 +11,11 @@ use sauvignon::{
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    let db_pool = PgPoolOptions::new()
+        .max_connections(5)
+        .connect("postgres://sauvignon:password@localhost/sauvignon")
+        .await?;
+
     let actor_type = Type::Object(ObjectType::new(
         "Actor".to_owned(),
         vec![TypeField::new(
@@ -39,6 +44,11 @@ async fn main() -> anyhow::Result<()> {
         )],
         None,
     ));
+
+    let (katie_id,): (i32,) = sqlx::query_as("SELECT id FROM actors WHERE name = 'Katie Cassidy'")
+        .fetch_one(&db_pool)
+        .await
+        .unwrap();
 
     let query_type = Type::Object(ObjectType::new(
         "Query".to_owned(),
@@ -100,7 +110,7 @@ async fn main() -> anyhow::Result<()> {
                         "id".to_owned(),
                         DependencyType::Id,
                         InternalDependencyResolver::LiteralValue(
-                            LiteralValueInternalDependencyResolver(DependencyValue::Id(4)),
+                            LiteralValueInternalDependencyResolver(DependencyValue::Id(katie_id)),
                         ),
                     )],
                     CarverOrPopulator::Populator(Box::new(IdPopulator::new())),
@@ -131,12 +141,7 @@ async fn main() -> anyhow::Result<()> {
         )),
     ]));
 
-    let pool = PgPoolOptions::new()
-        .max_connections(5)
-        .connect("postgres://sauvignon:password@localhost/sauvignon")
-        .await?;
-
-    let response = schema.request(request, &pool).await;
+    let response = schema.request(request, &db_pool).await;
 
     Ok(())
 }

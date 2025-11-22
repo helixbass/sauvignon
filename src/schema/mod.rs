@@ -171,7 +171,7 @@ async fn populate_internal_dependencies(
                     };
                     // TODO: should check that table names can never be SQL injection?
                     let query =
-                        format!("SELECT $1 FROM {} WHERE id = $3", column_getter.table_name);
+                        format!("SELECT $1 FROM {} WHERE id = $2", column_getter.table_name);
                     let (column_value,): (String,) = sqlx::query_as(&query)
                         .bind(&column_getter.column_name)
                         .bind(row_id)
