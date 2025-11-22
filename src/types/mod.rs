@@ -137,3 +137,14 @@ pub fn string_type() -> Type {
         StringType::new(),
     )))
 }
+
+pub struct Union {
+    pub name: String,
+    pub types: Vec<String>,
+}
+
+impl Union {
+    pub fn new(name: String, types: Vec<String>) -> Self {
+        Self { name, types }
+    }
+}

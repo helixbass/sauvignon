@@ -8,17 +8,18 @@ use crate::{
     ExternalDependencyValues, FieldPlan, FieldsInProgress, Id, InProgress, InProgressRecursing,
     InProgressRecursingList, IndexMap, InternalDependencyResolver, InternalDependencyValues,
     QueryPlan, Request, Response, ResponseValue, ResponseValueOrInProgress,
-    Result as SauvignonResult, Type, TypeInterface,
+    Result as SauvignonResult, Type, TypeInterface, Union,
 };
 
 pub struct Schema {
     pub types: HashMap<String, Type>,
     pub query_type_name: String,
     builtin_types: HashMap<String, Type>,
+    pub unions: HashMap<String, Union>,
 }
 
 impl Schema {
-    pub fn try_new(types: Vec<Type>) -> SauvignonResult<Self> {
+    pub fn try_new(types: Vec<Type>, unions: Vec<Union>) -> SauvignonResult<Self> {
         let query_type_index = types
             .iter()
             .position(|type_| type_.is_query_type())
@@ -33,6 +34,11 @@ impl Schema {
             ),
             query_type_name,
             builtin_types: builtin_types(),
+            unions: HashMap::from_iter(
+                unions
+                    .into_iter()
+                    .map(|union| (union.name.to_owned(), union)),
+            ),
         })
     }
 
@@ -62,7 +68,7 @@ async fn compute_response(
     let response_in_progress = query_plan.initial_response_in_progress();
     let mut fields_in_progress = response_in_progress.fields;
     loop {
-        let ret = progress_fields(fields_in_progress, db_pool).await;
+        let ret = progress_fields(fields_in_progress, db_pool, schema).await;
         let is_done = ret.0;
         fields_in_progress = ret.1;
         if is_done {
@@ -74,6 +80,7 @@ async fn compute_response(
 fn progress_fields<'a>(
     fields_in_progress: FieldsInProgress<'a>,
     db_pool: &'a Pool<Postgres>,
+    schema: &'a Schema,
 ) -> Pin<Box<dyn Future<Output = (bool, FieldsInProgress<'a>)> + 'a>> {
     Box::pin(async move {
         let is_done = fields_in_progress
@@ -147,6 +154,32 @@ fn progress_fields<'a>(
                                     &internal_dependency_values,
                                 ))
                             }
+                            CarverOrPopulator::UnionOrInterfaceTypePopulator(populator) => {
+                                let type_name = populator.populate(
+                                    &external_dependency_values,
+                                    &internal_dependency_values,
+                                );
+                                let type_ = schema.get_type(&type_name);
+                                FieldPlan::new(
+                                    field_plan.request_field,
+                                    // this is a little weird because I think this is still
+                                    // the union type (vs the member of the union type aka
+                                    // `type_`) but I think .field_type is getting ignored
+                                    // anyway?
+                                    field_plan.field_type,
+                                )
+                                let fields_in_progress = fields_in_progress_new(
+                                    field_plan.selection_set.as_ref().unwrap(),
+                                    &populated,
+                                );
+                                ResponseValueOrInProgress::InProgressRecursing(
+                                    InProgressRecursing::new(
+                                        field_plan,
+                                        populated,
+                                        fields_in_progress,
+                                    ),
+                                )
+                            }
                         }
                     }
                     ResponseValueOrInProgress::InProgressRecursing(InProgressRecursing {
@@ -155,7 +188,7 @@ fn progress_fields<'a>(
                         selection,
                     }) => {
                         let (is_done, fields_in_progress) =
-                            progress_fields(selection, db_pool).await;
+                            progress_fields(selection, db_pool, schema).await;
 
                         if is_done {
                             ResponseValueOrInProgress::ResponseValue(fields_in_progress.into())
@@ -178,7 +211,7 @@ fn progress_fields<'a>(
                         let mut are_all_done = true;
                         for selection in selections {
                             let (is_done, fields_in_progress) =
-                                progress_fields(selection, db_pool).await;
+                                progress_fields(selection, db_pool, schema).await;
                             if !is_done {
                                 are_all_done = false;
                             }

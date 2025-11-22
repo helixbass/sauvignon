@@ -29,6 +29,7 @@ pub use crate::request::{
 };
 pub use crate::resolve::{
     Carver, CarverOrPopulator, FieldResolver, IdPopulator, IdPopulatorList, StringColumnCarver,
+    TypeDepluralizer, UnionOrInterfaceTypePopulator,
 };
 pub use crate::response::{
     fields_in_progress_new, FieldsInProgress, InProgress, InProgressRecursing,
@@ -38,7 +39,7 @@ pub use crate::response::{
 pub use crate::schema::Schema;
 pub use crate::types::{
     builtin_types, string_type, BuiltInScalarType, Field as TypeField, ObjectType, ScalarType,
-    StringType, Type, TypeFull, TypeInterface,
+    StringType, Type, TypeFull, TypeInterface, Union,
 };
 
 // #[cfg(test)]

@@ -6,7 +6,7 @@ use sauvignon::{
     ExternalDependency, FieldResolver, Id, IdPopulator, IdPopulatorList, InternalDependency,
     InternalDependencyResolver, LiteralValueInternalDependencyResolver, ObjectType,
     OperationDefinition, OperationType, Request, Schema, Selection, SelectionField, SelectionSet,
-    StringColumnCarver, Type, TypeField, TypeFull,
+    StringColumnCarver, Type, TypeDepluralizer, TypeField, TypeFull, Union,
 };
 
 #[tokio::main]
@@ -45,10 +45,41 @@ async fn main() -> anyhow::Result<()> {
         None,
     ));
 
+    let designer_type = Type::Object(ObjectType::new(
+        "Designer".to_owned(),
+        vec![TypeField::new(
+            "name".to_owned(),
+            TypeFull::Type("String".to_owned()),
+            FieldResolver::new(
+                vec![ExternalDependency::new("id".to_owned(), DependencyType::Id)],
+                vec![InternalDependency::new(
+                    "name".to_owned(),
+                    DependencyType::String,
+                    InternalDependencyResolver::ColumnGetter(ColumnGetter::new(
+                        "designers".to_owned(),
+                        "name".to_owned(),
+                    )),
+                )],
+                CarverOrPopulator::Carver(Box::new(StringColumnCarver::new("name".to_owned()))),
+            ),
+        )],
+        None,
+    ));
+
+    let actor_or_designer = Union::new(
+        "ActorOrDesigner".to_owned(),
+        vec!["Actor".to_owned(), "Designer".to_owned()],
+    );
+
     let (katie_id,): (Id,) = sqlx::query_as("SELECT id FROM actors WHERE name = 'Katie Cassidy'")
         .fetch_one(&db_pool)
         .await
         .unwrap();
+    let (proenza_schouler_id,): (Id,) =
+        sqlx::query_as("SELECT id FROM designers WHERE name = 'Proenza Schouler'")
+            .fetch_one(&db_pool)
+            .await
+            .unwrap();
 
     let query_type = Type::Object(ObjectType::new(
         "Query".to_owned(),
@@ -116,11 +147,41 @@ async fn main() -> anyhow::Result<()> {
                     CarverOrPopulator::Populator(Box::new(IdPopulator::new())),
                 ),
             ),
+            TypeField::new(
+                "certainActorOrDesigner".to_owned(),
+                TypeFull::Type("ActorOrDesigner".to_owned()),
+                FieldResolver::new(
+                    vec![],
+                    vec![
+                        InternalDependency::new(
+                            "type".to_owned(),
+                            DependencyType::String,
+                            InternalDependencyResolver::LiteralValue(
+                                LiteralValueInternalDependencyResolver(DependencyValue::String(
+                                    "designers".to_owned(),
+                                )),
+                            ),
+                        ),
+                        InternalDependency::new(
+                            "id".to_owned(),
+                            DependencyType::Id,
+                            InternalDependencyResolver::LiteralValue(
+                                LiteralValueInternalDependencyResolver(DependencyValue::Id(
+                                    proenza_schouler_id,
+                                )),
+                            ),
+                        ),
+                    ],
+                    CarverOrPopulator::UnionOrInterfaceTypePopulator(Box::new(
+                        TypeDepluralizer::new(),
+                    )),
+                ),
+            ),
         ],
         Some(OperationType::Query),
     ));
 
-    let schema = Schema::try_new(vec![query_type, actor_type])?;
+    let schema = Schema::try_new(vec![query_type, actor_type], vec![actor_or_designer])?;
 
     let request = Request::new(Document::new(vec![
         // query {

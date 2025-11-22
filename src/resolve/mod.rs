@@ -1,3 +1,5 @@
+use inflector::Inflector;
+
 use crate::{
     ExternalDependency, ExternalDependencyValues, InternalDependency, InternalDependencyValues,
     ResponseValue,
@@ -61,6 +63,7 @@ pub enum CarverOrPopulator {
     Carver(Box<dyn Carver>),
     Populator(Box<dyn Populator>),
     PopulatorList(Box<dyn PopulatorList>),
+    UnionOrInterfaceTypePopulator(Box<dyn UnionOrInterfaceTypePopulator>),
 }
 
 pub trait Populator {
@@ -128,5 +131,36 @@ impl PopulatorList for IdPopulatorList {
                 ret
             })
             .collect()
+    }
+}
+
+pub trait UnionOrInterfaceTypePopulator {
+    fn populate(
+        &self,
+        external_dependencies: &ExternalDependencyValues,
+        internal_dependencies: &InternalDependencyValues,
+    ) -> String;
+}
+
+pub struct TypeDepluralizer {}
+
+impl TypeDepluralizer {
+    pub fn new() -> Self {
+        Self {}
+    }
+}
+
+impl UnionOrInterfaceTypePopulator for TypeDepluralizer {
+    fn populate(
+        &self,
+        _external_dependencies: &ExternalDependencyValues,
+        internal_dependencies: &InternalDependencyValues,
+    ) -> String {
+        internal_dependencies
+            .get("type")
+            .unwrap()
+            .as_string()
+            .to_singular()
+            .to_pascal_case()
     }
 }
