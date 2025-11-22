@@ -14,8 +14,9 @@ pub use indexmap::IndexMap;
 pub use crate::any_hash_map::AnyHashMap;
 pub use crate::dependencies::{
     ArgumentInternalDependencyResolver, ColumnGetter, ColumnGetterList, DependencyType,
-    ExternalDependency, ExternalDependencyValue, ExternalDependencyValues, InternalDependency,
-    InternalDependencyResolver, InternalDependencyValue, InternalDependencyValues,
+    DependencyValue, ExternalDependency, ExternalDependencyValue, ExternalDependencyValues,
+    InternalDependency, InternalDependencyResolver, InternalDependencyValue,
+    InternalDependencyValues,
 };
 pub use crate::error::{Error, Result};
 pub use crate::operation::OperationType;

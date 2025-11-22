@@ -1,15 +1,15 @@
-use std::collections::HashMap;
+use sqlx::postgres::PgPoolOptions;
 
 use sauvignon::{
     ArgumentInternalDependencyResolver, CarverOrPopulator, ColumnGetter, ColumnGetterList,
-    DependencyType, Document, Error as SauvignonError, ExecutableDefinition, ExternalDependency,
-    FieldResolver, IdPopulator, InternalDependency, InternalDependencyResolver, ObjectType,
-    OperationDefinition, OperationType, Request, Schema, Selection, SelectionField, SelectionSet,
-    StringColumnCarver, Type, TypeField, TypeFull,
+    DependencyType, Document, ExecutableDefinition, ExternalDependency, FieldResolver, IdPopulator,
+    InternalDependency, InternalDependencyResolver, ObjectType, OperationDefinition, OperationType,
+    Request, Schema, Selection, SelectionField, SelectionSet, StringColumnCarver, Type, TypeField,
+    TypeFull,
 };
 
 #[tokio::main]
-async fn main() -> Result<(), SauvignonError> {
+async fn main() -> anyhow::Result<()> {
     let actor_type = Type::Object(ObjectType::new(
         "Actor".to_owned(),
         vec![TypeField::new(
@@ -108,7 +108,12 @@ async fn main() -> Result<(), SauvignonError> {
         )),
     ]));
 
-    let response = schema.request(request).await;
+    let pool = PgPoolOptions::new()
+        .max_connections(5)
+        .connect("postgres://sauvignon:password@localhost/sauvignon")
+        .await?;
+
+    let response = schema.request(request, &pool).await;
 
     Ok(())
 }

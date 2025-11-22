@@ -86,6 +86,7 @@ pub struct ExternalDependencyValue {
 }
 
 pub enum DependencyValue {
+    Id(i64),
     String(String),
 }
 

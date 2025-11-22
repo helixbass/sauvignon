@@ -1,9 +1,11 @@
 use std::collections::HashMap;
 
+use sqlx::{Pool, Postgres};
+
 use crate::{
-    builtin_types, fields_in_progress_new, CarverOrPopulator, Error, ExternalDependencyValues,
-    FieldPlan, FieldsInProgress, InProgress, InProgressRecursing, IndexMap,
-    InternalDependencyResolver, InternalDependencyValues, QueryPlan, Request, Response,
+    builtin_types, fields_in_progress_new, CarverOrPopulator, DependencyValue, Error,
+    ExternalDependencyValues, FieldPlan, FieldsInProgress, InProgress, InProgressRecursing,
+    IndexMap, InternalDependencyResolver, InternalDependencyValues, QueryPlan, Request, Response,
     ResponseValue, ResponseValueOrInProgress, Result as SauvignonResult, Type, TypeInterface,
 };
 
@@ -32,8 +34,8 @@ impl Schema {
         })
     }
 
-    pub async fn request(&self, request: Request) -> Response {
-        let response = compute_response(self, &request).await;
+    pub async fn request(&self, request: Request, db_pool: &Pool<Postgres>) -> Response {
+        let response = compute_response(self, &request, db_pool).await;
         unimplemented!()
     }
 
@@ -49,12 +51,16 @@ impl Schema {
     }
 }
 
-async fn compute_response(schema: &Schema, request: &Request) -> ResponseValue {
+async fn compute_response(
+    schema: &Schema,
+    request: &Request,
+    db_pool: &Pool<Postgres>,
+) -> ResponseValue {
     let query_plan = QueryPlan::new(&request, schema);
     let response_in_progress = query_plan.initial_response_in_progress();
     let mut fields_in_progress = response_in_progress.fields;
     loop {
-        let ret = progress_fields(fields_in_progress).await;
+        let ret = progress_fields(fields_in_progress, db_pool).await;
         let is_done = ret.0;
         fields_in_progress = ret.1;
         if is_done {
@@ -65,6 +71,7 @@ async fn compute_response(schema: &Schema, request: &Request) -> ResponseValue {
 
 async fn progress_fields<'a>(
     fields_in_progress: FieldsInProgress<'a>,
+    db_pool: &Pool<Postgres>,
 ) -> (bool, FieldsInProgress<'a>) {
     let is_done = fields_in_progress
         .values()
@@ -85,9 +92,12 @@ async fn progress_fields<'a>(
                     field_plan,
                     external_dependency_values,
                 }) => {
-                    let internal_dependency_values =
-                        populate_internal_dependencies(field_plan, &external_dependency_values)
-                            .await;
+                    let internal_dependency_values = populate_internal_dependencies(
+                        field_plan,
+                        &external_dependency_values,
+                        db_pool,
+                    )
+                    .await;
                     match &field_plan.field_type.resolver.carver_or_populator {
                         CarverOrPopulator::Populator(populator) => {
                             let mut populated = ExternalDependencyValues::default();
@@ -133,6 +143,7 @@ async fn progress_fields<'a>(
 async fn populate_internal_dependencies(
     field_plan: &FieldPlan<'_>,
     external_dependency_values: &ExternalDependencyValues,
+    db_pool: &Pool<Postgres>,
 ) -> InternalDependencyValues {
     let mut ret = InternalDependencyValues::new();
     for internal_dependency in field_plan.field_type.resolver.internal_dependencies.iter() {
@@ -140,7 +151,19 @@ async fn populate_internal_dependencies(
             internal_dependency.name.clone(),
             match &internal_dependency.resolver {
                 InternalDependencyResolver::ColumnGetter(column_getter) => {
-                    unimplemented!()
+                    let row_id = match external_dependency_values.get("id").unwrap() {
+                        DependencyValue::Id(id) => id,
+                        _ => unreachable!(),
+                    };
+                    let (column_value,): (String,) =
+                        sqlx::query_as("SELECT $1 FROM $2 WHERE id = $3")
+                            .bind(&column_getter.column_name)
+                            .bind(&column_getter.table_name)
+                            .bind(row_id)
+                            .fetch_one(db_pool)
+                            .await
+                            .unwrap();
+                    DependencyValue::String(column_value)
                 }
                 _ => unimplemented!(),
             },
