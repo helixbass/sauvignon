@@ -90,17 +90,34 @@ pub struct ExternalDependencyValue {
     pub value: DependencyValue,
 }
 
+pub type Id = i32;
+
 #[derive(Clone)]
 pub enum DependencyValue {
-    Id(i32),
+    Id(Id),
     String(String),
+    List(Vec<DependencyValue>),
 }
 
 impl DependencyValue {
+    pub fn as_id(&self) -> &Id {
+        match self {
+            Self::Id(id) => id,
+            _ => panic!("Expected id"),
+        }
+    }
+
     pub fn as_string(&self) -> &String {
         match self {
             Self::String(string) => string,
             _ => panic!("Expected string"),
+        }
+    }
+
+    pub fn as_list(&self) -> &Vec<DependencyValue> {
+        match self {
+            Self::List(values) => values,
+            _ => panic!("Expected list"),
         }
     }
 }

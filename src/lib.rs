@@ -15,7 +15,7 @@ pub use indexmap::IndexMap;
 pub use crate::any_hash_map::AnyHashMap;
 pub use crate::dependencies::{
     ArgumentInternalDependencyResolver, ColumnGetter, ColumnGetterList, DependencyType,
-    DependencyValue, ExternalDependency, ExternalDependencyValue, ExternalDependencyValues,
+    DependencyValue, ExternalDependency, ExternalDependencyValue, ExternalDependencyValues, Id,
     InternalDependency, InternalDependencyResolver, InternalDependencyValue,
     InternalDependencyValues, LiteralValueInternalDependencyResolver,
 };
@@ -28,7 +28,7 @@ pub use crate::request::{
     Selection, SelectionSet,
 };
 pub use crate::resolve::{
-    Carver, CarverOrPopulator, FieldResolver, IdPopulator, StringColumnCarver,
+    Carver, CarverOrPopulator, FieldResolver, IdPopulator, IdPopulatorList, StringColumnCarver,
 };
 pub use crate::response::{
     fields_in_progress_new, FieldsInProgress, InProgress, InProgressRecursing,

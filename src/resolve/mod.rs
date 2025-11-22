@@ -102,3 +102,31 @@ pub trait PopulatorList {
         internal_dependencies: &InternalDependencyValues,
     ) -> Vec<ExternalDependencyValues>;
 }
+
+pub struct IdPopulatorList {}
+
+impl IdPopulatorList {
+    pub fn new() -> Self {
+        Self {}
+    }
+}
+
+impl PopulatorList for IdPopulatorList {
+    fn populate(
+        &self,
+        _external_dependencies: &ExternalDependencyValues,
+        internal_dependencies: &InternalDependencyValues,
+    ) -> Vec<ExternalDependencyValues> {
+        internal_dependencies
+            .get("ids")
+            .unwrap()
+            .as_list()
+            .into_iter()
+            .map(|id| {
+                let mut ret = ExternalDependencyValues::default();
+                ret.insert("id".to_owned(), id.clone()).unwrap();
+                ret
+            })
+            .collect()
+    }
+}

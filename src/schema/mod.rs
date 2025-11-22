@@ -232,6 +232,22 @@ async fn populate_internal_dependencies(
                     DependencyValue::String(column_value)
                 }
                 InternalDependencyResolver::LiteralValue(literal_value) => literal_value.0.clone(),
+                InternalDependencyResolver::ColumnGetterList(column_getter_list) => {
+                    // TODO: same as above, sql injection?
+                    let query = format!(
+                        "SELECT {} FROM {}",
+                        column_getter_list.column_name, column_getter_list.table_name
+                    );
+                    let rows = sqlx::query_as::<_, (String,)>(&query)
+                        .fetch_all(db_pool)
+                        .await
+                        .unwrap();
+                    DependencyValue::List(
+                        rows.into_iter()
+                            .map(|(column_value,)| DependencyValue::String(column_value))
+                            .collect(),
+                    )
+                }
                 _ => unimplemented!(),
             },
         )
