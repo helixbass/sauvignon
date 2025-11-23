@@ -1,5 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
+use squalid::OptionExt;
+
 use crate::{
     fields_in_progress_new, request, types, IndexMap, OperationType, Request, ResponseInProgress,
     Schema, Selection, SelectionSet, TypeInterface,
@@ -139,7 +141,79 @@ fn get_overlapping_fragment_types<'a>(
 }
 
 fn merge_hash_maps<'a>(
-    items: impl Iterator<Item = HashMap<String, IndexMap<String, FieldPlan<'a>>>>,
+    hash_maps: impl Iterator<Item = HashMap<String, IndexMap<String, FieldPlan<'a>>>>,
 ) -> HashMap<String, IndexMap<String, FieldPlan<'a>>> {
-    unimplemented!()
+    let mut ret: HashMap<String, IndexMap<String, FieldPlan<'a>>> = Default::default();
+
+    for hash_map in hash_maps {
+        for (type_name, mut field_plans) in hash_map {
+            if !ret.contains_key(&type_name) {
+                ret.insert(type_name, field_plans).assert_none();
+            } else {
+                let existing_field_plans = ret.remove(&type_name).unwrap();
+                let mut updated_field_plans = existing_field_plans
+                    .into_iter()
+                    .map(|(existing_field_name, mut existing_field_plan)| {
+                        if !field_plans.contains_key(&existing_field_name) {
+                            (existing_field_name, existing_field_plan)
+                        } else {
+                            let field_plan =
+                                field_plans.shift_remove(&existing_field_name).unwrap();
+                            existing_field_plan.selection_set_by_type = match (
+                                existing_field_plan.selection_set_by_type,
+                                field_plan.selection_set_by_type,
+                            ) {
+                                (None, None) => None,
+                                (
+                                    Some(existing_field_plan_selection_set_by_type),
+                                    Some(field_plan_selection_set_by_type),
+                                ) => Some(merge_hash_maps(
+                                    [
+                                        existing_field_plan_selection_set_by_type,
+                                        field_plan_selection_set_by_type,
+                                    ]
+                                    .into_iter(),
+                                )),
+                                _ => unreachable!(),
+                            };
+                            (existing_field_name, existing_field_plan)
+                        }
+                    })
+                    .collect::<IndexMap<_, _>>();
+                for (field_name, field_plan) in field_plans {
+                    updated_field_plans.insert(field_name, field_plan);
+                }
+                ret.insert(type_name, updated_field_plans);
+                // for (field_name, field_plan) in field_plans {
+                //     if !existing_field_plans.contains_key(&field_name) {
+                //         existing_field_plans
+                //             .insert(field_name, field_plan)
+                //             .assert_none();
+                //     } else {
+                //         let existing_field_plan =
+                //             existing_field_plans.get_mut(&field_name).unwrap();
+                //         existing_field_plan.selection_set_by_type = match (
+                //             existing_field_plan.selection_set_by_type,
+                //             field_plan.selection_set_by_type,
+                //         ) {
+                //             (None, None) => None,
+                //             (
+                //                 Some(existing_field_plan_selection_set_by_type),
+                //                 Some(field_plan_selection_set_by_type),
+                //             ) => Some(merge_hash_maps(
+                //                 [
+                //                     existing_field_plan_selection_set_by_type,
+                //                     field_plan_selection_set_by_type,
+                //                 ]
+                //                 .into_iter(),
+                //             )),
+                //             _ => unreachable!(),
+                //         };
+                //     }
+                // }
+            }
+        }
+    }
+
+    ret
 }
