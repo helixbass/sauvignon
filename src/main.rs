@@ -19,30 +19,50 @@ async fn main() -> anyhow::Result<()> {
 
     let actor_type = Type::Object(ObjectType::new(
         "Actor".to_owned(),
-        vec![TypeField::new(
-            "name".to_owned(),
-            TypeFull::Type("String".to_owned()),
-            // {
-            //   external_dependencies => ["id" => ID],
-            //   internal_dependencies => [
-            //     column_fetcher!(),
-            //   ],
-            //   value => column_value!(),
-            // }
-            // AKA column!()
-            FieldResolver::new(
-                vec![ExternalDependency::new("id".to_owned(), DependencyType::Id)],
-                vec![InternalDependency::new(
-                    "name".to_owned(),
-                    DependencyType::String,
-                    InternalDependencyResolver::ColumnGetter(ColumnGetter::new(
-                        "actors".to_owned(),
+        vec![
+            TypeField::new(
+                "name".to_owned(),
+                TypeFull::Type("String".to_owned()),
+                // {
+                //   external_dependencies => ["id" => ID],
+                //   internal_dependencies => [
+                //     column_fetcher!(),
+                //   ],
+                //   value => column_value!(),
+                // }
+                // AKA column!()
+                FieldResolver::new(
+                    vec![ExternalDependency::new("id".to_owned(), DependencyType::Id)],
+                    vec![InternalDependency::new(
                         "name".to_owned(),
-                    )),
-                )],
-                CarverOrPopulator::Carver(Box::new(StringColumnCarver::new("name".to_owned()))),
+                        DependencyType::String,
+                        InternalDependencyResolver::ColumnGetter(ColumnGetter::new(
+                            "actors".to_owned(),
+                            "name".to_owned(),
+                        )),
+                    )],
+                    CarverOrPopulator::Carver(Box::new(StringColumnCarver::new("name".to_owned()))),
+                ),
             ),
-        )],
+            TypeField::new(
+                "expression".to_owned(),
+                TypeFull::Type("String".to_owned()),
+                FieldResolver::new(
+                    vec![ExternalDependency::new("id".to_owned(), DependencyType::Id)],
+                    vec![InternalDependency::new(
+                        "expression".to_owned(),
+                        DependencyType::String,
+                        InternalDependencyResolver::ColumnGetter(ColumnGetter::new(
+                            "actors".to_owned(),
+                            "expression".to_owned(),
+                        )),
+                    )],
+                    CarverOrPopulator::Carver(Box::new(StringColumnCarver::new(
+                        "expression".to_owned(),
+                    ))),
+                ),
+            ),
+        ],
         None,
     ));
 
@@ -305,6 +325,51 @@ async fn main() -> anyhow::Result<()> {
     let json = json_from_response(&response);
 
     println!("inline fragment response: {}", pretty_print_json(&json));
+
+    let request = Request::new(Document::new(vec![
+        // query {
+        //   certainActorOrDesigner {
+        //     ... on Actor {
+        //       expression
+        //     }
+        //     ... on Designer {
+        //       name
+        //     }
+        //   }
+        // }
+        ExecutableDefinition::Operation(OperationDefinition::new(
+            OperationType::Query,
+            None,
+            SelectionSet::new(vec![Selection::Field(SelectionField::new(
+                None,
+                "certainActorOrDesigner".to_owned(),
+                Some(SelectionSet::new(vec![
+                    Selection::InlineFragment(InlineFragment::new(
+                        Some("Actor".to_owned()),
+                        SelectionSet::new(vec![Selection::Field(SelectionField::new(
+                            None,
+                            "expression".to_owned(),
+                            None,
+                        ))]),
+                    )),
+                    Selection::InlineFragment(InlineFragment::new(
+                        Some("Designer".to_owned()),
+                        SelectionSet::new(vec![Selection::Field(SelectionField::new(
+                            None,
+                            "name".to_owned(),
+                            None,
+                        ))]),
+                    )),
+                ])),
+            ))]),
+        )),
+    ]));
+
+    let response = schema.request(request, &db_pool).await;
+
+    let json = json_from_response(&response);
+
+    println!("union response: {}", pretty_print_json(&json));
 
     Ok(())
 }

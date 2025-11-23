@@ -51,11 +51,24 @@ impl Schema {
         &self.types[&self.query_type_name]
     }
 
-    pub fn get_type(&self, name: &str) -> &Type {
+    pub fn maybe_type(&self, name: &str) -> Option<&Type> {
         self.types
             .get(name)
             .or_else(|| self.builtin_types.get(name))
-            .unwrap()
+    }
+
+    pub fn type_(&self, name: &str) -> &Type {
+        self.maybe_type(name).unwrap()
+    }
+
+    pub fn type_or_union_or_interface<'a>(&'a self, name: &str) -> TypeOrUnionOrInterface<'a> {
+        if let Some(type_) = self.maybe_type(name) {
+            return TypeOrUnionOrInterface::Type(type_);
+        }
+        if let Some(union) = self.unions.get(name) {
+            return TypeOrUnionOrInterface::Union(union);
+        }
+        panic!()
     }
 }
 
@@ -159,7 +172,7 @@ fn progress_fields<'a>(
                                     &external_dependency_values,
                                     &internal_dependency_values,
                                 );
-                                let type_ = schema.get_type(&type_name);
+                                let type_ = schema.type_(&type_name);
                                 FieldPlan::new(
                                     field_plan.request_field,
                                     // this is a little weird because I think this is still
@@ -167,7 +180,7 @@ fn progress_fields<'a>(
                                     // `type_`) but I think .field_type is getting ignored
                                     // anyway?
                                     field_plan.field_type,
-                                )
+                                );
                                 let fields_in_progress = fields_in_progress_new(
                                     field_plan.selection_set.as_ref().unwrap(),
                                     &populated,
@@ -288,4 +301,10 @@ async fn populate_internal_dependencies(
     }
 
     ret
+}
+
+pub enum TypeOrUnionOrInterface<'a> {
+    Type(&'a Type),
+    Union(&'a Union),
+    // Interface,
 }
