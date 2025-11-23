@@ -16,5 +16,6 @@ CREATE TABLE actors (
 );
 
 INSERT INTO actors (name, expression, favorite_actor_or_designer_type, favorite_actor_or_designer_id) VALUES
-  ('Katie Cassidy', 'designers', 'no Serena you can''t have the key', (SELECT id FROM designers WHERE name = 'Proenza Schouler')),
-  ('Jessica Szohr', 'designers', 'Dan where did you go I don''t like you', (SELECT id FROM designers WHERE name = 'Ralph Lauren'));
+  ('Katie Cassidy', 'no Serena you can''t have the key', 'designers', (SELECT id FROM designers WHERE name = 'Proenza Schouler'));
+INSERT INTO actors (name, expression, favorite_actor_or_designer_type, favorite_actor_or_designer_id) VALUES
+  ('Jessica Szohr', 'Dan where did you go I don''t like you', 'actors', (SELECT id FROM actors WHERE name = 'Katie Cassidy'));

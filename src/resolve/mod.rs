@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use inflector::Inflector;
 
 use crate::{
@@ -78,15 +80,17 @@ pub trait Populator {
     ) -> ExternalDependencyValues;
 }
 
-pub struct IdPopulator {}
+pub struct ValuePopulator {
+    pub key: String,
+}
 
-impl IdPopulator {
-    pub fn new() -> Self {
-        Self {}
+impl ValuePopulator {
+    pub fn new(key: String) -> Self {
+        Self { key }
     }
 }
 
-impl Populator for IdPopulator {
+impl Populator for ValuePopulator {
     fn populate(
         &self,
         _external_dependencies: &ExternalDependencyValues,
@@ -94,10 +98,43 @@ impl Populator for IdPopulator {
     ) -> ExternalDependencyValues {
         let mut ret = ExternalDependencyValues::default();
         ret.insert(
-            "id".to_owned(),
-            internal_dependencies.get("id").unwrap().clone(),
+            self.key.clone(),
+            internal_dependencies.get(&self.key).unwrap().clone(),
         )
         .unwrap();
+        ret
+    }
+}
+
+pub struct ValuesPopulator {
+    pub keys: HashMap<String, String>,
+}
+
+impl ValuesPopulator {
+    pub fn new(keys: impl IntoIterator<Item = (String, String)>) -> Self {
+        Self {
+            keys: HashMap::from_iter(keys.into_iter()),
+        }
+    }
+}
+
+impl Populator for ValuesPopulator {
+    fn populate(
+        &self,
+        _external_dependencies: &ExternalDependencyValues,
+        internal_dependencies: &InternalDependencyValues,
+    ) -> ExternalDependencyValues {
+        let mut ret = ExternalDependencyValues::default();
+        for (internal_dependency_key, populated_key) in &self.keys {
+            ret.insert(
+                populated_key.clone(),
+                internal_dependencies
+                    .get(internal_dependency_key)
+                    .unwrap()
+                    .clone(),
+            )
+            .unwrap();
+        }
         ret
     }
 }

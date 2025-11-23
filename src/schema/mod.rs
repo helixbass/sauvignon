@@ -4,11 +4,11 @@ use std::pin::Pin;
 use sqlx::{Pool, Postgres};
 
 use crate::{
-    builtin_types, fields_in_progress_new, CarverOrPopulator, DependencyValue, Error,
-    ExternalDependencyValues, FieldPlan, FieldsInProgress, Id, InProgress, InProgressRecursing,
-    InProgressRecursingList, IndexMap, InternalDependencyResolver, InternalDependencyValues,
-    Populator, QueryPlan, Request, Response, ResponseValue, ResponseValueOrInProgress,
-    Result as SauvignonResult, Type, TypeInterface, Union,
+    builtin_types, fields_in_progress_new, CarverOrPopulator, DependencyType, DependencyValue,
+    Error, ExternalDependencyValues, FieldPlan, FieldsInProgress, Id, InProgress,
+    InProgressRecursing, InProgressRecursingList, IndexMap, InternalDependencyResolver,
+    InternalDependencyValues, Populator, QueryPlan, Request, Response, ResponseValue,
+    ResponseValueOrInProgress, Result as SauvignonResult, Type, TypeInterface, Union,
 };
 
 pub struct Schema {
@@ -253,17 +253,35 @@ async fn populate_internal_dependencies(
                         DependencyValue::Id(id) => id,
                         _ => unreachable!(),
                     };
-                    // TODO: should check that table names and column names can never be SQL injection?
-                    let query = format!(
-                        "SELECT {} FROM {} WHERE id = $1",
-                        column_getter.column_name, column_getter.table_name
-                    );
-                    let (column_value,): (String,) = sqlx::query_as(&query)
-                        .bind(row_id)
-                        .fetch_one(db_pool)
-                        .await
-                        .unwrap();
-                    DependencyValue::String(column_value)
+                    match internal_dependency.type_ {
+                        DependencyType::Id => {
+                            // TODO: should check that table names and column names can never be SQL injection?
+                            let query = format!(
+                                "SELECT {} FROM {} WHERE id = $1",
+                                column_getter.column_name, column_getter.table_name
+                            );
+                            let (column_value,): (Id,) = sqlx::query_as(&query)
+                                .bind(row_id)
+                                .fetch_one(db_pool)
+                                .await
+                                .unwrap();
+                            DependencyValue::Id(column_value)
+                        }
+                        DependencyType::String => {
+                            // TODO: should check that table names and column names can never be SQL injection?
+                            let query = format!(
+                                "SELECT {} FROM {} WHERE id = $1",
+                                column_getter.column_name, column_getter.table_name
+                            );
+                            let (column_value,): (String,) = sqlx::query_as(&query)
+                                .bind(row_id)
+                                .fetch_one(db_pool)
+                                .await
+                                .unwrap();
+                            DependencyValue::String(column_value)
+                        }
+                        _ => unimplemented!(),
+                    }
                 }
                 InternalDependencyResolver::LiteralValue(literal_value) => literal_value.0.clone(),
                 InternalDependencyResolver::ColumnGetterList(column_getter_list) => {
