@@ -203,7 +203,10 @@ async fn main() -> anyhow::Result<()> {
         Some(OperationType::Query),
     ));
 
-    let schema = Schema::try_new(vec![query_type, actor_type], vec![actor_or_designer])?;
+    let schema = Schema::try_new(
+        vec![query_type, actor_type, designer_type],
+        vec![actor_or_designer],
+    )?;
 
     let request = Request::new(Document::new(vec![
         // query {

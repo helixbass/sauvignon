@@ -4,7 +4,7 @@ use squalid::OptionExt;
 
 use crate::{
     fields_in_progress_new, request, types, IndexMap, OperationType, Request, ResponseInProgress,
-    Schema, Selection, SelectionSet, TypeInterface,
+    Schema, Selection, SelectionSet,
 };
 
 pub struct QueryPlan<'a> {
@@ -184,33 +184,6 @@ fn merge_hash_maps<'a>(
                     updated_field_plans.insert(field_name, field_plan);
                 }
                 ret.insert(type_name, updated_field_plans);
-                // for (field_name, field_plan) in field_plans {
-                //     if !existing_field_plans.contains_key(&field_name) {
-                //         existing_field_plans
-                //             .insert(field_name, field_plan)
-                //             .assert_none();
-                //     } else {
-                //         let existing_field_plan =
-                //             existing_field_plans.get_mut(&field_name).unwrap();
-                //         existing_field_plan.selection_set_by_type = match (
-                //             existing_field_plan.selection_set_by_type,
-                //             field_plan.selection_set_by_type,
-                //         ) {
-                //             (None, None) => None,
-                //             (
-                //                 Some(existing_field_plan_selection_set_by_type),
-                //                 Some(field_plan_selection_set_by_type),
-                //             ) => Some(merge_hash_maps(
-                //                 [
-                //                     existing_field_plan_selection_set_by_type,
-                //                     field_plan_selection_set_by_type,
-                //                 ]
-                //                 .into_iter(),
-                //             )),
-                //             _ => unreachable!(),
-                //         };
-                //     }
-                // }
             }
         }
     }
