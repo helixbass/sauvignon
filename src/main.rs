@@ -193,9 +193,10 @@ async fn main() -> anyhow::Result<()> {
                             ),
                         ),
                     ],
-                    CarverOrPopulator::UnionOrInterfaceTypePopulator(Box::new(
-                        TypeDepluralizer::new(),
-                    )),
+                    CarverOrPopulator::UnionOrInterfaceTypePopulator(
+                        Box::new(TypeDepluralizer::new()),
+                        Box::new(IdPopulator::new()),
+                    ),
                 ),
             ),
         ],

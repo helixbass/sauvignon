@@ -51,12 +51,13 @@ impl From<Vec<FieldsInProgress<'_>>> for ResponseValue {
 pub type FieldsInProgress<'a> = IndexMap<String, ResponseValueOrInProgress<'a>>;
 
 pub fn fields_in_progress_new<'a>(
-    field_plans: &'a [FieldPlan<'a>],
+    field_plans: &'a IndexMap<String, FieldPlan<'a>>,
     external_dependency_values: &ExternalDependencyValues,
 ) -> FieldsInProgress<'a> {
-    IndexMap::from_iter(field_plans.into_iter().map(|field_plan| {
+    // TODO: this looks like a map_values()
+    IndexMap::from_iter(field_plans.into_iter().map(|(field_name, field_plan)| {
         (
-            field_plan.request_field.name.clone(),
+            field_name.clone(),
             ResponseValueOrInProgress::InProgress(InProgress::new(
                 field_plan,
                 external_dependency_values.clone(),

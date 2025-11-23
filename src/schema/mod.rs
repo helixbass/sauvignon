@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::pin::Pin;
 
 use sqlx::{Pool, Postgres};
@@ -7,7 +7,7 @@ use crate::{
     builtin_types, fields_in_progress_new, CarverOrPopulator, DependencyValue, Error,
     ExternalDependencyValues, FieldPlan, FieldsInProgress, Id, InProgress, InProgressRecursing,
     InProgressRecursingList, IndexMap, InternalDependencyResolver, InternalDependencyValues,
-    QueryPlan, Request, Response, ResponseValue, ResponseValueOrInProgress,
+    Populator, QueryPlan, Request, Response, ResponseValue, ResponseValueOrInProgress,
     Result as SauvignonResult, Type, TypeInterface, Union,
 };
 
@@ -123,20 +123,12 @@ fn progress_fields<'a>(
                         .await;
                         match &field_plan.field_type.resolver.carver_or_populator {
                             CarverOrPopulator::Populator(populator) => {
-                                let populated = populator.populate(
+                                to_recursing_after_populating(
                                     &external_dependency_values,
                                     &internal_dependency_values,
-                                );
-                                let fields_in_progress = fields_in_progress_new(
-                                    field_plan.selection_set.as_ref().unwrap(),
-                                    &populated,
-                                );
-                                ResponseValueOrInProgress::InProgressRecursing(
-                                    InProgressRecursing::new(
-                                        field_plan,
-                                        populated,
-                                        fields_in_progress,
-                                    ),
+                                    populator,
+                                    field_plan.field_type.type_.name(),
+                                    field_plan,
                                 )
                             }
                             CarverOrPopulator::PopulatorList(populator) => {
@@ -144,11 +136,13 @@ fn progress_fields<'a>(
                                     &external_dependency_values,
                                     &internal_dependency_values,
                                 );
+                                let type_name = field_plan.field_type.type_.name();
                                 let fields_in_progress = populated
                                     .iter()
                                     .map(|populated| {
                                         fields_in_progress_new(
-                                            field_plan.selection_set.as_ref().unwrap(),
+                                            &field_plan.selection_set_by_type.as_ref().unwrap()
+                                                [type_name],
                                             &populated,
                                         )
                                     })
@@ -167,32 +161,26 @@ fn progress_fields<'a>(
                                     &internal_dependency_values,
                                 ))
                             }
-                            CarverOrPopulator::UnionOrInterfaceTypePopulator(populator) => {
-                                let type_name = populator.populate(
+                            CarverOrPopulator::UnionOrInterfaceTypePopulator(
+                                type_populator,
+                                populator,
+                            ) => {
+                                let type_name = type_populator.populate(
                                     &external_dependency_values,
                                     &internal_dependency_values,
                                 );
-                                let type_ = schema.type_(&type_name);
-                                FieldPlan::new(
-                                    field_plan.request_field,
-                                    // this is a little weird because I think this is still
-                                    // the union type (vs the member of the union type aka
-                                    // `type_`) but I think .field_type is getting ignored
-                                    // anyway?
-                                    field_plan.field_type,
-                                );
-                                let fields_in_progress = fields_in_progress_new(
-                                    field_plan.selection_set.as_ref().unwrap(),
-                                    &populated,
-                                );
-                                ResponseValueOrInProgress::InProgressRecursing(
-                                    InProgressRecursing::new(
-                                        field_plan,
-                                        populated,
-                                        fields_in_progress,
-                                    ),
+                                to_recursing_after_populating(
+                                    &external_dependency_values,
+                                    &internal_dependency_values,
+                                    populator,
+                                    &type_name,
+                                    field_plan,
                                 )
                             }
+                            CarverOrPopulator::UnionOrInterfaceTypePopulatorList(
+                                type_populator,
+                                populator,
+                            ) => unimplemented!(),
                         }
                     }
                     ResponseValueOrInProgress::InProgressRecursing(InProgressRecursing {
@@ -303,8 +291,36 @@ async fn populate_internal_dependencies(
     ret
 }
 
+fn to_recursing_after_populating<'a>(
+    external_dependency_values: &ExternalDependencyValues,
+    internal_dependency_values: &InternalDependencyValues,
+    populator: &Box<dyn Populator>,
+    resolved_concrete_type_name: &str,
+    field_plan: &'a FieldPlan<'a>,
+) -> ResponseValueOrInProgress<'a> {
+    let populated = populator.populate(&external_dependency_values, &internal_dependency_values);
+    let fields_in_progress = fields_in_progress_new(
+        &field_plan.selection_set_by_type.as_ref().unwrap()[resolved_concrete_type_name],
+        &populated,
+    );
+    ResponseValueOrInProgress::InProgressRecursing(InProgressRecursing::new(
+        field_plan,
+        populated,
+        fields_in_progress,
+    ))
+}
+
 pub enum TypeOrUnionOrInterface<'a> {
     Type(&'a Type),
     Union(&'a Union),
     // Interface,
+}
+
+impl<'a> TypeOrUnionOrInterface<'a> {
+    pub fn all_concrete_type_names(&self) -> HashSet<String> {
+        match self {
+            Self::Type(type_) => HashSet::from_iter([type_.name().to_owned()]),
+            Self::Union(union) => HashSet::from_iter(union.types.iter().cloned()),
+        }
+    }
 }

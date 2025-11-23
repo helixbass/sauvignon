@@ -63,7 +63,11 @@ pub enum CarverOrPopulator {
     Carver(Box<dyn Carver>),
     Populator(Box<dyn Populator>),
     PopulatorList(Box<dyn PopulatorList>),
-    UnionOrInterfaceTypePopulator(Box<dyn UnionOrInterfaceTypePopulator>),
+    UnionOrInterfaceTypePopulator(Box<dyn UnionOrInterfaceTypePopulator>, Box<dyn Populator>),
+    UnionOrInterfaceTypePopulatorList(
+        Box<dyn UnionOrInterfaceTypePopulatorList>,
+        Box<dyn PopulatorList>,
+    ),
 }
 
 pub trait Populator {
@@ -163,4 +167,12 @@ impl UnionOrInterfaceTypePopulator for TypeDepluralizer {
             .to_singular()
             .to_pascal_case()
     }
+}
+
+pub trait UnionOrInterfaceTypePopulatorList {
+    fn populate(
+        &self,
+        external_dependencies: &ExternalDependencyValues,
+        internal_dependencies: &InternalDependencyValues,
+    ) -> Vec<String>;
 }
