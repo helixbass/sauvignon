@@ -19,7 +19,7 @@ impl<'a> QueryPlan<'a> {
         Self {
             field_plans: create_field_plans(
                 &chosen_operation.selection_set,
-                &HashSet::from_iter([schema.query_type_name.clone()]),
+                &[schema.query_type_name.clone()].into_iter().collect(),
                 schema,
                 request,
             )
@@ -55,9 +55,9 @@ impl<'a> FieldPlan<'a> {
             selection_set_by_type: request_field.selection_set.as_ref().map(|selection_set| {
                 create_field_plans(
                     selection_set,
-                    &schema
-                        .type_or_union_or_interface(field_type.type_.name())
-                        .all_concrete_type_names(),
+                    &schema.all_concrete_type_names_for_type_or_union_or_interface(
+                        field_type.type_.name(),
+                    ),
                     schema,
                     request,
                 )
@@ -74,34 +74,33 @@ fn create_field_plans<'a>(
 ) -> HashMap<String, IndexMap<String, FieldPlan<'a>>> {
     merge_hash_maps(selection_set.selections.iter().map(|selection| {
         match selection {
-            Selection::Field(field) => {
-                HashMap::from_iter(all_current_concrete_type_names.iter().map(
-                    |concrete_type_name| {
-                        let concrete_type = schema.type_(concrete_type_name);
-                        (
-                            concrete_type_name.clone(),
-                            IndexMap::from_iter([(
-                                field.name.clone(),
-                                FieldPlan::new(
-                                    field,
-                                    &concrete_type.as_object().fields[&field.name],
-                                    schema,
-                                    request,
-                                ),
-                            )]),
-                        )
-                    },
-                ))
-            }
+            Selection::Field(field) => all_current_concrete_type_names
+                .iter()
+                .map(|concrete_type_name| {
+                    let concrete_type = schema.type_(concrete_type_name);
+                    (
+                        concrete_type_name.clone(),
+                        [(
+                            field.name.clone(),
+                            FieldPlan::new(
+                                field,
+                                &concrete_type.as_object().fields[&field.name],
+                                schema,
+                                request,
+                            ),
+                        )]
+                        .into_iter()
+                        .collect(),
+                    )
+                })
+                .collect(),
             Selection::FragmentSpread(fragment_spread) => {
                 let fragment = request.fragment(&fragment_spread.name);
 
                 get_overlapping_fragment_types(
                     &all_current_concrete_type_names,
                     &fragment.selection_set,
-                    &schema
-                        .type_or_union_or_interface(&fragment.on)
-                        .all_concrete_type_names(),
+                    &schema.all_concrete_type_names_for_type_or_union_or_interface(&fragment.on),
                     schema,
                     request,
                 )
@@ -110,9 +109,7 @@ fn create_field_plans<'a>(
                 &all_current_concrete_type_names,
                 &inline_fragment.selection_set,
                 &match inline_fragment.on.as_ref() {
-                    Some(on) => schema
-                        .type_or_union_or_interface(on)
-                        .all_concrete_type_names(),
+                    Some(on) => schema.all_concrete_type_names_for_type_or_union_or_interface(on),
                     None => all_current_concrete_type_names.clone(),
                 },
                 schema,

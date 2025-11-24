@@ -113,7 +113,7 @@ pub struct ValuesPopulator {
 impl ValuesPopulator {
     pub fn new(keys: impl IntoIterator<Item = (String, String)>) -> Self {
         Self {
-            keys: HashMap::from_iter(keys.into_iter()),
+            keys: keys.into_iter().collect(),
         }
     }
 }

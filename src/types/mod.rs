@@ -53,20 +53,28 @@ impl TypeInterface for Type {
 }
 
 pub struct ObjectType {
-    name: String,
+    pub name: String,
     pub is_top_level_type: Option<OperationType>,
     // TODO: are the fields on a type ordered?
     pub fields: IndexMap<String, Field>,
+    pub implements: Vec<String>,
 }
 
 impl ObjectType {
-    pub fn new(name: String, fields: Vec<Field>, is_top_level_type: Option<OperationType>) -> Self {
+    pub fn new(
+        name: String,
+        fields: Vec<Field>,
+        is_top_level_type: Option<OperationType>,
+        implements: Vec<String>,
+    ) -> Self {
         Self {
             name,
-            fields: IndexMap::from_iter(
-                fields.into_iter().map(|field| (field.name.clone(), field)),
-            ),
+            fields: fields
+                .into_iter()
+                .map(|field| (field.name.clone(), field))
+                .collect(),
             is_top_level_type,
+            implements,
         }
     }
 
@@ -136,7 +144,7 @@ impl Field {
 }
 
 pub fn builtin_types() -> HashMap<String, Type> {
-    HashMap::from_iter([("String".to_owned(), string_type())])
+    [("String".to_owned(), string_type())].into_iter().collect()
 }
 
 pub fn string_type() -> Type {
@@ -153,5 +161,36 @@ pub struct Union {
 impl Union {
     pub fn new(name: String, types: Vec<String>) -> Self {
         Self { name, types }
+    }
+}
+
+pub struct Interface {
+    pub name: String,
+    // TODO: are the fields on a type/interface ordered?
+    pub fields: IndexMap<String, InterfaceField>,
+    pub implements: Vec<String>,
+}
+
+impl Interface {
+    pub fn new(name: String, fields: Vec<InterfaceField>, implements: Vec<String>) -> Self {
+        Self {
+            name,
+            fields: fields
+                .into_iter()
+                .map(|field| (field.name.clone(), field))
+                .collect(),
+            implements,
+        }
+    }
+}
+
+pub struct InterfaceField {
+    pub name: String,
+    pub type_: TypeFull,
+}
+
+impl InterfaceField {
+    pub fn new(name: String, type_: TypeFull) -> Self {
+        Self { name, type_ }
     }
 }

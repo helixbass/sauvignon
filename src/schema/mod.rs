@@ -6,7 +6,7 @@ use sqlx::{Pool, Postgres};
 use crate::{
     builtin_types, fields_in_progress_new, CarverOrPopulator, DependencyType, DependencyValue,
     Error, ExternalDependencyValues, FieldPlan, FieldsInProgress, Id, InProgress,
-    InProgressRecursing, InProgressRecursingList, IndexMap, InternalDependencyResolver,
+    InProgressRecursing, InProgressRecursingList, IndexMap, Interface, InternalDependencyResolver,
     InternalDependencyValues, Populator, QueryPlan, Request, Response, ResponseValue,
     ResponseValueOrInProgress, Result as SauvignonResult, Type, TypeInterface, Union,
 };
@@ -16,29 +16,61 @@ pub struct Schema {
     pub query_type_name: String,
     builtin_types: HashMap<String, Type>,
     pub unions: HashMap<String, Union>,
+    pub interfaces: HashMap<String, Interface>,
+    pub interface_all_concrete_types: HashMap<String, HashSet<String>>,
 }
 
 impl Schema {
-    pub fn try_new(types: Vec<Type>, unions: Vec<Union>) -> SauvignonResult<Self> {
+    pub fn try_new(
+        types: Vec<Type>,
+        unions: Vec<Union>,
+        interfaces: Vec<Interface>,
+    ) -> SauvignonResult<Self> {
         let query_type_index = types
             .iter()
             .position(|type_| type_.is_query_type())
             .ok_or_else(|| Error::NoQueryTypeSpecified)?;
         let query_type_name = types[query_type_index].name().to_owned();
 
+        let interface_all_concrete_types = interfaces
+            .iter()
+            .map(|interface| {
+                (
+                    interface.name.clone(),
+                    types
+                        .iter()
+                        .filter_map(|type_| match type_ {
+                            Type::Object(object_type)
+                                if object_type
+                                    .implements
+                                    .iter()
+                                    .any(|implement| implement == &interface.name) =>
+                            {
+                                Some(object_type.name.clone())
+                            }
+                            _ => None,
+                        })
+                        .collect(),
+                )
+            })
+            .collect();
+
         Ok(Self {
-            types: HashMap::from_iter(
-                types
-                    .into_iter()
-                    .map(|type_| (type_.name().to_owned(), type_)),
-            ),
+            types: types
+                .into_iter()
+                .map(|type_| (type_.name().to_owned(), type_))
+                .collect(),
             query_type_name,
             builtin_types: builtin_types(),
-            unions: HashMap::from_iter(
-                unions
-                    .into_iter()
-                    .map(|union| (union.name.to_owned(), union)),
-            ),
+            unions: unions
+                .into_iter()
+                .map(|union| (union.name.clone(), union))
+                .collect(),
+            interfaces: interfaces
+                .into_iter()
+                .map(|interface| (interface.name.clone(), interface))
+                .collect(),
+            interface_all_concrete_types,
         })
     }
 
@@ -68,7 +100,30 @@ impl Schema {
         if let Some(union) = self.unions.get(name) {
             return TypeOrUnionOrInterface::Union(union);
         }
-        panic!()
+        if let Some(interface) = self.interfaces.get(name) {
+            return TypeOrUnionOrInterface::Interface(interface);
+        }
+        panic!("Unknown type/union/interface: {name}");
+    }
+
+    pub fn all_concrete_type_names(
+        &self,
+        type_or_union_or_interface: &TypeOrUnionOrInterface,
+    ) -> HashSet<String> {
+        match type_or_union_or_interface {
+            TypeOrUnionOrInterface::Type(type_) => [type_.name().to_owned()].into_iter().collect(),
+            TypeOrUnionOrInterface::Union(union) => union.types.iter().cloned().collect(),
+            TypeOrUnionOrInterface::Interface(interface) => {
+                self.interface_all_concrete_types[&interface.name].clone()
+            }
+        }
+    }
+
+    pub fn all_concrete_type_names_for_type_or_union_or_interface(
+        &self,
+        name: &str,
+    ) -> HashSet<String> {
+        self.all_concrete_type_names(&self.type_or_union_or_interface(name))
     }
 }
 
@@ -331,14 +386,5 @@ fn to_recursing_after_populating<'a>(
 pub enum TypeOrUnionOrInterface<'a> {
     Type(&'a Type),
     Union(&'a Union),
-    // Interface,
-}
-
-impl<'a> TypeOrUnionOrInterface<'a> {
-    pub fn all_concrete_type_names(&self) -> HashSet<String> {
-        match self {
-            Self::Type(type_) => HashSet::from_iter([type_.name().to_owned()]),
-            Self::Union(union) => HashSet::from_iter(union.types.iter().cloned()),
-        }
-    }
+    Interface(&'a Interface),
 }
