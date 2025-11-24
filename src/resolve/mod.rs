@@ -35,17 +35,17 @@ pub trait Carver {
     ) -> ResponseValue;
 }
 
-pub struct StringColumnCarver {
-    pub column_name: String,
+pub struct StringCarver {
+    pub name: String,
 }
 
-impl StringColumnCarver {
-    pub fn new(column_name: String) -> Self {
-        Self { column_name }
+impl StringCarver {
+    pub fn new(name: String) -> Self {
+        Self { name }
     }
 }
 
-impl Carver for StringColumnCarver {
+impl Carver for StringCarver {
     fn carve(
         &self,
         _external_dependencies: &ExternalDependencyValues,
@@ -53,7 +53,7 @@ impl Carver for StringColumnCarver {
     ) -> ResponseValue {
         ResponseValue::String(
             internal_dependencies
-                .get(&self.column_name)
+                .get(&self.name)
                 .unwrap()
                 .as_string()
                 .clone(),

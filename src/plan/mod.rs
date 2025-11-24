@@ -84,7 +84,7 @@ fn create_field_plans<'a>(
                             field.name.clone(),
                             FieldPlan::new(
                                 field,
-                                &concrete_type.as_object().fields[&field.name],
+                                concrete_type.as_object().field(&field.name),
                                 schema,
                                 request,
                             ),
