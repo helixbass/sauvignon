@@ -3,8 +3,9 @@ use sqlx::{postgres::PgPoolOptions, Pool, Postgres};
 use sauvignon::{
     json_from_response, ArgumentInternalDependencyResolver, CarverOrPopulator, ColumnGetter,
     ColumnGetterList, DependencyType, DependencyValue, Document, ExecutableDefinition,
-    ExternalDependency, ExternalDependencyValues, FieldResolver, Id, IdPopulatorList, Interface,
-    InterfaceField, InternalDependency, InternalDependencyResolver, InternalDependencyValues,
+    ExternalDependency, ExternalDependencyValues, FieldResolver, FragmentDefinition,
+    FragmentSpread, Id, IdPopulatorList, InlineFragment, Interface, InterfaceField,
+    InternalDependency, InternalDependencyResolver, InternalDependencyValues,
     LiteralValueInternalDependencyResolver, ObjectType, OperationDefinition, OperationType,
     PopulatorList, Request, Schema, Selection, SelectionField, SelectionSet, StringCarver, Type,
     TypeDepluralizer, TypeField, TypeFull, Union, UnionOrInterfaceTypePopulatorList,
@@ -397,7 +398,7 @@ async fn request_test(request: Request, expected: &str) {
 }
 
 #[tokio::test]
-async fn test_request_object_field() {
+async fn test_object_field() {
     request_test(
         Request::new(Document::new(vec![
             // query {
@@ -423,6 +424,452 @@ async fn test_request_object_field() {
                 "actorKatie": {
                   "name": "Katie Cassidy"
                 }
+              }
+            }
+        "#,
+    )
+    .await;
+}
+
+// TODO: is order guaranteed in the DB results?
+// could add eg an explicit order by ID to the ID's getter?
+#[tokio::test]
+async fn test_list() {
+    request_test(
+        Request::new(Document::new(vec![
+            // query {
+            //   actors {
+            //     name
+            //   }
+            // }
+            ExecutableDefinition::Operation(OperationDefinition::new(
+                OperationType::Query,
+                None,
+                SelectionSet::new(vec![Selection::Field(SelectionField::new(
+                    None,
+                    "actors".to_owned(),
+                    Some(SelectionSet::new(vec![Selection::Field(
+                        SelectionField::new(None, "name".to_owned(), None),
+                    )])),
+                ))]),
+            )),
+        ])),
+        r#"
+            {
+              "data": {
+                "actors": [
+                  {
+                    "name": "Katie Cassidy"
+                  },
+                  {
+                    "name": "Jessica Szohr"
+                  }
+                ]
+              }
+            }
+        "#,
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn test_named_fragment() {
+    request_test(
+        Request::new(Document::new(vec![
+            // query {
+            //   actors {
+            //     ...nameFragment
+            //   }
+            // }
+            //
+            // fragment nameFragment on Actor {
+            //   name
+            // }
+            ExecutableDefinition::Operation(OperationDefinition::new(
+                OperationType::Query,
+                None,
+                SelectionSet::new(vec![Selection::Field(SelectionField::new(
+                    None,
+                    "actors".to_owned(),
+                    Some(SelectionSet::new(vec![Selection::FragmentSpread(
+                        FragmentSpread::new("nameFragment".to_owned()),
+                    )])),
+                ))]),
+            )),
+            ExecutableDefinition::Fragment(FragmentDefinition::new(
+                "nameFragment".to_owned(),
+                "Actor".to_owned(),
+                SelectionSet::new(vec![Selection::Field(SelectionField::new(
+                    None,
+                    "name".to_owned(),
+                    None,
+                ))]),
+            )),
+        ])),
+        r#"
+            {
+              "data": {
+                "actors": [
+                  {
+                    "name": "Katie Cassidy"
+                  },
+                  {
+                    "name": "Jessica Szohr"
+                  }
+                ]
+              }
+            }
+        "#,
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn test_inline_fragment() {
+    request_test(
+        Request::new(Document::new(vec![
+            // query {
+            //   actors {
+            //     ... {
+            //       name
+            //     }
+            //   }
+            // }
+            ExecutableDefinition::Operation(OperationDefinition::new(
+                OperationType::Query,
+                None,
+                SelectionSet::new(vec![Selection::Field(SelectionField::new(
+                    None,
+                    "actors".to_owned(),
+                    Some(SelectionSet::new(vec![Selection::InlineFragment(
+                        InlineFragment::new(
+                            None,
+                            SelectionSet::new(vec![Selection::Field(SelectionField::new(
+                                None,
+                                "name".to_owned(),
+                                None,
+                            ))]),
+                        ),
+                    )])),
+                ))]),
+            )),
+        ])),
+        r#"
+            {
+              "data": {
+                "actors": [
+                  {
+                    "name": "Katie Cassidy"
+                  },
+                  {
+                    "name": "Jessica Szohr"
+                  }
+                ]
+              }
+            }
+        "#,
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn test_union() {
+    request_test(
+        Request::new(Document::new(vec![
+            // query {
+            //   certainActorOrDesigner {
+            //     ... on Actor {
+            //       expression
+            //     }
+            //     ... on Designer {
+            //       name
+            //     }
+            //   }
+            // }
+            ExecutableDefinition::Operation(OperationDefinition::new(
+                OperationType::Query,
+                None,
+                SelectionSet::new(vec![Selection::Field(SelectionField::new(
+                    None,
+                    "certainActorOrDesigner".to_owned(),
+                    Some(SelectionSet::new(vec![
+                        Selection::InlineFragment(InlineFragment::new(
+                            Some("Actor".to_owned()),
+                            SelectionSet::new(vec![Selection::Field(SelectionField::new(
+                                None,
+                                "expression".to_owned(),
+                                None,
+                            ))]),
+                        )),
+                        Selection::InlineFragment(InlineFragment::new(
+                            Some("Designer".to_owned()),
+                            SelectionSet::new(vec![Selection::Field(SelectionField::new(
+                                None,
+                                "name".to_owned(),
+                                None,
+                            ))]),
+                        )),
+                    ])),
+                ))]),
+            )),
+        ])),
+        r#"
+            {
+              "data": {
+                "certainActorOrDesigner": {
+                  "name": "Proenza Schouler"
+                }
+              }
+            }
+        "#,
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn test_union_field() {
+    request_test(
+        Request::new(Document::new(vec![
+            // query {
+            //   actors {
+            //     name
+            //     expression
+            //     favoriteActorOrDesigner {
+            //       ... on Actor {
+            //         expression
+            //       }
+            //       ... on Designer {
+            //         name
+            //       }
+            //     }
+            //   }
+            // }
+            ExecutableDefinition::Operation(OperationDefinition::new(
+                OperationType::Query,
+                None,
+                SelectionSet::new(vec![Selection::Field(SelectionField::new(
+                    None,
+                    "actors".to_owned(),
+                    Some(SelectionSet::new(vec![
+                        Selection::Field(SelectionField::new(None, "name".to_owned(), None)),
+                        Selection::Field(SelectionField::new(None, "expression".to_owned(), None)),
+                        Selection::Field(SelectionField::new(
+                            None,
+                            "favoriteActorOrDesigner".to_owned(),
+                            Some(SelectionSet::new(vec![
+                                Selection::InlineFragment(InlineFragment::new(
+                                    Some("Actor".to_owned()),
+                                    SelectionSet::new(vec![Selection::Field(SelectionField::new(
+                                        None,
+                                        "expression".to_owned(),
+                                        None,
+                                    ))]),
+                                )),
+                                Selection::InlineFragment(InlineFragment::new(
+                                    Some("Designer".to_owned()),
+                                    SelectionSet::new(vec![Selection::Field(SelectionField::new(
+                                        None,
+                                        "name".to_owned(),
+                                        None,
+                                    ))]),
+                                )),
+                            ])),
+                        )),
+                    ])),
+                ))]),
+            )),
+        ])),
+        r#"
+            {
+              "data": {
+                "actors": [
+                  {
+                    "expression": "no Serena you can't have the key",
+                    "favoriteActorOrDesigner": {
+                      "name": "Proenza Schouler"
+                    },
+                    "name": "Katie Cassidy"
+                  },
+                  {
+                    "expression": "Dan where did you go I don't like you",
+                    "favoriteActorOrDesigner": {
+                      "expression": "no Serena you can't have the key"
+                    },
+                    "name": "Jessica Szohr"
+                  }
+                ]
+              }
+            }
+        "#,
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn test_interface() {
+    request_test(
+        Request::new(Document::new(vec![
+            // query {
+            //   actors {
+            //     favoriteActorOrDesigner {
+            //       ... on HasName {
+            //         name
+            //       }
+            //       ... on Actor {
+            //         expression
+            //       }
+            //     }
+            //   }
+            //   bestHasName {
+            //     name
+            //   }
+            // }
+            ExecutableDefinition::Operation(OperationDefinition::new(
+                OperationType::Query,
+                None,
+                SelectionSet::new(vec![
+                    Selection::Field(SelectionField::new(
+                        None,
+                        "actors".to_owned(),
+                        Some(SelectionSet::new(vec![Selection::Field(
+                            SelectionField::new(
+                                None,
+                                "favoriteActorOrDesigner".to_owned(),
+                                Some(SelectionSet::new(vec![
+                                    Selection::InlineFragment(InlineFragment::new(
+                                        Some("HasName".to_owned()),
+                                        SelectionSet::new(vec![Selection::Field(
+                                            SelectionField::new(None, "name".to_owned(), None),
+                                        )]),
+                                    )),
+                                    Selection::InlineFragment(InlineFragment::new(
+                                        Some("Actor".to_owned()),
+                                        SelectionSet::new(vec![Selection::Field(
+                                            SelectionField::new(
+                                                None,
+                                                "expression".to_owned(),
+                                                None,
+                                            ),
+                                        )]),
+                                    )),
+                                ])),
+                            ),
+                        )])),
+                    )),
+                    Selection::Field(SelectionField::new(
+                        None,
+                        "bestHasName".to_owned(),
+                        Some(SelectionSet::new(vec![Selection::Field(
+                            SelectionField::new(None, "name".to_owned(), None),
+                        )])),
+                    )),
+                ]),
+            )),
+        ])),
+        r#"
+            {
+              "data": {
+                "actors": [
+                  {
+                    "favoriteActorOrDesigner": {
+                      "name": "Proenza Schouler"
+                    }
+                  },
+                  {
+                    "favoriteActorOrDesigner": {
+                      "expression": "no Serena you can't have the key",
+                      "name": "Katie Cassidy"
+                    }
+                  }
+                ],
+                "bestHasName": {
+                  "name": "Katie Cassidy"
+                }
+              }
+            }
+        "#,
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn test_list_union_and_typename() {
+    request_test(
+        Request::new(Document::new(vec![
+            // query {
+            //   actorsAndDesigners {
+            //     ... on Actor {
+            //       __typename
+            //       expression
+            //     }
+            //     ... on Designer {
+            //       __typename
+            //       name
+            //     }
+            //   }
+            // }
+            ExecutableDefinition::Operation(OperationDefinition::new(
+                OperationType::Query,
+                None,
+                SelectionSet::new(vec![Selection::Field(SelectionField::new(
+                    None,
+                    "actorsAndDesigners".to_owned(),
+                    Some(SelectionSet::new(vec![
+                        Selection::InlineFragment(InlineFragment::new(
+                            Some("Actor".to_owned()),
+                            SelectionSet::new(vec![
+                                Selection::Field(SelectionField::new(
+                                    None,
+                                    "__typename".to_owned(),
+                                    None,
+                                )),
+                                Selection::Field(SelectionField::new(
+                                    None,
+                                    "expression".to_owned(),
+                                    None,
+                                )),
+                            ]),
+                        )),
+                        Selection::InlineFragment(InlineFragment::new(
+                            Some("Designer".to_owned()),
+                            SelectionSet::new(vec![
+                                Selection::Field(SelectionField::new(
+                                    None,
+                                    "__typename".to_owned(),
+                                    None,
+                                )),
+                                Selection::Field(SelectionField::new(
+                                    None,
+                                    "name".to_owned(),
+                                    None,
+                                )),
+                            ]),
+                        )),
+                    ])),
+                ))]),
+            )),
+        ])),
+        r#"
+            {
+              "data": {
+                "actorsAndDesigners": [
+                  {
+                    "__typename": "Actor",
+                    "expression": "no Serena you can't have the key"
+                  },
+                  {
+                    "__typename": "Actor",
+                    "expression": "Dan where did you go I don't like you"
+                  },
+                  {
+                    "__typename": "Designer",
+                    "name": "Proenza Schouler"
+                  },
+                  {
+                    "__typename": "Designer",
+                    "name": "Ralph Lauren"
+                  }
+                ]
               }
             }
         "#,
