@@ -3,12 +3,86 @@ use sqlx::postgres::PgPoolOptions;
 use sauvignon::{
     json_from_response, ArgumentInternalDependencyResolver, CarverOrPopulator, ColumnGetter,
     ColumnGetterList, DependencyType, DependencyValue, Document, ExecutableDefinition,
-    ExternalDependency, FieldResolver, FragmentDefinition, FragmentSpread, Id, IdPopulatorList,
-    InlineFragment, Interface, InterfaceField, InternalDependency, InternalDependencyResolver,
+    ExternalDependency, ExternalDependencyValues, FieldResolver, FragmentDefinition,
+    FragmentSpread, Id, IdPopulatorList, InlineFragment, Interface, InterfaceField,
+    InternalDependency, InternalDependencyResolver, InternalDependencyValues,
     LiteralValueInternalDependencyResolver, ObjectType, OperationDefinition, OperationType,
-    Request, Schema, Selection, SelectionField, SelectionSet, StringColumnCarver, Type,
-    TypeDepluralizer, TypeField, TypeFull, Union, ValuePopulator, ValuesPopulator,
+    PopulatorList, Request, Schema, Selection, SelectionField, SelectionSet, StringColumnCarver,
+    Type, TypeDepluralizer, TypeField, TypeFull, Union, UnionOrInterfaceTypePopulatorList,
+    ValuePopulator, ValuesPopulator,
 };
+
+pub struct ActorsAndDesignersTypePopulator {}
+
+impl ActorsAndDesignersTypePopulator {
+    pub fn new() -> Self {
+        Self {}
+    }
+}
+
+impl UnionOrInterfaceTypePopulatorList for ActorsAndDesignersTypePopulator {
+    fn populate(
+        &self,
+        _external_dependencies: &ExternalDependencyValues,
+        internal_dependencies: &InternalDependencyValues,
+    ) -> Vec<String> {
+        internal_dependencies
+            .get("actor_ids")
+            .unwrap()
+            .as_list()
+            .into_iter()
+            .map(|_| "Actor".to_owned())
+            .chain(
+                internal_dependencies
+                    .get("designer_ids")
+                    .unwrap()
+                    .as_list()
+                    .into_iter()
+                    .map(|_| "Designer".to_owned()),
+            )
+            .collect()
+    }
+}
+
+pub struct ActorsAndDesignersPopulator {}
+
+impl ActorsAndDesignersPopulator {
+    pub fn new() -> Self {
+        Self {}
+    }
+}
+
+impl PopulatorList for ActorsAndDesignersPopulator {
+    fn populate(
+        &self,
+        _external_dependencies: &ExternalDependencyValues,
+        internal_dependencies: &InternalDependencyValues,
+    ) -> Vec<ExternalDependencyValues> {
+        internal_dependencies
+            .get("actor_ids")
+            .unwrap()
+            .as_list()
+            .into_iter()
+            .map(|actor_id| {
+                let mut ret = ExternalDependencyValues::default();
+                ret.insert("id".to_owned(), actor_id.clone()).unwrap();
+                ret
+            })
+            .chain(
+                internal_dependencies
+                    .get("designer_ids")
+                    .unwrap()
+                    .as_list()
+                    .into_iter()
+                    .map(|designer_id| {
+                        let mut ret = ExternalDependencyValues::default();
+                        ret.insert("id".to_owned(), designer_id.clone()).unwrap();
+                        ret
+                    }),
+            )
+            .collect()
+    }
+}
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -270,6 +344,35 @@ async fn main() -> anyhow::Result<()> {
                     CarverOrPopulator::UnionOrInterfaceTypePopulator(
                         Box::new(TypeDepluralizer::new()),
                         Box::new(ValuePopulator::new("id".to_owned())),
+                    ),
+                ),
+            ),
+            TypeField::new(
+                "actorsAndDesigners".to_owned(),
+                TypeFull::List("ActorOrDesigner".to_owned()),
+                FieldResolver::new(
+                    vec![],
+                    vec![
+                        InternalDependency::new(
+                            "actor_ids".to_owned(),
+                            DependencyType::ListOfIds,
+                            InternalDependencyResolver::ColumnGetterList(ColumnGetterList::new(
+                                "actors".to_owned(),
+                                "id".to_owned(),
+                            )),
+                        ),
+                        InternalDependency::new(
+                            "designer_ids".to_owned(),
+                            DependencyType::ListOfIds,
+                            InternalDependencyResolver::ColumnGetterList(ColumnGetterList::new(
+                                "designers".to_owned(),
+                                "id".to_owned(),
+                            )),
+                        ),
+                    ],
+                    CarverOrPopulator::UnionOrInterfaceTypePopulatorList(
+                        Box::new(ActorsAndDesignersTypePopulator::new()),
+                        Box::new(ActorsAndDesignersPopulator::new()),
                     ),
                 ),
             ),
@@ -575,6 +678,51 @@ async fn main() -> anyhow::Result<()> {
     let json = json_from_response(&response);
 
     println!("interface response: {}", pretty_print_json(&json));
+
+    let request = Request::new(Document::new(vec![
+        // query {
+        //   actorsAndDesigners {
+        //     ... on Actor {
+        //       expression
+        //     }
+        //     ... on Designer {
+        //       name
+        //     }
+        //   }
+        // }
+        ExecutableDefinition::Operation(OperationDefinition::new(
+            OperationType::Query,
+            None,
+            SelectionSet::new(vec![Selection::Field(SelectionField::new(
+                None,
+                "actorsAndDesigners".to_owned(),
+                Some(SelectionSet::new(vec![
+                    Selection::InlineFragment(InlineFragment::new(
+                        Some("Actor".to_owned()),
+                        SelectionSet::new(vec![Selection::Field(SelectionField::new(
+                            None,
+                            "expression".to_owned(),
+                            None,
+                        ))]),
+                    )),
+                    Selection::InlineFragment(InlineFragment::new(
+                        Some("Designer".to_owned()),
+                        SelectionSet::new(vec![Selection::Field(SelectionField::new(
+                            None,
+                            "name".to_owned(),
+                            None,
+                        ))]),
+                    )),
+                ])),
+            ))]),
+        )),
+    ]));
+
+    let response = schema.request(request, &db_pool).await;
+
+    let json = json_from_response(&response);
+
+    println!("list union response: {}", pretty_print_json(&json));
 
     Ok(())
 }

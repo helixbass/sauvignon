@@ -235,7 +235,35 @@ fn progress_fields<'a>(
                             CarverOrPopulator::UnionOrInterfaceTypePopulatorList(
                                 type_populator,
                                 populator,
-                            ) => unimplemented!(),
+                            ) => {
+                                let type_names = type_populator.populate(
+                                    &external_dependency_values,
+                                    &internal_dependency_values,
+                                );
+                                let populated = populator.populate(
+                                    &external_dependency_values,
+                                    &internal_dependency_values,
+                                );
+                                assert!(type_names.len() == populated.len());
+                                let fields_in_progress = populated
+                                    .iter()
+                                    .zip(type_names)
+                                    .map(|(populated, type_name)| {
+                                        fields_in_progress_new(
+                                            &field_plan.selection_set_by_type.as_ref().unwrap()
+                                                [&type_name],
+                                            populated,
+                                        )
+                                    })
+                                    .collect();
+                                ResponseValueOrInProgress::InProgressRecursingList(
+                                    InProgressRecursingList::new(
+                                        field_plan,
+                                        populated,
+                                        fields_in_progress,
+                                    ),
+                                )
+                            }
                         }
                     }
                     ResponseValueOrInProgress::InProgressRecursing(InProgressRecursing {
