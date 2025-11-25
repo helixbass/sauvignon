@@ -237,7 +237,11 @@ async fn get_schema(db_pool: &Pool<Postgres>) -> anyhow::Result<Schema> {
                     )],
                     CarverOrPopulator::Populator(Box::new(ValuePopulator::new("id".to_owned()))),
                 ),
-                vec![Param::new("id".to_owned(), TypeFull::Type("Id".to_owned()))],
+                vec![Param::new(
+                    "id".to_owned(),
+                    // TODO: presumably non-null?
+                    TypeFull::Type("Id".to_owned()),
+                )],
             ),
             TypeField::new(
                 "actors".to_owned(),
