@@ -4,7 +4,7 @@ use inflector::Inflector;
 
 use crate::{
     ExternalDependency, ExternalDependencyValues, InternalDependency, InternalDependencyValues,
-    ResponseValue,
+    ResponseValue, Schema,
 };
 
 pub struct FieldResolver {
@@ -144,6 +144,7 @@ pub trait PopulatorList {
         &self,
         external_dependencies: &ExternalDependencyValues,
         internal_dependencies: &InternalDependencyValues,
+        schema: &Schema,
     ) -> Vec<ExternalDependencyValues>;
 }
 
@@ -160,6 +161,7 @@ impl PopulatorList for IdPopulatorList {
         &self,
         _external_dependencies: &ExternalDependencyValues,
         internal_dependencies: &InternalDependencyValues,
+        _schema: &Schema,
     ) -> Vec<ExternalDependencyValues> {
         internal_dependencies
             .get("ids")

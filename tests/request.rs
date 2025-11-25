@@ -57,6 +57,7 @@ impl PopulatorList for ActorsAndDesignersPopulator {
         &self,
         _external_dependencies: &ExternalDependencyValues,
         internal_dependencies: &InternalDependencyValues,
+        _schema: &Schema,
     ) -> Vec<ExternalDependencyValues> {
         internal_dependencies
             .get("actor_ids")
