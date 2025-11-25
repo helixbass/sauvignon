@@ -9,6 +9,7 @@ pub enum DependencyType {
     Id,
     String,
     ListOfIds,
+    ListOfStrings,
 }
 
 pub struct ExternalDependency {
@@ -43,6 +44,7 @@ pub enum InternalDependencyResolver {
     Argument(ArgumentInternalDependencyResolver),
     ColumnGetterList(ColumnGetterList),
     LiteralValue(LiteralValueInternalDependencyResolver),
+    IntrospectionTypeInterfaces,
 }
 
 pub struct ColumnGetter {

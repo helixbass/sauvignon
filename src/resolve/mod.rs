@@ -148,15 +148,17 @@ pub trait PopulatorList {
     ) -> Vec<ExternalDependencyValues>;
 }
 
-pub struct IdPopulatorList {}
+pub struct ValuePopulatorList {
+    pub singular: String,
+}
 
-impl IdPopulatorList {
-    pub fn new() -> Self {
-        Self {}
+impl ValuePopulatorList {
+    pub fn new(singular: String) -> Self {
+        Self { singular }
     }
 }
 
-impl PopulatorList for IdPopulatorList {
+impl PopulatorList for ValuePopulatorList {
     fn populate(
         &self,
         _external_dependencies: &ExternalDependencyValues,
@@ -164,13 +166,13 @@ impl PopulatorList for IdPopulatorList {
         _schema: &Schema,
     ) -> Vec<ExternalDependencyValues> {
         internal_dependencies
-            .get("ids")
+            .get(&self.singular.to_plural())
             .unwrap()
             .as_list()
             .into_iter()
-            .map(|id| {
+            .map(|value| {
                 let mut ret = ExternalDependencyValues::default();
-                ret.insert("id".to_owned(), id.clone()).unwrap();
+                ret.insert(self.singular.clone(), value.clone()).unwrap();
                 ret
             })
             .collect()

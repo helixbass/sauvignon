@@ -4,12 +4,11 @@ use sauvignon::{
     json_from_response, ArgumentInternalDependencyResolver, CarverOrPopulator, ColumnGetter,
     ColumnGetterList, DependencyType, DependencyValue, Document, ExecutableDefinition,
     ExternalDependency, ExternalDependencyValues, FieldResolver, FragmentDefinition,
-    FragmentSpread, Id, IdPopulatorList, InlineFragment, Interface, InterfaceField,
-    InternalDependency, InternalDependencyResolver, InternalDependencyValues,
-    LiteralValueInternalDependencyResolver, ObjectType, OperationDefinition, OperationType,
-    PopulatorList, Request, Schema, Selection, SelectionField, SelectionSet, StringCarver, Type,
-    TypeDepluralizer, TypeField, TypeFull, Union, UnionOrInterfaceTypePopulatorList,
-    ValuePopulator, ValuesPopulator,
+    FragmentSpread, Id, InlineFragment, Interface, InterfaceField, InternalDependency,
+    InternalDependencyResolver, InternalDependencyValues, LiteralValueInternalDependencyResolver,
+    ObjectType, OperationDefinition, OperationType, PopulatorList, Request, Schema, Selection,
+    SelectionField, SelectionSet, StringCarver, Type, TypeDepluralizer, TypeField, TypeFull, Union,
+    UnionOrInterfaceTypePopulatorList, ValuePopulator, ValuePopulatorList, ValuesPopulator,
 };
 
 pub struct ActorsAndDesignersTypePopulator {}
@@ -255,7 +254,9 @@ async fn get_schema(db_pool: &Pool<Postgres>) -> anyhow::Result<Schema> {
                             "id".to_owned(),
                         )),
                     )],
-                    CarverOrPopulator::PopulatorList(Box::new(IdPopulatorList::new())),
+                    CarverOrPopulator::PopulatorList(Box::new(ValuePopulatorList::new(
+                        "id".to_owned(),
+                    ))),
                 ),
             ),
             TypeField::new(

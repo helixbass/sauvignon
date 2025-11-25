@@ -28,9 +28,9 @@ pub use crate::request::{
     InlineFragment, OperationDefinition, Request, Selection, SelectionSet,
 };
 pub use crate::resolve::{
-    Carver, CarverOrPopulator, FieldResolver, IdPopulatorList, Populator, PopulatorList,
-    StringCarver, TypeDepluralizer, UnionOrInterfaceTypePopulator,
-    UnionOrInterfaceTypePopulatorList, ValuePopulator, ValuesPopulator,
+    Carver, CarverOrPopulator, FieldResolver, Populator, PopulatorList, StringCarver,
+    TypeDepluralizer, UnionOrInterfaceTypePopulator, UnionOrInterfaceTypePopulatorList,
+    ValuePopulator, ValuePopulatorList, ValuesPopulator,
 };
 pub use crate::response::{
     fields_in_progress_new, FieldsInProgress, InProgress, InProgressRecursing,

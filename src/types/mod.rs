@@ -1,9 +1,10 @@
 use std::collections::HashMap;
 
 use crate::{
-    CarverOrPopulator, DependencyType, DependencyValue, FieldResolver, IndexMap,
-    InternalDependency, InternalDependencyResolver, LiteralValueInternalDependencyResolver,
-    OperationType, StringCarver,
+    ArgumentInternalDependencyResolver, CarverOrPopulator, DependencyType, DependencyValue,
+    ExternalDependency, FieldResolver, IndexMap, InternalDependency, InternalDependencyResolver,
+    LiteralValueInternalDependencyResolver, OperationType, StringCarver, ValuePopulator,
+    ValuePopulatorList,
 };
 
 pub enum TypeFull {
@@ -63,6 +64,7 @@ pub struct ObjectType {
     pub fields: IndexMap<String, Field>,
     pub implements: Vec<String>,
     pub typename_field: Field,
+    pub introspection_fields: Option<HashMap<String, Field>>,
 }
 
 impl ObjectType {
@@ -74,6 +76,15 @@ impl ObjectType {
     ) -> Self {
         let typename_field = Field::new_typename(name.clone());
 
+        let introspection_fields = is_top_level_type
+            .as_ref()
+            .filter(|is_top_level_type| matches!(is_top_level_type, OperationType::Query))
+            .map(|_| {
+                [("__type".to_owned(), Field::new_introspection_type())]
+                    .into_iter()
+                    .collect()
+            });
+
         Self {
             name,
             fields: fields
@@ -83,6 +94,7 @@ impl ObjectType {
             is_top_level_type,
             implements,
             typename_field,
+            introspection_fields,
         }
     }
 
@@ -93,6 +105,9 @@ impl ObjectType {
     pub fn field(&self, name: &str) -> &Field {
         match name {
             "__typename" => &self.typename_field,
+            "__type" if self.introspection_fields.is_some() => {
+                &self.introspection_fields.as_ref().unwrap()["__type"]
+            }
             name => &self.fields[name],
         }
     }
@@ -174,16 +189,65 @@ impl Field {
             ),
         }
     }
+
+    pub fn new_introspection_type() -> Self {
+        Self {
+            name: "__type".to_owned(),
+            type_: TypeFull::Type("__Type".to_owned()),
+            resolver: FieldResolver::new(
+                vec![],
+                vec![InternalDependency::new(
+                    "name".to_owned(),
+                    DependencyType::String,
+                    InternalDependencyResolver::Argument(ArgumentInternalDependencyResolver::new(
+                        "name".to_owned(),
+                    )),
+                )],
+                CarverOrPopulator::Populator(Box::new(ValuePopulator::new("name".to_owned()))),
+            ),
+        }
+    }
 }
 
 pub fn builtin_types() -> HashMap<String, Type> {
-    [("String".to_owned(), string_type())].into_iter().collect()
+    [
+        ("String".to_owned(), string_type()),
+        ("__Type".to_owned(), introspection_type_type()),
+    ]
+    .into_iter()
+    .collect()
 }
 
 pub fn string_type() -> Type {
     Type::Scalar(ScalarType::BuiltIn(BuiltInScalarType::String(
         StringType::new(),
     )))
+}
+
+pub fn introspection_type_type() -> Type {
+    Type::Object(ObjectType::new(
+        "__Type".to_owned(),
+        vec![Field::new(
+            "interfaces".to_owned(),
+            TypeFull::List("__Type".to_owned()),
+            FieldResolver::new(
+                vec![ExternalDependency::new(
+                    "name".to_owned(),
+                    DependencyType::String,
+                )],
+                vec![InternalDependency::new(
+                    "names".to_owned(),
+                    DependencyType::ListOfStrings,
+                    InternalDependencyResolver::IntrospectionTypeInterfaces,
+                )],
+                CarverOrPopulator::PopulatorList(Box::new(ValuePopulatorList::new(
+                    "name".to_owned(),
+                ))),
+            ),
+        )],
+        None,
+        vec![],
+    ))
 }
 
 pub struct Union {
