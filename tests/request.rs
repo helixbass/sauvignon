@@ -1,14 +1,15 @@
 use sqlx::{postgres::PgPoolOptions, Pool, Postgres};
 
 use sauvignon::{
-    json_from_response, ArgumentInternalDependencyResolver, CarverOrPopulator, ColumnGetter,
-    ColumnGetterList, DependencyType, DependencyValue, Document, ExecutableDefinition,
-    ExternalDependency, ExternalDependencyValues, FieldResolver, FragmentDefinition,
-    FragmentSpread, Id, InlineFragment, Interface, InterfaceField, InternalDependency,
-    InternalDependencyResolver, InternalDependencyValues, LiteralValueInternalDependencyResolver,
-    ObjectType, OperationDefinition, OperationType, PopulatorList, Request, Schema, Selection,
-    SelectionField, SelectionSet, StringCarver, Type, TypeDepluralizer, TypeField, TypeFull, Union,
-    UnionOrInterfaceTypePopulatorList, ValuePopulator, ValuePopulatorList, ValuesPopulator,
+    json_from_response, Argument, ArgumentInternalDependencyResolver, CarverOrPopulator,
+    ColumnGetter, ColumnGetterList, DependencyType, DependencyValue, Document,
+    ExecutableDefinition, ExternalDependency, ExternalDependencyValues, FieldResolver,
+    FragmentDefinition, FragmentSpread, Id, InlineFragment, Interface, InterfaceField,
+    InternalDependency, InternalDependencyResolver, InternalDependencyValues,
+    LiteralValueInternalDependencyResolver, ObjectType, OperationDefinition, OperationType, Param,
+    PopulatorList, Request, Schema, Selection, SelectionField, SelectionSet, StringCarver, Type,
+    TypeDepluralizer, TypeField, TypeFull, Union, UnionOrInterfaceTypePopulatorList, Value,
+    ValuePopulator, ValuePopulatorList, ValuesPopulator,
 };
 
 pub struct ActorsAndDesignersTypePopulator {}
@@ -119,6 +120,7 @@ async fn get_schema(db_pool: &Pool<Postgres>) -> anyhow::Result<Schema> {
                     )],
                     CarverOrPopulator::Carver(Box::new(StringCarver::new("name".to_owned()))),
                 ),
+                vec![],
             ),
             TypeField::new(
                 "expression".to_owned(),
@@ -135,6 +137,7 @@ async fn get_schema(db_pool: &Pool<Postgres>) -> anyhow::Result<Schema> {
                     )],
                     CarverOrPopulator::Carver(Box::new(StringCarver::new("expression".to_owned()))),
                 ),
+                vec![],
             ),
             TypeField::new(
                 "favoriteActorOrDesigner".to_owned(),
@@ -167,6 +170,7 @@ async fn get_schema(db_pool: &Pool<Postgres>) -> anyhow::Result<Schema> {
                         )])),
                     ),
                 ),
+                vec![],
             ),
         ],
         None,
@@ -190,6 +194,7 @@ async fn get_schema(db_pool: &Pool<Postgres>) -> anyhow::Result<Schema> {
                 )],
                 CarverOrPopulator::Carver(Box::new(StringCarver::new("name".to_owned()))),
             ),
+            vec![],
         )],
         None,
         vec!["HasName".to_owned()],
@@ -232,6 +237,7 @@ async fn get_schema(db_pool: &Pool<Postgres>) -> anyhow::Result<Schema> {
                     )],
                     CarverOrPopulator::Populator(Box::new(ValuePopulator::new("id".to_owned()))),
                 ),
+                vec![Param::new("id".to_owned(), TypeFull::Type("Id".to_owned()))],
             ),
             TypeField::new(
                 "actors".to_owned(),
@@ -257,6 +263,7 @@ async fn get_schema(db_pool: &Pool<Postgres>) -> anyhow::Result<Schema> {
                         "id".to_owned(),
                     ))),
                 ),
+                vec![],
             ),
             TypeField::new(
                 "actorKatie".to_owned(),
@@ -277,6 +284,7 @@ async fn get_schema(db_pool: &Pool<Postgres>) -> anyhow::Result<Schema> {
                     )],
                     CarverOrPopulator::Populator(Box::new(ValuePopulator::new("id".to_owned()))),
                 ),
+                vec![],
             ),
             TypeField::new(
                 "certainActorOrDesigner".to_owned(),
@@ -308,6 +316,7 @@ async fn get_schema(db_pool: &Pool<Postgres>) -> anyhow::Result<Schema> {
                         Box::new(ValuePopulator::new("id".to_owned())),
                     ),
                 ),
+                vec![],
             ),
             TypeField::new(
                 "bestHasName".to_owned(),
@@ -339,6 +348,7 @@ async fn get_schema(db_pool: &Pool<Postgres>) -> anyhow::Result<Schema> {
                         Box::new(ValuePopulator::new("id".to_owned())),
                     ),
                 ),
+                vec![],
             ),
             TypeField::new(
                 "actorsAndDesigners".to_owned(),
@@ -368,6 +378,7 @@ async fn get_schema(db_pool: &Pool<Postgres>) -> anyhow::Result<Schema> {
                         Box::new(ActorsAndDesignersPopulator::new()),
                     ),
                 ),
+                vec![],
             ),
         ],
         Some(OperationType::Query),
@@ -414,8 +425,9 @@ async fn test_object_field() {
                     None,
                     "actorKatie".to_owned(),
                     Some(SelectionSet::new(vec![Selection::Field(
-                        SelectionField::new(None, "name".to_owned(), None),
+                        SelectionField::new(None, "name".to_owned(), None, None),
                     )])),
+                    None,
                 ))]),
             )),
         ])),
@@ -450,8 +462,9 @@ async fn test_list() {
                     None,
                     "actors".to_owned(),
                     Some(SelectionSet::new(vec![Selection::Field(
-                        SelectionField::new(None, "name".to_owned(), None),
+                        SelectionField::new(None, "name".to_owned(), None, None),
                     )])),
+                    None,
                 ))]),
             )),
         ])),
@@ -495,6 +508,7 @@ async fn test_named_fragment() {
                     Some(SelectionSet::new(vec![Selection::FragmentSpread(
                         FragmentSpread::new("nameFragment".to_owned()),
                     )])),
+                    None,
                 ))]),
             )),
             ExecutableDefinition::Fragment(FragmentDefinition::new(
@@ -503,6 +517,7 @@ async fn test_named_fragment() {
                 SelectionSet::new(vec![Selection::Field(SelectionField::new(
                     None,
                     "name".to_owned(),
+                    None,
                     None,
                 ))]),
             )),
@@ -549,9 +564,11 @@ async fn test_inline_fragment() {
                                 None,
                                 "name".to_owned(),
                                 None,
+                                None,
                             ))]),
                         ),
                     )])),
+                    None,
                 ))]),
             )),
         ])),
@@ -600,6 +617,7 @@ async fn test_union() {
                                 None,
                                 "expression".to_owned(),
                                 None,
+                                None,
                             ))]),
                         )),
                         Selection::InlineFragment(InlineFragment::new(
@@ -608,9 +626,11 @@ async fn test_union() {
                                 None,
                                 "name".to_owned(),
                                 None,
+                                None,
                             ))]),
                         )),
                     ])),
+                    None,
                 ))]),
             )),
         ])),
@@ -652,8 +672,13 @@ async fn test_union_field() {
                     None,
                     "actors".to_owned(),
                     Some(SelectionSet::new(vec![
-                        Selection::Field(SelectionField::new(None, "name".to_owned(), None)),
-                        Selection::Field(SelectionField::new(None, "expression".to_owned(), None)),
+                        Selection::Field(SelectionField::new(None, "name".to_owned(), None, None)),
+                        Selection::Field(SelectionField::new(
+                            None,
+                            "expression".to_owned(),
+                            None,
+                            None,
+                        )),
                         Selection::Field(SelectionField::new(
                             None,
                             "favoriteActorOrDesigner".to_owned(),
@@ -664,6 +689,7 @@ async fn test_union_field() {
                                         None,
                                         "expression".to_owned(),
                                         None,
+                                        None,
                                     ))]),
                                 )),
                                 Selection::InlineFragment(InlineFragment::new(
@@ -672,11 +698,14 @@ async fn test_union_field() {
                                         None,
                                         "name".to_owned(),
                                         None,
+                                        None,
                                     ))]),
                                 )),
                             ])),
+                            None,
                         )),
                     ])),
+                    None,
                 ))]),
             )),
         ])),
@@ -740,7 +769,12 @@ async fn test_interface() {
                                     Selection::InlineFragment(InlineFragment::new(
                                         Some("HasName".to_owned()),
                                         SelectionSet::new(vec![Selection::Field(
-                                            SelectionField::new(None, "name".to_owned(), None),
+                                            SelectionField::new(
+                                                None,
+                                                "name".to_owned(),
+                                                None,
+                                                None,
+                                            ),
                                         )]),
                                     )),
                                     Selection::InlineFragment(InlineFragment::new(
@@ -750,19 +784,23 @@ async fn test_interface() {
                                                 None,
                                                 "expression".to_owned(),
                                                 None,
+                                                None,
                                             ),
                                         )]),
                                     )),
                                 ])),
+                                None,
                             ),
                         )])),
+                        None,
                     )),
                     Selection::Field(SelectionField::new(
                         None,
                         "bestHasName".to_owned(),
                         Some(SelectionSet::new(vec![Selection::Field(
-                            SelectionField::new(None, "name".to_owned(), None),
+                            SelectionField::new(None, "name".to_owned(), None, None),
                         )])),
+                        None,
                     )),
                 ]),
             )),
@@ -823,10 +861,12 @@ async fn test_list_union_and_typename() {
                                     None,
                                     "__typename".to_owned(),
                                     None,
+                                    None,
                                 )),
                                 Selection::Field(SelectionField::new(
                                     None,
                                     "expression".to_owned(),
+                                    None,
                                     None,
                                 )),
                             ]),
@@ -838,15 +878,18 @@ async fn test_list_union_and_typename() {
                                     None,
                                     "__typename".to_owned(),
                                     None,
+                                    None,
                                 )),
                                 Selection::Field(SelectionField::new(
                                     None,
                                     "name".to_owned(),
                                     None,
+                                    None,
                                 )),
                             ]),
                         )),
                     ])),
+                    None,
                 ))]),
             )),
         ])),
@@ -882,9 +925,8 @@ async fn test_list_union_and_typename() {
 async fn test_introspection_type_interfaces() {
     request_test(
         Request::new(Document::new(vec![
-            // TODO: update this once argument supported
             // query {
-            //   __type {
+            //   __type(name: "Actor") {
             //     name
             //     interfaces {
             //       name
@@ -898,15 +940,20 @@ async fn test_introspection_type_interfaces() {
                     None,
                     "__type".to_owned(),
                     Some(SelectionSet::new(vec![
-                        Selection::Field(SelectionField::new(None, "name".to_owned(), None)),
+                        Selection::Field(SelectionField::new(None, "name".to_owned(), None, None)),
                         Selection::Field(SelectionField::new(
                             None,
                             "interfaces".to_owned(),
                             Some(SelectionSet::new(vec![Selection::Field(
-                                SelectionField::new(None, "name".to_owned(), None),
+                                SelectionField::new(None, "name".to_owned(), None, None),
                             )])),
+                            None,
                         )),
                     ])),
+                    Some(vec![Argument::new(
+                        "name".to_owned(),
+                        Value::String("Actor".to_owned()),
+                    )]),
                 ))]),
             )),
         ])),
@@ -920,6 +967,41 @@ async fn test_introspection_type_interfaces() {
                       "name": "HasName"
                     }
                   ]
+                }
+              }
+            }
+        "#,
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn test_argument() {
+    request_test(
+        Request::new(Document::new(vec![
+            // query {
+            //   actor(id: 1) {
+            //     name
+            //   }
+            // }
+            ExecutableDefinition::Operation(OperationDefinition::new(
+                OperationType::Query,
+                None,
+                SelectionSet::new(vec![Selection::Field(SelectionField::new(
+                    None,
+                    "actor".to_owned(),
+                    Some(SelectionSet::new(vec![Selection::Field(
+                        SelectionField::new(None, "name".to_owned(), None, None),
+                    )])),
+                    Some(vec![Argument::new("id".to_owned(), Value::Int(1))]),
+                ))]),
+            )),
+        ])),
+        r#"
+            {
+              "data": {
+                "actor": {
+                  "name": "Katie Cassidy"
                 }
               }
             }

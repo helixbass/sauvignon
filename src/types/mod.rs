@@ -161,14 +161,19 @@ pub struct Field {
     pub name: String,
     pub type_: TypeFull,
     pub resolver: FieldResolver,
+    pub params: IndexMap<String, Param>,
 }
 
 impl Field {
-    pub fn new(name: String, type_: TypeFull, resolver: FieldResolver) -> Self {
+    pub fn new(name: String, type_: TypeFull, resolver: FieldResolver, params: Vec<Param>) -> Self {
         Self {
             name,
             type_,
             resolver,
+            params: params
+                .into_iter()
+                .map(|param| (param.name.clone(), param))
+                .collect(),
         }
     }
 
@@ -187,14 +192,15 @@ impl Field {
                 )],
                 CarverOrPopulator::Carver(Box::new(StringCarver::new("__typename".to_owned()))),
             ),
+            params: Default::default(),
         }
     }
 
     pub fn new_introspection_type() -> Self {
-        Self {
-            name: "__type".to_owned(),
-            type_: TypeFull::Type("__Type".to_owned()),
-            resolver: FieldResolver::new(
+        Self::new(
+            "__type".to_owned(),
+            TypeFull::Type("__Type".to_owned()),
+            FieldResolver::new(
                 vec![],
                 vec![InternalDependency::new(
                     "name".to_owned(),
@@ -211,7 +217,12 @@ impl Field {
                 )],
                 CarverOrPopulator::Populator(Box::new(ValuePopulator::new("name".to_owned()))),
             ),
-        }
+            vec![Param::new(
+                "name".to_owned(),
+                // TODO: presumably non-null?
+                TypeFull::Type("String".to_owned()),
+            )],
+        )
     }
 }
 
@@ -245,6 +256,7 @@ pub fn introspection_type_type() -> Type {
                     vec![],
                     CarverOrPopulator::Carver(Box::new(StringCarver::new("name".to_owned()))),
                 ),
+                vec![],
             ),
             Field::new(
                 "interfaces".to_owned(),
@@ -263,6 +275,7 @@ pub fn introspection_type_type() -> Type {
                         "name".to_owned(),
                     ))),
                 ),
+                vec![],
             ),
         ],
         None,
@@ -307,6 +320,17 @@ pub struct InterfaceField {
 }
 
 impl InterfaceField {
+    pub fn new(name: String, type_: TypeFull) -> Self {
+        Self { name, type_ }
+    }
+}
+
+pub struct Param {
+    pub name: String,
+    pub type_: TypeFull,
+}
+
+impl Param {
     pub fn new(name: String, type_: TypeFull) -> Self {
         Self { name, type_ }
     }

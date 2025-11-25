@@ -128,14 +128,26 @@ pub struct Field {
     pub alias: Option<String>,
     pub name: String,
     pub selection_set: Option<SelectionSet>,
+    pub arguments: Option<HashMap<String, Argument>>,
 }
 
 impl Field {
-    pub fn new(alias: Option<String>, name: String, selection_set: Option<SelectionSet>) -> Self {
+    pub fn new(
+        alias: Option<String>,
+        name: String,
+        selection_set: Option<SelectionSet>,
+        arguments: Option<Vec<Argument>>,
+    ) -> Self {
         Self {
             alias,
             name,
             selection_set,
+            arguments: arguments.map(|arguments| {
+                arguments
+                    .into_iter()
+                    .map(|argument| (argument.name.clone(), argument))
+                    .collect()
+            }),
         }
     }
 }
@@ -159,4 +171,20 @@ impl InlineFragment {
     pub fn new(on: Option<String>, selection_set: SelectionSet) -> Self {
         Self { on, selection_set }
     }
+}
+
+pub struct Argument {
+    pub name: String,
+    pub value: Value,
+}
+
+impl Argument {
+    pub fn new(name: String, value: Value) -> Self {
+        Self { name, value }
+    }
+}
+
+pub enum Value {
+    Int(i32),
+    String(String),
 }
