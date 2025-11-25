@@ -227,24 +227,38 @@ pub fn string_type() -> Type {
 pub fn introspection_type_type() -> Type {
     Type::Object(ObjectType::new(
         "__Type".to_owned(),
-        vec![Field::new(
-            "interfaces".to_owned(),
-            TypeFull::List("__Type".to_owned()),
-            FieldResolver::new(
-                vec![ExternalDependency::new(
-                    "name".to_owned(),
-                    DependencyType::String,
-                )],
-                vec![InternalDependency::new(
-                    "names".to_owned(),
-                    DependencyType::ListOfStrings,
-                    InternalDependencyResolver::IntrospectionTypeInterfaces,
-                )],
-                CarverOrPopulator::PopulatorList(Box::new(ValuePopulatorList::new(
-                    "name".to_owned(),
-                ))),
+        vec![
+            Field::new(
+                "name".to_owned(),
+                TypeFull::Type("String".to_owned()),
+                FieldResolver::new(
+                    vec![ExternalDependency::new(
+                        "name".to_owned(),
+                        DependencyType::String,
+                    )],
+                    vec![],
+                    CarverOrPopulator::Carver(Box::new(StringCarver::new("name".to_owned()))),
+                ),
             ),
-        )],
+            Field::new(
+                "interfaces".to_owned(),
+                TypeFull::List("__Type".to_owned()),
+                FieldResolver::new(
+                    vec![ExternalDependency::new(
+                        "name".to_owned(),
+                        DependencyType::String,
+                    )],
+                    vec![InternalDependency::new(
+                        "names".to_owned(),
+                        DependencyType::ListOfStrings,
+                        InternalDependencyResolver::IntrospectionTypeInterfaces,
+                    )],
+                    CarverOrPopulator::PopulatorList(Box::new(ValuePopulatorList::new(
+                        "name".to_owned(),
+                    ))),
+                ),
+            ),
+        ],
         None,
         vec![],
     ))

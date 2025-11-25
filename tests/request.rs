@@ -879,6 +879,56 @@ async fn test_list_union_and_typename() {
     .await;
 }
 
+#[tokio::test]
+async fn test_introspection_type_interfaces() {
+    request_test(
+        Request::new(Document::new(vec![
+            // TODO: update this once argument supported
+            // query {
+            //   __type {
+            //     name
+            //     interfaces {
+            //       name
+            //     }
+            //   }
+            // }
+            ExecutableDefinition::Operation(OperationDefinition::new(
+                OperationType::Query,
+                None,
+                SelectionSet::new(vec![Selection::Field(SelectionField::new(
+                    None,
+                    "__type".to_owned(),
+                    Some(SelectionSet::new(vec![
+                        Selection::Field(SelectionField::new(None, "name".to_owned(), None)),
+                        Selection::Field(SelectionField::new(
+                            None,
+                            "interfaces".to_owned(),
+                            Some(SelectionSet::new(vec![Selection::Field(
+                                SelectionField::new(None, "name".to_owned(), None),
+                            )])),
+                        )),
+                    ])),
+                ))]),
+            )),
+        ])),
+        r#"
+            {
+              "data": {
+                "__type": {
+                  "name": "Actor",
+                  "interfaces": [
+                    {
+                      "name": "HasName"
+                    }
+                  ]
+                }
+              }
+            }
+        "#,
+    )
+    .await;
+}
+
 fn pretty_print_json(json: &str) -> String {
     let parsed: serde_json::Value = serde_json::from_str(json).unwrap();
     serde_json::to_string_pretty(&parsed).unwrap()

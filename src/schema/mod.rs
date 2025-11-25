@@ -174,6 +174,7 @@ fn progress_fields<'a>(
                             field_plan,
                             &external_dependency_values,
                             db_pool,
+                            schema,
                         )
                         .await;
                         match &field_plan.field_type.resolver.carver_or_populator {
@@ -327,6 +328,7 @@ async fn populate_internal_dependencies(
     field_plan: &FieldPlan<'_>,
     external_dependency_values: &ExternalDependencyValues,
     db_pool: &Pool<Postgres>,
+    schema: &Schema,
 ) -> InternalDependencyValues {
     let mut ret = InternalDependencyValues::new();
     for internal_dependency in field_plan.field_type.resolver.internal_dependencies.iter() {
@@ -383,6 +385,35 @@ async fn populate_internal_dependencies(
                         rows.into_iter()
                             .map(|(column_value,)| DependencyValue::Id(column_value))
                             .collect(),
+                    )
+                }
+                InternalDependencyResolver::IntrospectionTypeInterfaces => {
+                    let type_name = match external_dependency_values.get("name").unwrap() {
+                        DependencyValue::String(name) => name,
+                        _ => unreachable!(),
+                    };
+                    DependencyValue::List(
+                        schema
+                            .maybe_type(type_name)
+                            .filter(|type_| matches!(type_, Type::Object(_)))
+                            .map(|type_| {
+                                type_
+                                    .as_object()
+                                    .implements
+                                    .iter()
+                                    .map(|implement| DependencyValue::String(implement.clone()))
+                                    .collect()
+                            })
+                            .or_else(|| {
+                                schema.interfaces.get(type_name).map(|interface| {
+                                    interface
+                                        .implements
+                                        .iter()
+                                        .map(|implement| DependencyValue::String(implement.clone()))
+                                        .collect()
+                                })
+                            })
+                            .unwrap_or_default(),
                     )
                 }
                 _ => unimplemented!(),
