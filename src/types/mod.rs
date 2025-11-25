@@ -1,5 +1,7 @@
 use std::collections::HashMap;
 
+use derive_builder::Builder;
+
 use crate::{
     ArgumentInternalDependencyResolver, CarverOrPopulator, DependencyType, DependencyValue,
     ExternalDependency, FieldResolver, IndexMap, InternalDependency, InternalDependencyResolver,
@@ -57,14 +59,50 @@ impl TypeInterface for Type {
     }
 }
 
+#[derive(Builder)]
+#[builder(pattern = "owned")]
 pub struct ObjectType {
+    #[builder(setter(skip), default = "self.default_typename_field()")]
+    pub typename_field: Field,
+    #[builder(setter(skip), default = "self.default_introspection_fields()")]
+    pub introspection_fields: Option<HashMap<String, Field>>,
+    #[builder(setter(into))]
     pub name: String,
+    #[builder(setter(strip_option), default)]
     pub is_top_level_type: Option<OperationType>,
     // TODO: are the fields on a type ordered?
+    #[builder(setter(custom))]
     pub fields: IndexMap<String, Field>,
+    #[builder(default)]
     pub implements: Vec<String>,
-    pub typename_field: Field,
-    pub introspection_fields: Option<HashMap<String, Field>>,
+}
+
+impl ObjectTypeBuilder {
+    fn fields(self, fields: Vec<Field>) -> Self {
+        let mut new = self;
+        new.fields = Some(
+            fields
+                .into_iter()
+                .map(|field| (field.name.clone(), field))
+                .collect(),
+        );
+        new
+    }
+
+    fn default_typename_field(&self) -> Field {
+        Field::new_typename(self.name.clone().unwrap())
+    }
+
+    fn default_introspection_fields(&self) -> Option<HashMap<String, Field>> {
+        self.is_top_level_type
+            .flatten()
+            .filter(|is_top_level_type| matches!(is_top_level_type, OperationType::Query))
+            .map(|_| {
+                [("__type".to_owned(), Field::new_introspection_type())]
+                    .into_iter()
+                    .collect()
+            })
+    }
 }
 
 impl ObjectType {
@@ -236,45 +274,46 @@ pub fn string_type() -> Type {
 }
 
 pub fn introspection_type_type() -> Type {
-    Type::Object(ObjectType::new(
-        "__Type".to_owned(),
-        vec![
-            Field::new(
-                "name".to_owned(),
-                TypeFull::Type("String".to_owned()),
-                FieldResolver::new(
-                    vec![ExternalDependency::new(
-                        "name".to_owned(),
-                        DependencyType::String,
-                    )],
+    Type::Object(
+        ObjectTypeBuilder::default()
+            .name("__Type")
+            .fields(vec![
+                Field::new(
+                    "name".to_owned(),
+                    TypeFull::Type("String".to_owned()),
+                    FieldResolver::new(
+                        vec![ExternalDependency::new(
+                            "name".to_owned(),
+                            DependencyType::String,
+                        )],
+                        vec![],
+                        CarverOrPopulator::Carver(Box::new(StringCarver::new("name".to_owned()))),
+                    ),
                     vec![],
-                    CarverOrPopulator::Carver(Box::new(StringCarver::new("name".to_owned()))),
                 ),
-                vec![],
-            ),
-            Field::new(
-                "interfaces".to_owned(),
-                TypeFull::List("__Type".to_owned()),
-                FieldResolver::new(
-                    vec![ExternalDependency::new(
-                        "name".to_owned(),
-                        DependencyType::String,
-                    )],
-                    vec![InternalDependency::new(
-                        "names".to_owned(),
-                        DependencyType::ListOfStrings,
-                        InternalDependencyResolver::IntrospectionTypeInterfaces,
-                    )],
-                    CarverOrPopulator::PopulatorList(Box::new(ValuePopulatorList::new(
-                        "name".to_owned(),
-                    ))),
+                Field::new(
+                    "interfaces".to_owned(),
+                    TypeFull::List("__Type".to_owned()),
+                    FieldResolver::new(
+                        vec![ExternalDependency::new(
+                            "name".to_owned(),
+                            DependencyType::String,
+                        )],
+                        vec![InternalDependency::new(
+                            "names".to_owned(),
+                            DependencyType::ListOfStrings,
+                            InternalDependencyResolver::IntrospectionTypeInterfaces,
+                        )],
+                        CarverOrPopulator::PopulatorList(Box::new(ValuePopulatorList::new(
+                            "name".to_owned(),
+                        ))),
+                    ),
+                    vec![],
                 ),
-                vec![],
-            ),
-        ],
-        None,
-        vec![],
-    ))
+            ])
+            .build()
+            .unwrap(),
+    )
 }
 
 pub struct Union {
