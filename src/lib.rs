@@ -42,14 +42,3 @@ pub use crate::types::{
     builtin_types, string_type, BuiltInScalarType, Field as TypeField, Interface, InterfaceField,
     ObjectType, ScalarType, StringType, Type, TypeFull, TypeInterface, Union,
 };
-
-// #[cfg(test)]
-// mod tests {
-//     use super::*;
-
-//     #[test]
-//     fn it_works() {
-//         let result = add(2, 2);
-//         assert_eq!(result, 4);
-//     }
-// }
