@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
 use crate::{
-    ArgumentInternalDependencyResolver, CarverOrPopulator, DependencyType, DependencyValue,
-    ExternalDependency, FieldResolver, IndexMap, InternalDependency, InternalDependencyResolver,
+    CarverOrPopulator, DependencyType, DependencyValue, ExternalDependency, FieldResolver,
+    IndexMap, InternalDependency, InternalDependencyResolver,
     LiteralValueInternalDependencyResolver, OperationType, StringCarver, ValuePopulator,
     ValuePopulatorList,
 };
@@ -199,9 +199,15 @@ impl Field {
                 vec![InternalDependency::new(
                     "name".to_owned(),
                     DependencyType::String,
-                    InternalDependencyResolver::Argument(ArgumentInternalDependencyResolver::new(
-                        "name".to_owned(),
-                    )),
+                    // TODO: this is the real version once arguments are supported
+                    // InternalDependencyResolver::Argument(ArgumentInternalDependencyResolver::new(
+                    //     "name".to_owned(),
+                    // )),
+                    InternalDependencyResolver::LiteralValue(
+                        LiteralValueInternalDependencyResolver(DependencyValue::String(
+                            "Actor".to_owned(),
+                        )),
+                    ),
                 )],
                 CarverOrPopulator::Populator(Box::new(ValuePopulator::new("name".to_owned()))),
             ),

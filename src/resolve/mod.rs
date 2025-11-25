@@ -48,12 +48,13 @@ impl StringCarver {
 impl Carver for StringCarver {
     fn carve(
         &self,
-        _external_dependencies: &ExternalDependencyValues,
+        external_dependencies: &ExternalDependencyValues,
         internal_dependencies: &InternalDependencyValues,
     ) -> ResponseValue {
         ResponseValue::String(
             internal_dependencies
                 .get(&self.name)
+                .or_else(|| external_dependencies.get(&self.name))
                 .unwrap()
                 .as_string()
                 .clone(),
