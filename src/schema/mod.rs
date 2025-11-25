@@ -191,7 +191,6 @@ fn progress_fields<'a>(
                                 let populated = populator.populate(
                                     &external_dependency_values,
                                     &internal_dependency_values,
-                                    schema,
                                 );
                                 let type_name = field_plan.field_type.type_.name();
                                 let fields_in_progress = populated
@@ -245,7 +244,6 @@ fn progress_fields<'a>(
                                 let populated = populator.populate(
                                     &external_dependency_values,
                                     &internal_dependency_values,
-                                    schema,
                                 );
                                 assert!(type_names.len() == populated.len());
                                 let fields_in_progress = populated
