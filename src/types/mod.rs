@@ -78,7 +78,7 @@ pub struct ObjectType {
 }
 
 impl ObjectTypeBuilder {
-    fn fields(self, fields: Vec<Field>) -> Self {
+    pub fn fields(self, fields: Vec<Field>) -> Self {
         let mut new = self;
         new.fields = Some(
             fields
@@ -106,36 +106,6 @@ impl ObjectTypeBuilder {
 }
 
 impl ObjectType {
-    pub fn new(
-        name: String,
-        fields: Vec<Field>,
-        is_top_level_type: Option<OperationType>,
-        implements: Vec<String>,
-    ) -> Self {
-        let typename_field = Field::new_typename(name.clone());
-
-        let introspection_fields = is_top_level_type
-            .as_ref()
-            .filter(|is_top_level_type| matches!(is_top_level_type, OperationType::Query))
-            .map(|_| {
-                [("__type".to_owned(), Field::new_introspection_type())]
-                    .into_iter()
-                    .collect()
-            });
-
-        Self {
-            name,
-            fields: fields
-                .into_iter()
-                .map(|field| (field.name.clone(), field))
-                .collect(),
-            is_top_level_type,
-            implements,
-            typename_field,
-            introspection_fields,
-        }
-    }
-
     pub fn is_query_type(&self) -> bool {
         matches!(self.is_top_level_type, Some(OperationType::Query))
     }

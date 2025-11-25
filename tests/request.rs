@@ -6,9 +6,9 @@ use sauvignon::{
     ExecutableDefinition, ExternalDependency, ExternalDependencyValues, FieldResolver,
     FragmentDefinition, FragmentSpread, Id, InlineFragment, Interface, InterfaceField,
     InternalDependency, InternalDependencyResolver, InternalDependencyValues,
-    LiteralValueInternalDependencyResolver, ObjectType, OperationDefinition, OperationType, Param,
-    PopulatorList, Request, Schema, Selection, SelectionField, SelectionSet, StringCarver, Type,
-    TypeDepluralizer, TypeField, TypeFull, Union, UnionOrInterfaceTypePopulatorList, Value,
+    LiteralValueInternalDependencyResolver, ObjectTypeBuilder, OperationDefinition, OperationType,
+    Param, PopulatorList, Request, Schema, Selection, SelectionField, SelectionSet, StringCarver,
+    Type, TypeDepluralizer, TypeField, TypeFull, Union, UnionOrInterfaceTypePopulatorList, Value,
     ValuePopulator, ValuePopulatorList, ValuesPopulator,
 };
 
@@ -94,111 +94,117 @@ async fn get_schema(db_pool: &Pool<Postgres>) -> anyhow::Result<Schema> {
         vec![],
     );
 
-    let actor_type = Type::Object(ObjectType::new(
-        "Actor".to_owned(),
-        vec![
-            TypeField::new(
+    let actor_type = Type::Object(
+        ObjectTypeBuilder::default()
+            .name("Actor")
+            .fields(vec![
+                TypeField::new(
+                    "name".to_owned(),
+                    TypeFull::Type("String".to_owned()),
+                    // {
+                    //   external_dependencies => ["id" => ID],
+                    //   internal_dependencies => [
+                    //     column_fetcher!(),
+                    //   ],
+                    //   value => column_value!(),
+                    // }
+                    // AKA column!()
+                    FieldResolver::new(
+                        vec![ExternalDependency::new("id".to_owned(), DependencyType::Id)],
+                        vec![InternalDependency::new(
+                            "name".to_owned(),
+                            DependencyType::String,
+                            InternalDependencyResolver::ColumnGetter(ColumnGetter::new(
+                                "actors".to_owned(),
+                                "name".to_owned(),
+                            )),
+                        )],
+                        CarverOrPopulator::Carver(Box::new(StringCarver::new("name".to_owned()))),
+                    ),
+                    vec![],
+                ),
+                TypeField::new(
+                    "expression".to_owned(),
+                    TypeFull::Type("String".to_owned()),
+                    FieldResolver::new(
+                        vec![ExternalDependency::new("id".to_owned(), DependencyType::Id)],
+                        vec![InternalDependency::new(
+                            "expression".to_owned(),
+                            DependencyType::String,
+                            InternalDependencyResolver::ColumnGetter(ColumnGetter::new(
+                                "actors".to_owned(),
+                                "expression".to_owned(),
+                            )),
+                        )],
+                        CarverOrPopulator::Carver(Box::new(StringCarver::new(
+                            "expression".to_owned(),
+                        ))),
+                    ),
+                    vec![],
+                ),
+                TypeField::new(
+                    "favoriteActorOrDesigner".to_owned(),
+                    TypeFull::Type("ActorOrDesigner".to_owned()),
+                    FieldResolver::new(
+                        vec![ExternalDependency::new("id".to_owned(), DependencyType::Id)],
+                        vec![
+                            InternalDependency::new(
+                                "type".to_owned(),
+                                DependencyType::String,
+                                InternalDependencyResolver::ColumnGetter(ColumnGetter::new(
+                                    "actors".to_owned(),
+                                    "favorite_actor_or_designer_type".to_owned(),
+                                )),
+                            ),
+                            InternalDependency::new(
+                                "favorite_actor_or_designer_id".to_owned(),
+                                DependencyType::Id,
+                                InternalDependencyResolver::ColumnGetter(ColumnGetter::new(
+                                    "actors".to_owned(),
+                                    "favorite_actor_or_designer_id".to_owned(),
+                                )),
+                            ),
+                        ],
+                        CarverOrPopulator::UnionOrInterfaceTypePopulator(
+                            Box::new(TypeDepluralizer::new()),
+                            Box::new(ValuesPopulator::new([(
+                                "favorite_actor_or_designer_id".to_owned(),
+                                "id".to_owned(),
+                            )])),
+                        ),
+                    ),
+                    vec![],
+                ),
+            ])
+            .implements(vec!["HasName".to_owned()])
+            .build()
+            .unwrap(),
+    );
+
+    let designer_type = Type::Object(
+        ObjectTypeBuilder::default()
+            .name("Designer")
+            .fields(vec![TypeField::new(
                 "name".to_owned(),
                 TypeFull::Type("String".to_owned()),
-                // {
-                //   external_dependencies => ["id" => ID],
-                //   internal_dependencies => [
-                //     column_fetcher!(),
-                //   ],
-                //   value => column_value!(),
-                // }
-                // AKA column!()
                 FieldResolver::new(
                     vec![ExternalDependency::new("id".to_owned(), DependencyType::Id)],
                     vec![InternalDependency::new(
                         "name".to_owned(),
                         DependencyType::String,
                         InternalDependencyResolver::ColumnGetter(ColumnGetter::new(
-                            "actors".to_owned(),
+                            "designers".to_owned(),
                             "name".to_owned(),
                         )),
                     )],
                     CarverOrPopulator::Carver(Box::new(StringCarver::new("name".to_owned()))),
                 ),
                 vec![],
-            ),
-            TypeField::new(
-                "expression".to_owned(),
-                TypeFull::Type("String".to_owned()),
-                FieldResolver::new(
-                    vec![ExternalDependency::new("id".to_owned(), DependencyType::Id)],
-                    vec![InternalDependency::new(
-                        "expression".to_owned(),
-                        DependencyType::String,
-                        InternalDependencyResolver::ColumnGetter(ColumnGetter::new(
-                            "actors".to_owned(),
-                            "expression".to_owned(),
-                        )),
-                    )],
-                    CarverOrPopulator::Carver(Box::new(StringCarver::new("expression".to_owned()))),
-                ),
-                vec![],
-            ),
-            TypeField::new(
-                "favoriteActorOrDesigner".to_owned(),
-                TypeFull::Type("ActorOrDesigner".to_owned()),
-                FieldResolver::new(
-                    vec![ExternalDependency::new("id".to_owned(), DependencyType::Id)],
-                    vec![
-                        InternalDependency::new(
-                            "type".to_owned(),
-                            DependencyType::String,
-                            InternalDependencyResolver::ColumnGetter(ColumnGetter::new(
-                                "actors".to_owned(),
-                                "favorite_actor_or_designer_type".to_owned(),
-                            )),
-                        ),
-                        InternalDependency::new(
-                            "favorite_actor_or_designer_id".to_owned(),
-                            DependencyType::Id,
-                            InternalDependencyResolver::ColumnGetter(ColumnGetter::new(
-                                "actors".to_owned(),
-                                "favorite_actor_or_designer_id".to_owned(),
-                            )),
-                        ),
-                    ],
-                    CarverOrPopulator::UnionOrInterfaceTypePopulator(
-                        Box::new(TypeDepluralizer::new()),
-                        Box::new(ValuesPopulator::new([(
-                            "favorite_actor_or_designer_id".to_owned(),
-                            "id".to_owned(),
-                        )])),
-                    ),
-                ),
-                vec![],
-            ),
-        ],
-        None,
-        vec!["HasName".to_owned()],
-    ));
-
-    let designer_type = Type::Object(ObjectType::new(
-        "Designer".to_owned(),
-        vec![TypeField::new(
-            "name".to_owned(),
-            TypeFull::Type("String".to_owned()),
-            FieldResolver::new(
-                vec![ExternalDependency::new("id".to_owned(), DependencyType::Id)],
-                vec![InternalDependency::new(
-                    "name".to_owned(),
-                    DependencyType::String,
-                    InternalDependencyResolver::ColumnGetter(ColumnGetter::new(
-                        "designers".to_owned(),
-                        "name".to_owned(),
-                    )),
-                )],
-                CarverOrPopulator::Carver(Box::new(StringCarver::new("name".to_owned()))),
-            ),
-            vec![],
-        )],
-        None,
-        vec!["HasName".to_owned()],
-    ));
+            )])
+            .implements(vec!["HasName".to_owned()])
+            .build()
+            .unwrap(),
+    );
 
     let actor_or_designer = Union::new(
         "ActorOrDesigner".to_owned(),
@@ -215,129 +221,74 @@ async fn get_schema(db_pool: &Pool<Postgres>) -> anyhow::Result<Schema> {
             .await
             .unwrap();
 
-    let query_type = Type::Object(ObjectType::new(
-        "Query".to_owned(),
-        vec![
-            TypeField::new(
-                "actor".to_owned(),
-                TypeFull::Type("Actor".to_owned()),
-                // {
-                //   external_dependencies => None,
-                //   internal_dependencies => {"id" => Argument},
-                //   populator => ValuePopulator("id"),
-                // }
-                FieldResolver::new(
-                    vec![],
-                    vec![InternalDependency::new(
-                        "id".to_owned(),
-                        DependencyType::Id,
-                        InternalDependencyResolver::Argument(
-                            ArgumentInternalDependencyResolver::new("id".to_owned()),
-                        ),
-                    )],
-                    CarverOrPopulator::Populator(Box::new(ValuePopulator::new("id".to_owned()))),
-                ),
-                vec![Param::new(
-                    "id".to_owned(),
-                    // TODO: presumably non-null?
-                    TypeFull::Type("Id".to_owned()),
-                )],
-            ),
-            TypeField::new(
-                "actors".to_owned(),
-                TypeFull::List("Actor".to_owned()),
-                // {
-                //   external_dependencies => None,
-                //   internal_dependencies => [
-                //      column_fetcher_list!("actors", "id"),
-                //   ],
-                //   populator =>
-                // }
-                FieldResolver::new(
-                    vec![],
-                    vec![InternalDependency::new(
-                        "ids".to_owned(),
-                        DependencyType::ListOfIds,
-                        InternalDependencyResolver::ColumnGetterList(ColumnGetterList::new(
-                            "actors".to_owned(),
-                            "id".to_owned(),
-                        )),
-                    )],
-                    CarverOrPopulator::PopulatorList(Box::new(ValuePopulatorList::new(
-                        "id".to_owned(),
-                    ))),
-                ),
-                vec![],
-            ),
-            TypeField::new(
-                "actorKatie".to_owned(),
-                TypeFull::Type("Actor".to_owned()),
-                // {
-                //   external_dependencies => None,
-                //   internal_dependencies => {"id" => LiteralValue(4)},
-                //   populator => ValuePopulator("id"),
-                // }
-                FieldResolver::new(
-                    vec![],
-                    vec![InternalDependency::new(
-                        "id".to_owned(),
-                        DependencyType::Id,
-                        InternalDependencyResolver::LiteralValue(
-                            LiteralValueInternalDependencyResolver(DependencyValue::Id(katie_id)),
-                        ),
-                    )],
-                    CarverOrPopulator::Populator(Box::new(ValuePopulator::new("id".to_owned()))),
-                ),
-                vec![],
-            ),
-            TypeField::new(
-                "certainActorOrDesigner".to_owned(),
-                TypeFull::Type("ActorOrDesigner".to_owned()),
-                FieldResolver::new(
-                    vec![],
-                    vec![
-                        InternalDependency::new(
-                            "type".to_owned(),
-                            DependencyType::String,
-                            InternalDependencyResolver::LiteralValue(
-                                LiteralValueInternalDependencyResolver(DependencyValue::String(
-                                    "designers".to_owned(),
-                                )),
-                            ),
-                        ),
-                        InternalDependency::new(
+    let query_type = Type::Object(
+        ObjectTypeBuilder::default()
+            .name("Query")
+            .fields(vec![
+                TypeField::new(
+                    "actor".to_owned(),
+                    TypeFull::Type("Actor".to_owned()),
+                    // {
+                    //   external_dependencies => None,
+                    //   internal_dependencies => {"id" => Argument},
+                    //   populator => ValuePopulator("id"),
+                    // }
+                    FieldResolver::new(
+                        vec![],
+                        vec![InternalDependency::new(
                             "id".to_owned(),
                             DependencyType::Id,
-                            InternalDependencyResolver::LiteralValue(
-                                LiteralValueInternalDependencyResolver(DependencyValue::Id(
-                                    proenza_schouler_id,
-                                )),
+                            InternalDependencyResolver::Argument(
+                                ArgumentInternalDependencyResolver::new("id".to_owned()),
                             ),
-                        ),
-                    ],
-                    CarverOrPopulator::UnionOrInterfaceTypePopulator(
-                        Box::new(TypeDepluralizer::new()),
-                        Box::new(ValuePopulator::new("id".to_owned())),
+                        )],
+                        CarverOrPopulator::Populator(Box::new(ValuePopulator::new(
+                            "id".to_owned(),
+                        ))),
                     ),
+                    vec![Param::new(
+                        "id".to_owned(),
+                        // TODO: presumably non-null?
+                        TypeFull::Type("Id".to_owned()),
+                    )],
                 ),
-                vec![],
-            ),
-            TypeField::new(
-                "bestHasName".to_owned(),
-                TypeFull::Type("HasName".to_owned()),
-                FieldResolver::new(
+                TypeField::new(
+                    "actors".to_owned(),
+                    TypeFull::List("Actor".to_owned()),
+                    // {
+                    //   external_dependencies => None,
+                    //   internal_dependencies => [
+                    //      column_fetcher_list!("actors", "id"),
+                    //   ],
+                    //   populator =>
+                    // }
+                    FieldResolver::new(
+                        vec![],
+                        vec![InternalDependency::new(
+                            "ids".to_owned(),
+                            DependencyType::ListOfIds,
+                            InternalDependencyResolver::ColumnGetterList(ColumnGetterList::new(
+                                "actors".to_owned(),
+                                "id".to_owned(),
+                            )),
+                        )],
+                        CarverOrPopulator::PopulatorList(Box::new(ValuePopulatorList::new(
+                            "id".to_owned(),
+                        ))),
+                    ),
                     vec![],
-                    vec![
-                        InternalDependency::new(
-                            "type".to_owned(),
-                            DependencyType::String,
-                            InternalDependencyResolver::LiteralValue(
-                                LiteralValueInternalDependencyResolver(DependencyValue::String(
-                                    "actors".to_owned(),
-                                )),
-                            ),
-                        ),
-                        InternalDependency::new(
+                ),
+                TypeField::new(
+                    "actorKatie".to_owned(),
+                    TypeFull::Type("Actor".to_owned()),
+                    // {
+                    //   external_dependencies => None,
+                    //   internal_dependencies => {"id" => LiteralValue(4)},
+                    //   populator => ValuePopulator("id"),
+                    // }
+                    FieldResolver::new(
+                        vec![],
+                        vec![InternalDependency::new(
                             "id".to_owned(),
                             DependencyType::Id,
                             InternalDependencyResolver::LiteralValue(
@@ -345,49 +296,110 @@ async fn get_schema(db_pool: &Pool<Postgres>) -> anyhow::Result<Schema> {
                                     katie_id,
                                 )),
                             ),
-                        ),
-                    ],
-                    CarverOrPopulator::UnionOrInterfaceTypePopulator(
-                        Box::new(TypeDepluralizer::new()),
-                        Box::new(ValuePopulator::new("id".to_owned())),
+                        )],
+                        CarverOrPopulator::Populator(Box::new(ValuePopulator::new(
+                            "id".to_owned(),
+                        ))),
                     ),
-                ),
-                vec![],
-            ),
-            TypeField::new(
-                "actorsAndDesigners".to_owned(),
-                TypeFull::List("ActorOrDesigner".to_owned()),
-                FieldResolver::new(
                     vec![],
-                    vec![
-                        InternalDependency::new(
-                            "actor_ids".to_owned(),
-                            DependencyType::ListOfIds,
-                            InternalDependencyResolver::ColumnGetterList(ColumnGetterList::new(
-                                "actors".to_owned(),
-                                "id".to_owned(),
-                            )),
-                        ),
-                        InternalDependency::new(
-                            "designer_ids".to_owned(),
-                            DependencyType::ListOfIds,
-                            InternalDependencyResolver::ColumnGetterList(ColumnGetterList::new(
-                                "designers".to_owned(),
-                                "id".to_owned(),
-                            )),
-                        ),
-                    ],
-                    CarverOrPopulator::UnionOrInterfaceTypePopulatorList(
-                        Box::new(ActorsAndDesignersTypePopulator::new()),
-                        Box::new(ActorsAndDesignersPopulator::new()),
-                    ),
                 ),
-                vec![],
-            ),
-        ],
-        Some(OperationType::Query),
-        vec![],
-    ));
+                TypeField::new(
+                    "certainActorOrDesigner".to_owned(),
+                    TypeFull::Type("ActorOrDesigner".to_owned()),
+                    FieldResolver::new(
+                        vec![],
+                        vec![
+                            InternalDependency::new(
+                                "type".to_owned(),
+                                DependencyType::String,
+                                InternalDependencyResolver::LiteralValue(
+                                    LiteralValueInternalDependencyResolver(
+                                        DependencyValue::String("designers".to_owned()),
+                                    ),
+                                ),
+                            ),
+                            InternalDependency::new(
+                                "id".to_owned(),
+                                DependencyType::Id,
+                                InternalDependencyResolver::LiteralValue(
+                                    LiteralValueInternalDependencyResolver(DependencyValue::Id(
+                                        proenza_schouler_id,
+                                    )),
+                                ),
+                            ),
+                        ],
+                        CarverOrPopulator::UnionOrInterfaceTypePopulator(
+                            Box::new(TypeDepluralizer::new()),
+                            Box::new(ValuePopulator::new("id".to_owned())),
+                        ),
+                    ),
+                    vec![],
+                ),
+                TypeField::new(
+                    "bestHasName".to_owned(),
+                    TypeFull::Type("HasName".to_owned()),
+                    FieldResolver::new(
+                        vec![],
+                        vec![
+                            InternalDependency::new(
+                                "type".to_owned(),
+                                DependencyType::String,
+                                InternalDependencyResolver::LiteralValue(
+                                    LiteralValueInternalDependencyResolver(
+                                        DependencyValue::String("actors".to_owned()),
+                                    ),
+                                ),
+                            ),
+                            InternalDependency::new(
+                                "id".to_owned(),
+                                DependencyType::Id,
+                                InternalDependencyResolver::LiteralValue(
+                                    LiteralValueInternalDependencyResolver(DependencyValue::Id(
+                                        katie_id,
+                                    )),
+                                ),
+                            ),
+                        ],
+                        CarverOrPopulator::UnionOrInterfaceTypePopulator(
+                            Box::new(TypeDepluralizer::new()),
+                            Box::new(ValuePopulator::new("id".to_owned())),
+                        ),
+                    ),
+                    vec![],
+                ),
+                TypeField::new(
+                    "actorsAndDesigners".to_owned(),
+                    TypeFull::List("ActorOrDesigner".to_owned()),
+                    FieldResolver::new(
+                        vec![],
+                        vec![
+                            InternalDependency::new(
+                                "actor_ids".to_owned(),
+                                DependencyType::ListOfIds,
+                                InternalDependencyResolver::ColumnGetterList(
+                                    ColumnGetterList::new("actors".to_owned(), "id".to_owned()),
+                                ),
+                            ),
+                            InternalDependency::new(
+                                "designer_ids".to_owned(),
+                                DependencyType::ListOfIds,
+                                InternalDependencyResolver::ColumnGetterList(
+                                    ColumnGetterList::new("designers".to_owned(), "id".to_owned()),
+                                ),
+                            ),
+                        ],
+                        CarverOrPopulator::UnionOrInterfaceTypePopulatorList(
+                            Box::new(ActorsAndDesignersTypePopulator::new()),
+                            Box::new(ActorsAndDesignersPopulator::new()),
+                        ),
+                    ),
+                    vec![],
+                ),
+            ])
+            .is_top_level_type(OperationType::Query)
+            .build()
+            .unwrap(),
+    );
 
     Ok(Schema::try_new(
         vec![query_type, actor_type, designer_type],
