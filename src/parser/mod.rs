@@ -188,7 +188,131 @@ pub fn lex(request: &[char]) -> Vec<Token> {
                     }
                     current_index += 1;
                 }
-                // HERE
+                match request.get(current_index + 1) {
+                    Some(ch) if matches!(ch, '.' | 'e' | 'E') => {
+                        match ch {
+                            '.' => {
+                                current_index += 1;
+                                let mut fractional_part: Vec<char> = _d();
+                                loop {
+                                    match request.get(current_index + 1) {
+                                        Some(ch) if matches!(ch, '0'..='9') => {
+                                            fractional_part.push(ch);
+                                        }
+                                        _ => {
+                                            if fractional_part.is_empty() {
+                                                panic!("expected fractional part digits");
+                                            }
+                                            break;
+                                        }
+                                    }
+                                    current_index += 1;
+                                }
+                                match request.get(current_index + 1) {
+                                    Some(ch) if matches!(ch, 'e' | 'E') => {
+                                        current_index += 1;
+                                        // TODO: DRY this up wrt non-fractional-part
+                                        // case below
+                                        let mut has_exponent_negative_sign = false;
+                                        if matches!(request.get(current_index + 1), Some('-')) {
+                                            has_exponent_negative_sign = true;
+                                            current_index += 1;
+                                        }
+                                        let mut exponent_digits: Vec<char> = _d();
+                                        loop {
+                                            match request.get(current_index + 1) {
+                                                Some(ch) if matches!(ch, '0'..='9') => {
+                                                    exponent_digits.push(ch);
+                                                    current_index += 1;
+                                                }
+                                                _ => {
+                                                    if exponent_digits.is_empty() {
+                                                        panic!("Expected exponent digits");
+                                                    }
+                                                    ret.push(Token::Float(
+                                                        format!(
+                                                            "{}.{}e{}{}",
+                                                            integer_part
+                                                                .into_iter()
+                                                                .collect::<String>(),
+                                                            fractional_part
+                                                                .into_iter()
+                                                                .collect::<String>(),
+                                                            if has_exponent_negative_sign {
+                                                                "-"
+                                                            } else {
+                                                                ""
+                                                            },
+                                                            exponent_digits
+                                                                .into_iter()
+                                                                .collect::<String>(),
+                                                        )
+                                                        .parse::<f64>()
+                                                        .expect("Couldn't parse float"),
+                                                    ));
+                                                    break;
+                                                }
+                                            }
+                                        }
+                                    }
+                                    _ => {
+                                        ret.push(Token::Float(
+                                            format!(
+                                                "{}.{}",
+                                                integer_part.into_iter().collect::<String>(),
+                                                fractional_part.into_iter().collect::<String>(),
+                                            )
+                                            .parse::<f64>()
+                                            .expect("Couldn't parse float"),
+                                        ));
+                                    }
+                                }
+                            }
+                            _ => {
+                                let mut has_exponent_negative_sign = false;
+                                if matches!(request.get(current_index + 1), Some('-')) {
+                                    has_exponent_negative_sign = true;
+                                    current_index += 1;
+                                }
+                                let mut exponent_digits: Vec<char> = _d();
+                                loop {
+                                    match request.get(current_index + 1) {
+                                        Some(ch) if matches!(ch, '0'..='9') => {
+                                            exponent_digits.push(ch);
+                                            current_index += 1;
+                                        }
+                                        _ => {
+                                            if exponent_digits.is_empty() {
+                                                panic!("Expected exponent digits");
+                                            }
+                                            ret.push(Token::Float(
+                                                format!(
+                                                    "{}e{}{}",
+                                                    integer_part.into_iter().collect::<String>(),
+                                                    if has_exponent_negative_sign {
+                                                        "-"
+                                                    } else {
+                                                        ""
+                                                    },
+                                                    exponent_digits.into_iter().collect::<String>(),
+                                                )
+                                                .parse::<f64>()
+                                                .expect("Couldn't parse float"),
+                                            ));
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    _ => {
+                        ret.push(Token::Int(
+                            i32::from_str_radix(&integer_part.into_iter().collect::<String>(), 10)
+                                .unwrap(),
+                        ));
+                    }
+                }
             }
             UnicodeBOM => {}
         }
