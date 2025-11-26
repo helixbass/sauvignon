@@ -2,7 +2,10 @@ use std::vec;
 
 use squalid::_d;
 
-use crate::{Document, ExecutableDefinition, OperationType, Request, Selection};
+use crate::{
+    Document, ExecutableDefinition, FragmentSpread, InlineFragment, OperationType, Request,
+    Selection, SelectionFieldBuilder,
+};
 
 const UNICODE_BOM: char = '\u{feff}';
 
@@ -26,6 +29,15 @@ pub enum Token {
     String(String),
     Int(i32),
     Float(f64),
+}
+
+impl Token {
+    pub fn into_name(self) -> String {
+        match self {
+            Self::Name(name) => name,
+            _ => panic!("Expected name"),
+        }
+    }
 }
 
 pub fn lex(request: &[char]) -> Vec<Token> {
@@ -432,7 +444,60 @@ pub fn parse_tokens(tokens: Vec<Token>) -> Request {
 }
 
 fn parse_selection_set(tokens_iter: &mut vec::IntoIter<Token>) -> Vec<Selection> {
-    unimplemented!()
+    let mut ret: Vec<Selection> = _d();
+
+    match tokens_iter.next() {
+        Some(Token::DotDotDot) => match tokens_iter.next() {
+            Some(token) => {
+                if matches!(
+                    &token,
+                    Token::Name(name) if name != "on"
+                ) {
+                    ret.push(Selection::FragmentSpread(FragmentSpread::new(
+                        token.into_name(),
+                    )));
+                } else if matches!(&token, Token::Name(_) | Token::LeftCurlyBracket) {
+                    match token {
+                        Token::Name(_) => {
+                            let on = match tokens_iter.next() {
+                                Some(Token::Name(on)) => on,
+                                _ => panic!("Expected on"),
+                            };
+                            match tokens_iter.next() {
+                                Some(Token::LeftCurlyBracket) => {
+                                    ret.push(Selection::InlineFragment(InlineFragment::new(
+                                        Some(on),
+                                        parse_selection_set(tokens_iter),
+                                    )));
+                                }
+                                _ => panic!("Expected selection set"),
+                            }
+                        }
+                        Token::LeftCurlyBracket => {
+                            ret.push(Selection::InlineFragment(InlineFragment::new(
+                                None,
+                                parse_selection_set(tokens_iter),
+                            )));
+                        }
+                        _ => unreachable!(),
+                    }
+                } else {
+                    panic!("Expected fragment selection");
+                }
+            }
+            _ => {
+                panic!("Expected fragment selection");
+            }
+        },
+        Some(Token::Name(name)) => {
+            ret.push(Selection::Field(
+                SelectionFieldBuilder::default().build().unwrap(),
+            ));
+        }
+        _ => panic!("Expected selection set"),
+    }
+
+    ret
 }
 
 #[cfg(test)]
