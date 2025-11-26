@@ -25,7 +25,8 @@ pub use crate::operation::OperationType;
 pub use crate::plan::{FieldPlan, QueryPlan};
 pub use crate::request::{
     Argument, Document, ExecutableDefinition, Field as SelectionField, FragmentDefinition,
-    FragmentSpread, InlineFragment, OperationDefinition, Request, Selection, SelectionSet, Value,
+    FragmentSpread, InlineFragment, OperationDefinition, OperationDefinitionBuilder, Request,
+    Selection, Value,
 };
 pub use crate::resolve::{
     Carver, CarverOrPopulator, FieldResolver, Populator, PopulatorList, StringCarver,

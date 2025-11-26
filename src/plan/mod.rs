@@ -4,7 +4,7 @@ use squalid::OptionExt;
 
 use crate::{
     fields_in_progress_new, request, types, Argument, IndexMap, OperationType, Request,
-    ResponseInProgress, Schema, Selection, SelectionSet,
+    ResponseInProgress, Schema, Selection,
 };
 
 pub struct QueryPlan<'a> {
@@ -69,12 +69,12 @@ impl<'a> FieldPlan<'a> {
 }
 
 fn create_field_plans<'a>(
-    selection_set: &'a SelectionSet,
+    selection_set: &'a [Selection],
     all_current_concrete_type_names: &HashSet<String>,
     schema: &'a Schema,
     request: &'a Request,
 ) -> HashMap<String, IndexMap<String, FieldPlan<'a>>> {
-    merge_hash_maps(selection_set.selections.iter().map(|selection| {
+    merge_hash_maps(selection_set.iter().map(|selection| {
         match selection {
             Selection::Field(field) => all_current_concrete_type_names
                 .iter()
@@ -123,7 +123,7 @@ fn create_field_plans<'a>(
 
 fn get_overlapping_fragment_types<'a>(
     all_current_concrete_type_names: &HashSet<String>,
-    fragment_selection_set: &'a SelectionSet,
+    fragment_selection_set: &'a [Selection],
     all_concrete_type_names_for_fragment: &HashSet<String>,
     schema: &'a Schema,
     request: &'a Request,
