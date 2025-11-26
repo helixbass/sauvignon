@@ -7,9 +7,9 @@ use sauvignon::{
     FragmentDefinition, FragmentSpread, Id, InlineFragment, InterfaceBuilder, InterfaceField,
     InternalDependency, InternalDependencyResolver, InternalDependencyValues,
     LiteralValueInternalDependencyResolver, ObjectTypeBuilder, OperationDefinitionBuilder,
-    OperationType, Param, PopulatorList, Request, Schema, Selection, SelectionField, StringCarver,
-    Type, TypeDepluralizer, TypeFieldBuilder, TypeFull, Union, UnionOrInterfaceTypePopulatorList,
-    Value, ValuePopulator, ValuePopulatorList, ValuesPopulator,
+    OperationType, Param, PopulatorList, Request, Schema, Selection, SelectionFieldBuilder,
+    StringCarver, Type, TypeDepluralizer, TypeFieldBuilder, TypeFull, Union,
+    UnionOrInterfaceTypePopulatorList, Value, ValuePopulator, ValuePopulatorList, ValuesPopulator,
 };
 
 pub struct ActorsAndDesignersTypePopulator {}
@@ -97,7 +97,7 @@ async fn get_schema(db_pool: &Pool<Postgres>) -> anyhow::Result<Schema> {
     let actor_type = Type::Object(
         ObjectTypeBuilder::default()
             .name("Actor")
-            .fields(vec![
+            .fields([
                 TypeFieldBuilder::default()
                     .name("name")
                     .type_(TypeFull::Type("String".to_owned()))
@@ -184,7 +184,7 @@ async fn get_schema(db_pool: &Pool<Postgres>) -> anyhow::Result<Schema> {
     let designer_type = Type::Object(
         ObjectTypeBuilder::default()
             .name("Designer")
-            .fields(vec![TypeFieldBuilder::default()
+            .fields([TypeFieldBuilder::default()
                 .name("name")
                 .type_(TypeFull::Type("String".to_owned()))
                 .resolver(FieldResolver::new(
@@ -224,7 +224,7 @@ async fn get_schema(db_pool: &Pool<Postgres>) -> anyhow::Result<Schema> {
     let query_type = Type::Object(
         ObjectTypeBuilder::default()
             .name("Query")
-            .fields(vec![
+            .fields([
                 TypeFieldBuilder::default()
                     .name("actor")
                     .type_(TypeFull::Type("Actor".to_owned()))
@@ -438,17 +438,18 @@ async fn test_object_field() {
             ExecutableDefinition::Operation(
                 OperationDefinitionBuilder::default()
                     .operation_type(OperationType::Query)
-                    .selection_set(vec![Selection::Field(SelectionField::new(
-                        None,
-                        "actorKatie".to_owned(),
-                        Some(vec![Selection::Field(SelectionField::new(
-                            None,
-                            "name".to_owned(),
-                            None,
-                            None,
-                        ))]),
-                        None,
-                    ))])
+                    .selection_set(vec![Selection::Field(
+                        SelectionFieldBuilder::default()
+                            .name("actorKatie")
+                            .selection_set(vec![Selection::Field(
+                                SelectionFieldBuilder::default()
+                                    .name("name")
+                                    .build()
+                                    .unwrap(),
+                            )])
+                            .build()
+                            .unwrap(),
+                    )])
                     .build()
                     .unwrap(),
             ),
@@ -480,17 +481,18 @@ async fn test_list() {
             ExecutableDefinition::Operation(
                 OperationDefinitionBuilder::default()
                     .operation_type(OperationType::Query)
-                    .selection_set(vec![Selection::Field(SelectionField::new(
-                        None,
-                        "actors".to_owned(),
-                        Some(vec![Selection::Field(SelectionField::new(
-                            None,
-                            "name".to_owned(),
-                            None,
-                            None,
-                        ))]),
-                        None,
-                    ))])
+                    .selection_set(vec![Selection::Field(
+                        SelectionFieldBuilder::default()
+                            .name("actors")
+                            .selection_set(vec![Selection::Field(
+                                SelectionFieldBuilder::default()
+                                    .name("name")
+                                    .build()
+                                    .unwrap(),
+                            )])
+                            .build()
+                            .unwrap(),
+                    )])
                     .build()
                     .unwrap(),
             ),
@@ -529,26 +531,27 @@ async fn test_named_fragment() {
             ExecutableDefinition::Operation(
                 OperationDefinitionBuilder::default()
                     .operation_type(OperationType::Query)
-                    .selection_set(vec![Selection::Field(SelectionField::new(
-                        None,
-                        "actors".to_owned(),
-                        Some(vec![Selection::FragmentSpread(FragmentSpread::new(
-                            "nameFragment".to_owned(),
-                        ))]),
-                        None,
-                    ))])
+                    .selection_set(vec![Selection::Field(
+                        SelectionFieldBuilder::default()
+                            .name("actors")
+                            .selection_set(vec![Selection::FragmentSpread(FragmentSpread::new(
+                                "nameFragment".to_owned(),
+                            ))])
+                            .build()
+                            .unwrap(),
+                    )])
                     .build()
                     .unwrap(),
             ),
             ExecutableDefinition::Fragment(FragmentDefinition::new(
                 "nameFragment".to_owned(),
                 "Actor".to_owned(),
-                vec![Selection::Field(SelectionField::new(
-                    None,
-                    "name".to_owned(),
-                    None,
-                    None,
-                ))],
+                vec![Selection::Field(
+                    SelectionFieldBuilder::default()
+                        .name("name")
+                        .build()
+                        .unwrap(),
+                )],
             )),
         ])),
         r#"
@@ -583,20 +586,21 @@ async fn test_inline_fragment() {
             ExecutableDefinition::Operation(
                 OperationDefinitionBuilder::default()
                     .operation_type(OperationType::Query)
-                    .selection_set(vec![Selection::Field(SelectionField::new(
-                        None,
-                        "actors".to_owned(),
-                        Some(vec![Selection::InlineFragment(InlineFragment::new(
-                            None,
-                            vec![Selection::Field(SelectionField::new(
+                    .selection_set(vec![Selection::Field(
+                        SelectionFieldBuilder::default()
+                            .name("actors")
+                            .selection_set(vec![Selection::InlineFragment(InlineFragment::new(
                                 None,
-                                "name".to_owned(),
-                                None,
-                                None,
-                            ))],
-                        ))]),
-                        None,
-                    ))])
+                                vec![Selection::Field(
+                                    SelectionFieldBuilder::default()
+                                        .name("name")
+                                        .build()
+                                        .unwrap(),
+                                )],
+                            ))])
+                            .build()
+                            .unwrap(),
+                    )])
                     .build()
                     .unwrap(),
             ),
@@ -636,31 +640,32 @@ async fn test_union() {
             ExecutableDefinition::Operation(
                 OperationDefinitionBuilder::default()
                     .operation_type(OperationType::Query)
-                    .selection_set(vec![Selection::Field(SelectionField::new(
-                        None,
-                        "certainActorOrDesigner".to_owned(),
-                        Some(vec![
-                            Selection::InlineFragment(InlineFragment::new(
-                                Some("Actor".to_owned()),
-                                vec![Selection::Field(SelectionField::new(
-                                    None,
-                                    "expression".to_owned(),
-                                    None,
-                                    None,
-                                ))],
-                            )),
-                            Selection::InlineFragment(InlineFragment::new(
-                                Some("Designer".to_owned()),
-                                vec![Selection::Field(SelectionField::new(
-                                    None,
-                                    "name".to_owned(),
-                                    None,
-                                    None,
-                                ))],
-                            )),
-                        ]),
-                        None,
-                    ))])
+                    .selection_set(vec![Selection::Field(
+                        SelectionFieldBuilder::default()
+                            .name("certainActorOrDesigner")
+                            .selection_set(vec![
+                                Selection::InlineFragment(InlineFragment::new(
+                                    Some("Actor".to_owned()),
+                                    vec![Selection::Field(
+                                        SelectionFieldBuilder::default()
+                                            .name("expression")
+                                            .build()
+                                            .unwrap(),
+                                    )],
+                                )),
+                                Selection::InlineFragment(InlineFragment::new(
+                                    Some("Designer".to_owned()),
+                                    vec![Selection::Field(
+                                        SelectionFieldBuilder::default()
+                                            .name("name")
+                                            .build()
+                                            .unwrap(),
+                                    )],
+                                )),
+                            ])
+                            .build()
+                            .unwrap(),
+                    )])
                     .build()
                     .unwrap(),
             ),
@@ -699,50 +704,52 @@ async fn test_union_field() {
             ExecutableDefinition::Operation(
                 OperationDefinitionBuilder::default()
                     .operation_type(OperationType::Query)
-                    .selection_set(vec![Selection::Field(SelectionField::new(
-                        None,
-                        "actors".to_owned(),
-                        Some(vec![
-                            Selection::Field(SelectionField::new(
-                                None,
-                                "name".to_owned(),
-                                None,
-                                None,
-                            )),
-                            Selection::Field(SelectionField::new(
-                                None,
-                                "expression".to_owned(),
-                                None,
-                                None,
-                            )),
-                            Selection::Field(SelectionField::new(
-                                None,
-                                "favoriteActorOrDesigner".to_owned(),
-                                Some(vec![
-                                    Selection::InlineFragment(InlineFragment::new(
-                                        Some("Actor".to_owned()),
-                                        vec![Selection::Field(SelectionField::new(
-                                            None,
-                                            "expression".to_owned(),
-                                            None,
-                                            None,
-                                        ))],
-                                    )),
-                                    Selection::InlineFragment(InlineFragment::new(
-                                        Some("Designer".to_owned()),
-                                        vec![Selection::Field(SelectionField::new(
-                                            None,
-                                            "name".to_owned(),
-                                            None,
-                                            None,
-                                        ))],
-                                    )),
-                                ]),
-                                None,
-                            )),
-                        ]),
-                        None,
-                    ))])
+                    .selection_set(vec![Selection::Field(
+                        SelectionFieldBuilder::default()
+                            .name("actors")
+                            .selection_set(vec![
+                                Selection::Field(
+                                    SelectionFieldBuilder::default()
+                                        .name("name")
+                                        .build()
+                                        .unwrap(),
+                                ),
+                                Selection::Field(
+                                    SelectionFieldBuilder::default()
+                                        .name("expression")
+                                        .build()
+                                        .unwrap(),
+                                ),
+                                Selection::Field(
+                                    SelectionFieldBuilder::default()
+                                        .name("favoriteActorOrDesigner")
+                                        .selection_set(vec![
+                                            Selection::InlineFragment(InlineFragment::new(
+                                                Some("Actor".to_owned()),
+                                                vec![Selection::Field(
+                                                    SelectionFieldBuilder::default()
+                                                        .name("expression")
+                                                        .build()
+                                                        .unwrap(),
+                                                )],
+                                            )),
+                                            Selection::InlineFragment(InlineFragment::new(
+                                                Some("Designer".to_owned()),
+                                                vec![Selection::Field(
+                                                    SelectionFieldBuilder::default()
+                                                        .name("name")
+                                                        .build()
+                                                        .unwrap(),
+                                                )],
+                                            )),
+                                        ])
+                                        .build()
+                                        .unwrap(),
+                                ),
+                            ])
+                            .build()
+                            .unwrap(),
+                    )])
                     .build()
                     .unwrap(),
             ),
@@ -796,47 +803,50 @@ async fn test_interface() {
                 OperationDefinitionBuilder::default()
                     .operation_type(OperationType::Query)
                     .selection_set(vec![
-                        Selection::Field(SelectionField::new(
-                            None,
-                            "actors".to_owned(),
-                            Some(vec![Selection::Field(SelectionField::new(
-                                None,
-                                "favoriteActorOrDesigner".to_owned(),
-                                Some(vec![
-                                    Selection::InlineFragment(InlineFragment::new(
-                                        Some("HasName".to_owned()),
-                                        vec![Selection::Field(SelectionField::new(
-                                            None,
-                                            "name".to_owned(),
-                                            None,
-                                            None,
-                                        ))],
-                                    )),
-                                    Selection::InlineFragment(InlineFragment::new(
-                                        Some("Actor".to_owned()),
-                                        vec![Selection::Field(SelectionField::new(
-                                            None,
-                                            "expression".to_owned(),
-                                            None,
-                                            None,
-                                        ))],
-                                    )),
-                                ]),
-                                None,
-                            ))]),
-                            None,
-                        )),
-                        Selection::Field(SelectionField::new(
-                            None,
-                            "bestHasName".to_owned(),
-                            Some(vec![Selection::Field(SelectionField::new(
-                                None,
-                                "name".to_owned(),
-                                None,
-                                None,
-                            ))]),
-                            None,
-                        )),
+                        Selection::Field(
+                            SelectionFieldBuilder::default()
+                                .name("actors")
+                                .selection_set(vec![Selection::Field(
+                                    SelectionFieldBuilder::default()
+                                        .name("favoriteActorOrDesigner")
+                                        .selection_set(vec![
+                                            Selection::InlineFragment(InlineFragment::new(
+                                                Some("HasName".to_owned()),
+                                                vec![Selection::Field(
+                                                    SelectionFieldBuilder::default()
+                                                        .name("name")
+                                                        .build()
+                                                        .unwrap(),
+                                                )],
+                                            )),
+                                            Selection::InlineFragment(InlineFragment::new(
+                                                Some("Actor".to_owned()),
+                                                vec![Selection::Field(
+                                                    SelectionFieldBuilder::default()
+                                                        .name("expression")
+                                                        .build()
+                                                        .unwrap(),
+                                                )],
+                                            )),
+                                        ])
+                                        .build()
+                                        .unwrap(),
+                                )])
+                                .build()
+                                .unwrap(),
+                        ),
+                        Selection::Field(
+                            SelectionFieldBuilder::default()
+                                .name("bestHasName")
+                                .selection_set(vec![Selection::Field(
+                                    SelectionFieldBuilder::default()
+                                        .name("name")
+                                        .build()
+                                        .unwrap(),
+                                )])
+                                .build()
+                                .unwrap(),
+                        ),
                     ])
                     .build()
                     .unwrap(),
@@ -887,47 +897,48 @@ async fn test_list_union_and_typename() {
             ExecutableDefinition::Operation(
                 OperationDefinitionBuilder::default()
                     .operation_type(OperationType::Query)
-                    .selection_set(vec![Selection::Field(SelectionField::new(
-                        None,
-                        "actorsAndDesigners".to_owned(),
-                        Some(vec![
-                            Selection::InlineFragment(InlineFragment::new(
-                                Some("Actor".to_owned()),
-                                vec![
-                                    Selection::Field(SelectionField::new(
-                                        None,
-                                        "__typename".to_owned(),
-                                        None,
-                                        None,
-                                    )),
-                                    Selection::Field(SelectionField::new(
-                                        None,
-                                        "expression".to_owned(),
-                                        None,
-                                        None,
-                                    )),
-                                ],
-                            )),
-                            Selection::InlineFragment(InlineFragment::new(
-                                Some("Designer".to_owned()),
-                                vec![
-                                    Selection::Field(SelectionField::new(
-                                        None,
-                                        "__typename".to_owned(),
-                                        None,
-                                        None,
-                                    )),
-                                    Selection::Field(SelectionField::new(
-                                        None,
-                                        "name".to_owned(),
-                                        None,
-                                        None,
-                                    )),
-                                ],
-                            )),
-                        ]),
-                        None,
-                    ))])
+                    .selection_set(vec![Selection::Field(
+                        SelectionFieldBuilder::default()
+                            .name("actorsAndDesigners")
+                            .selection_set(vec![
+                                Selection::InlineFragment(InlineFragment::new(
+                                    Some("Actor".to_owned()),
+                                    vec![
+                                        Selection::Field(
+                                            SelectionFieldBuilder::default()
+                                                .name("__typename")
+                                                .build()
+                                                .unwrap(),
+                                        ),
+                                        Selection::Field(
+                                            SelectionFieldBuilder::default()
+                                                .name("expression")
+                                                .build()
+                                                .unwrap(),
+                                        ),
+                                    ],
+                                )),
+                                Selection::InlineFragment(InlineFragment::new(
+                                    Some("Designer".to_owned()),
+                                    vec![
+                                        Selection::Field(
+                                            SelectionFieldBuilder::default()
+                                                .name("__typename")
+                                                .build()
+                                                .unwrap(),
+                                        ),
+                                        Selection::Field(
+                                            SelectionFieldBuilder::default()
+                                                .name("name")
+                                                .build()
+                                                .unwrap(),
+                                        ),
+                                    ],
+                                )),
+                            ])
+                            .build()
+                            .unwrap(),
+                    )])
                     .build()
                     .unwrap(),
             ),
@@ -975,33 +986,36 @@ async fn test_introspection_type_interfaces() {
             ExecutableDefinition::Operation(
                 OperationDefinitionBuilder::default()
                     .operation_type(OperationType::Query)
-                    .selection_set(vec![Selection::Field(SelectionField::new(
-                        None,
-                        "__type".to_owned(),
-                        Some(vec![
-                            Selection::Field(SelectionField::new(
-                                None,
+                    .selection_set(vec![Selection::Field(
+                        SelectionFieldBuilder::default()
+                            .name("__type")
+                            .selection_set(vec![
+                                Selection::Field(
+                                    SelectionFieldBuilder::default()
+                                        .name("name")
+                                        .build()
+                                        .unwrap(),
+                                ),
+                                Selection::Field(
+                                    SelectionFieldBuilder::default()
+                                        .name("interfaces")
+                                        .selection_set(vec![Selection::Field(
+                                            SelectionFieldBuilder::default()
+                                                .name("name")
+                                                .build()
+                                                .unwrap(),
+                                        )])
+                                        .build()
+                                        .unwrap(),
+                                ),
+                            ])
+                            .arguments([Argument::new(
                                 "name".to_owned(),
-                                None,
-                                None,
-                            )),
-                            Selection::Field(SelectionField::new(
-                                None,
-                                "interfaces".to_owned(),
-                                Some(vec![Selection::Field(SelectionField::new(
-                                    None,
-                                    "name".to_owned(),
-                                    None,
-                                    None,
-                                ))]),
-                                None,
-                            )),
-                        ]),
-                        Some(vec![Argument::new(
-                            "name".to_owned(),
-                            Value::String("Actor".to_owned()),
-                        )]),
-                    ))])
+                                Value::String("Actor".to_owned()),
+                            )])
+                            .build()
+                            .unwrap(),
+                    )])
                     .build()
                     .unwrap(),
             ),
@@ -1036,17 +1050,19 @@ async fn test_argument() {
             ExecutableDefinition::Operation(
                 OperationDefinitionBuilder::default()
                     .operation_type(OperationType::Query)
-                    .selection_set(vec![Selection::Field(SelectionField::new(
-                        None,
-                        "actor".to_owned(),
-                        Some(vec![Selection::Field(SelectionField::new(
-                            None,
-                            "name".to_owned(),
-                            None,
-                            None,
-                        ))]),
-                        Some(vec![Argument::new("id".to_owned(), Value::Int(1))]),
-                    ))])
+                    .selection_set(vec![Selection::Field(
+                        SelectionFieldBuilder::default()
+                            .name("actor")
+                            .selection_set(vec![Selection::Field(
+                                SelectionFieldBuilder::default()
+                                    .name("name")
+                                    .build()
+                                    .unwrap(),
+                            )])
+                            .arguments([Argument::new("id".to_owned(), Value::Int(1))])
+                            .build()
+                            .unwrap(),
+                    )])
                     .build()
                     .unwrap(),
             ),

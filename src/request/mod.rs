@@ -105,31 +105,29 @@ pub enum Selection {
     InlineFragment(InlineFragment),
 }
 
+#[derive(Builder)]
+#[builder(pattern = "owned")]
 pub struct Field {
+    #[builder(setter(into), default)]
     pub alias: Option<String>,
+    #[builder(setter(into))]
     pub name: String,
+    #[builder(setter(strip_option), default)]
     pub selection_set: Option<Vec<Selection>>,
+    #[builder(setter(custom), default)]
     pub arguments: Option<HashMap<String, Argument>>,
 }
 
-impl Field {
-    pub fn new(
-        alias: Option<String>,
-        name: String,
-        selection_set: Option<Vec<Selection>>,
-        arguments: Option<Vec<Argument>>,
-    ) -> Self {
-        Self {
-            alias,
-            name,
-            selection_set,
-            arguments: arguments.map(|arguments| {
-                arguments
-                    .into_iter()
-                    .map(|argument| (argument.name.clone(), argument))
-                    .collect()
-            }),
-        }
+impl FieldBuilder {
+    pub fn arguments(self, arguments: impl IntoIterator<Item = Argument>) -> Self {
+        let mut new = self;
+        new.arguments = Some(Some(
+            arguments
+                .into_iter()
+                .map(|argument| (argument.name.clone(), argument))
+                .collect(),
+        ));
+        new
     }
 }
 

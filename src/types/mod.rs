@@ -78,7 +78,7 @@ pub struct ObjectType {
 }
 
 impl ObjectTypeBuilder {
-    pub fn fields(self, fields: Vec<Field>) -> Self {
+    pub fn fields(self, fields: impl IntoIterator<Item = Field>) -> Self {
         let mut new = self;
         new.fields = Some(
             fields
@@ -253,7 +253,7 @@ pub fn introspection_type_type() -> Type {
     Type::Object(
         ObjectTypeBuilder::default()
             .name("__Type")
-            .fields(vec![
+            .fields([
                 FieldBuilder::default()
                     .name("name")
                     .type_(TypeFull::Type("String".to_owned()))
