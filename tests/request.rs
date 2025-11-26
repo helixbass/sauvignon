@@ -8,8 +8,8 @@ use sauvignon::{
     InternalDependency, InternalDependencyResolver, InternalDependencyValues,
     LiteralValueInternalDependencyResolver, ObjectTypeBuilder, OperationDefinition, OperationType,
     Param, PopulatorList, Request, Schema, Selection, SelectionField, SelectionSet, StringCarver,
-    Type, TypeDepluralizer, TypeField, TypeFull, Union, UnionOrInterfaceTypePopulatorList, Value,
-    ValuePopulator, ValuePopulatorList, ValuesPopulator,
+    Type, TypeDepluralizer, TypeFieldBuilder, TypeFull, Union, UnionOrInterfaceTypePopulatorList,
+    Value, ValuePopulator, ValuePopulatorList, ValuesPopulator,
 };
 
 pub struct ActorsAndDesignersTypePopulator {}
@@ -98,9 +98,9 @@ async fn get_schema(db_pool: &Pool<Postgres>) -> anyhow::Result<Schema> {
         ObjectTypeBuilder::default()
             .name("Actor")
             .fields(vec![
-                TypeField::new(
-                    "name".to_owned(),
-                    TypeFull::Type("String".to_owned()),
+                TypeFieldBuilder::default()
+                    .name("name")
+                    .type_(TypeFull::Type("String".to_owned()))
                     // {
                     //   external_dependencies => ["id" => ID],
                     //   internal_dependencies => [
@@ -109,7 +109,7 @@ async fn get_schema(db_pool: &Pool<Postgres>) -> anyhow::Result<Schema> {
                     //   value => column_value!(),
                     // }
                     // AKA column!()
-                    FieldResolver::new(
+                    .resolver(FieldResolver::new(
                         vec![ExternalDependency::new("id".to_owned(), DependencyType::Id)],
                         vec![InternalDependency::new(
                             "name".to_owned(),
@@ -120,13 +120,13 @@ async fn get_schema(db_pool: &Pool<Postgres>) -> anyhow::Result<Schema> {
                             )),
                         )],
                         CarverOrPopulator::Carver(Box::new(StringCarver::new("name".to_owned()))),
-                    ),
-                    vec![],
-                ),
-                TypeField::new(
-                    "expression".to_owned(),
-                    TypeFull::Type("String".to_owned()),
-                    FieldResolver::new(
+                    ))
+                    .build()
+                    .unwrap(),
+                TypeFieldBuilder::default()
+                    .name("expression")
+                    .type_(TypeFull::Type("String".to_owned()))
+                    .resolver(FieldResolver::new(
                         vec![ExternalDependency::new("id".to_owned(), DependencyType::Id)],
                         vec![InternalDependency::new(
                             "expression".to_owned(),
@@ -139,13 +139,13 @@ async fn get_schema(db_pool: &Pool<Postgres>) -> anyhow::Result<Schema> {
                         CarverOrPopulator::Carver(Box::new(StringCarver::new(
                             "expression".to_owned(),
                         ))),
-                    ),
-                    vec![],
-                ),
-                TypeField::new(
-                    "favoriteActorOrDesigner".to_owned(),
-                    TypeFull::Type("ActorOrDesigner".to_owned()),
-                    FieldResolver::new(
+                    ))
+                    .build()
+                    .unwrap(),
+                TypeFieldBuilder::default()
+                    .name("favoriteActorOrDesigner")
+                    .type_(TypeFull::Type("ActorOrDesigner".to_owned()))
+                    .resolver(FieldResolver::new(
                         vec![ExternalDependency::new("id".to_owned(), DependencyType::Id)],
                         vec![
                             InternalDependency::new(
@@ -172,9 +172,9 @@ async fn get_schema(db_pool: &Pool<Postgres>) -> anyhow::Result<Schema> {
                                 "id".to_owned(),
                             )])),
                         ),
-                    ),
-                    vec![],
-                ),
+                    ))
+                    .build()
+                    .unwrap(),
             ])
             .implements(vec!["HasName".to_owned()])
             .build()
@@ -184,10 +184,10 @@ async fn get_schema(db_pool: &Pool<Postgres>) -> anyhow::Result<Schema> {
     let designer_type = Type::Object(
         ObjectTypeBuilder::default()
             .name("Designer")
-            .fields(vec![TypeField::new(
-                "name".to_owned(),
-                TypeFull::Type("String".to_owned()),
-                FieldResolver::new(
+            .fields(vec![TypeFieldBuilder::default()
+                .name("name")
+                .type_(TypeFull::Type("String".to_owned()))
+                .resolver(FieldResolver::new(
                     vec![ExternalDependency::new("id".to_owned(), DependencyType::Id)],
                     vec![InternalDependency::new(
                         "name".to_owned(),
@@ -198,9 +198,9 @@ async fn get_schema(db_pool: &Pool<Postgres>) -> anyhow::Result<Schema> {
                         )),
                     )],
                     CarverOrPopulator::Carver(Box::new(StringCarver::new("name".to_owned()))),
-                ),
-                vec![],
-            )])
+                ))
+                .build()
+                .unwrap()])
             .implements(vec!["HasName".to_owned()])
             .build()
             .unwrap(),
@@ -225,15 +225,15 @@ async fn get_schema(db_pool: &Pool<Postgres>) -> anyhow::Result<Schema> {
         ObjectTypeBuilder::default()
             .name("Query")
             .fields(vec![
-                TypeField::new(
-                    "actor".to_owned(),
-                    TypeFull::Type("Actor".to_owned()),
+                TypeFieldBuilder::default()
+                    .name("actor")
+                    .type_(TypeFull::Type("Actor".to_owned()))
                     // {
                     //   external_dependencies => None,
                     //   internal_dependencies => {"id" => Argument},
                     //   populator => ValuePopulator("id"),
                     // }
-                    FieldResolver::new(
+                    .resolver(FieldResolver::new(
                         vec![],
                         vec![InternalDependency::new(
                             "id".to_owned(),
@@ -245,16 +245,17 @@ async fn get_schema(db_pool: &Pool<Postgres>) -> anyhow::Result<Schema> {
                         CarverOrPopulator::Populator(Box::new(ValuePopulator::new(
                             "id".to_owned(),
                         ))),
-                    ),
-                    vec![Param::new(
+                    ))
+                    .params([Param::new(
                         "id".to_owned(),
                         // TODO: presumably non-null?
                         TypeFull::Type("Id".to_owned()),
-                    )],
-                ),
-                TypeField::new(
-                    "actors".to_owned(),
-                    TypeFull::List("Actor".to_owned()),
+                    )])
+                    .build()
+                    .unwrap(),
+                TypeFieldBuilder::default()
+                    .name("actors")
+                    .type_(TypeFull::List("Actor".to_owned()))
                     // {
                     //   external_dependencies => None,
                     //   internal_dependencies => [
@@ -262,7 +263,7 @@ async fn get_schema(db_pool: &Pool<Postgres>) -> anyhow::Result<Schema> {
                     //   ],
                     //   populator =>
                     // }
-                    FieldResolver::new(
+                    .resolver(FieldResolver::new(
                         vec![],
                         vec![InternalDependency::new(
                             "ids".to_owned(),
@@ -275,18 +276,18 @@ async fn get_schema(db_pool: &Pool<Postgres>) -> anyhow::Result<Schema> {
                         CarverOrPopulator::PopulatorList(Box::new(ValuePopulatorList::new(
                             "id".to_owned(),
                         ))),
-                    ),
-                    vec![],
-                ),
-                TypeField::new(
-                    "actorKatie".to_owned(),
-                    TypeFull::Type("Actor".to_owned()),
+                    ))
+                    .build()
+                    .unwrap(),
+                TypeFieldBuilder::default()
+                    .name("actorKatie")
+                    .type_(TypeFull::Type("Actor".to_owned()))
                     // {
                     //   external_dependencies => None,
                     //   internal_dependencies => {"id" => LiteralValue(4)},
                     //   populator => ValuePopulator("id"),
                     // }
-                    FieldResolver::new(
+                    .resolver(FieldResolver::new(
                         vec![],
                         vec![InternalDependency::new(
                             "id".to_owned(),
@@ -300,13 +301,13 @@ async fn get_schema(db_pool: &Pool<Postgres>) -> anyhow::Result<Schema> {
                         CarverOrPopulator::Populator(Box::new(ValuePopulator::new(
                             "id".to_owned(),
                         ))),
-                    ),
-                    vec![],
-                ),
-                TypeField::new(
-                    "certainActorOrDesigner".to_owned(),
-                    TypeFull::Type("ActorOrDesigner".to_owned()),
-                    FieldResolver::new(
+                    ))
+                    .build()
+                    .unwrap(),
+                TypeFieldBuilder::default()
+                    .name("certainActorOrDesigner")
+                    .type_(TypeFull::Type("ActorOrDesigner".to_owned()))
+                    .resolver(FieldResolver::new(
                         vec![],
                         vec![
                             InternalDependency::new(
@@ -332,13 +333,13 @@ async fn get_schema(db_pool: &Pool<Postgres>) -> anyhow::Result<Schema> {
                             Box::new(TypeDepluralizer::new()),
                             Box::new(ValuePopulator::new("id".to_owned())),
                         ),
-                    ),
-                    vec![],
-                ),
-                TypeField::new(
-                    "bestHasName".to_owned(),
-                    TypeFull::Type("HasName".to_owned()),
-                    FieldResolver::new(
+                    ))
+                    .build()
+                    .unwrap(),
+                TypeFieldBuilder::default()
+                    .name("bestHasName")
+                    .type_(TypeFull::Type("HasName".to_owned()))
+                    .resolver(FieldResolver::new(
                         vec![],
                         vec![
                             InternalDependency::new(
@@ -364,13 +365,13 @@ async fn get_schema(db_pool: &Pool<Postgres>) -> anyhow::Result<Schema> {
                             Box::new(TypeDepluralizer::new()),
                             Box::new(ValuePopulator::new("id".to_owned())),
                         ),
-                    ),
-                    vec![],
-                ),
-                TypeField::new(
-                    "actorsAndDesigners".to_owned(),
-                    TypeFull::List("ActorOrDesigner".to_owned()),
-                    FieldResolver::new(
+                    ))
+                    .build()
+                    .unwrap(),
+                TypeFieldBuilder::default()
+                    .name("actorsAndDesigners")
+                    .type_(TypeFull::List("ActorOrDesigner".to_owned()))
+                    .resolver(FieldResolver::new(
                         vec![],
                         vec![
                             InternalDependency::new(
@@ -392,9 +393,9 @@ async fn get_schema(db_pool: &Pool<Postgres>) -> anyhow::Result<Schema> {
                             Box::new(ActorsAndDesignersTypePopulator::new()),
                             Box::new(ActorsAndDesignersPopulator::new()),
                         ),
-                    ),
-                    vec![],
-                ),
+                    ))
+                    .build()
+                    .unwrap(),
             ])
             .is_top_level_type(OperationType::Query)
             .build()
