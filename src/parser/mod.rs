@@ -1,6 +1,8 @@
+use std::vec;
+
 use squalid::_d;
 
-use crate::Request;
+use crate::{Document, ExecutableDefinition, OperationType, Request, Selection};
 
 const UNICODE_BOM: char = '\u{feff}';
 
@@ -380,7 +382,56 @@ pub fn lex(request: &[char]) -> Vec<Token> {
     ret
 }
 
-pub fn parse(tokens: &[Token]) -> Request {
+pub fn parse(request: &[char]) -> Request {
+    parse_tokens(lex(request))
+}
+
+pub fn parse_tokens(tokens: Vec<Token>) -> Request {
+    let mut tokens_iter = tokens.into_iter();
+    Request::new(Document::new({
+        let mut definitions: Vec<ExecutableDefinition> = _d();
+        match tokens_iter.next() {
+            Some(token)
+                if matches!(token, Token::LeftCurlyBracket)
+                    || matches!(
+                        &token,
+                        Token::Name(name) if matches!(
+                            &**name,
+                            "query" // | "mutation" | "subscription"
+                        )
+                    ) =>
+            {
+                let operation_type = OperationType::Query;
+                let mut name: Option<String> = _d();
+                match token {
+                    Token::Name(_parsed_operation_type) => match tokens_iter.next() {
+                        Some(Token::LeftCurlyBracket) => {
+                            parse_selection_set(&mut tokens_iter);
+                        }
+                        Some(Token::Name(parsed_name)) => {
+                            name = Some(parsed_name);
+                            match tokens_iter.next() {
+                                Some(Token::LeftCurlyBracket) => {
+                                    parse_selection_set(&mut tokens_iter);
+                                }
+                                _ => panic!("Expected selection set"),
+                            }
+                        }
+                        _ => panic!("Expected query"),
+                    },
+                    _ => {
+                        parse_selection_set(&mut tokens_iter);
+                    }
+                }
+            }
+            Some(Token::Name(name)) if name == "fragment" => {}
+            _ => panic!("Expected definition"),
+        }
+        definitions
+    }))
+}
+
+fn parse_selection_set(tokens_iter: &mut vec::IntoIter<Token>) -> Vec<Selection> {
     unimplemented!()
 }
 
