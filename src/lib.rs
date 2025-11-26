@@ -39,7 +39,7 @@ pub use crate::response::{
 };
 pub use crate::schema::{Schema, TypeOrUnionOrInterface};
 pub use crate::types::{
-    builtin_types, string_type, BuiltInScalarType, Field as TypeField, Interface, InterfaceField,
-    ObjectType, ObjectTypeBuilder, Param, ScalarType, StringType, Type, TypeFull, TypeInterface,
-    Union,
+    builtin_types, string_type, BuiltInScalarType, Field as TypeField, Interface, InterfaceBuilder,
+    InterfaceField, ObjectType, ObjectTypeBuilder, Param, ScalarType, StringType, Type, TypeFull,
+    TypeInterface, Union,
 };

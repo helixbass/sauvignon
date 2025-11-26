@@ -4,7 +4,7 @@ use sauvignon::{
     json_from_response, Argument, ArgumentInternalDependencyResolver, CarverOrPopulator,
     ColumnGetter, ColumnGetterList, DependencyType, DependencyValue, Document,
     ExecutableDefinition, ExternalDependency, ExternalDependencyValues, FieldResolver,
-    FragmentDefinition, FragmentSpread, Id, InlineFragment, Interface, InterfaceField,
+    FragmentDefinition, FragmentSpread, Id, InlineFragment, InterfaceBuilder, InterfaceField,
     InternalDependency, InternalDependencyResolver, InternalDependencyValues,
     LiteralValueInternalDependencyResolver, ObjectTypeBuilder, OperationDefinition, OperationType,
     Param, PopulatorList, Request, Schema, Selection, SelectionField, SelectionSet, StringCarver,
@@ -85,14 +85,14 @@ impl PopulatorList for ActorsAndDesignersPopulator {
 }
 
 async fn get_schema(db_pool: &Pool<Postgres>) -> anyhow::Result<Schema> {
-    let has_name_interface = Interface::new(
-        "HasName".to_owned(),
-        vec![InterfaceField::new(
+    let has_name_interface = InterfaceBuilder::default()
+        .name("HasName")
+        .fields(vec![InterfaceField::new(
             "name".to_owned(),
             TypeFull::Type("String".to_owned()),
-        )],
-        vec![],
-    );
+        )])
+        .build()
+        .unwrap();
 
     let actor_type = Type::Object(
         ObjectTypeBuilder::default()

@@ -297,23 +297,28 @@ impl Union {
     }
 }
 
+#[derive(Builder)]
+#[builder(pattern = "owned")]
 pub struct Interface {
+    #[builder(setter(into))]
     pub name: String,
     // TODO: are the fields on a type/interface ordered?
+    #[builder(setter(custom))]
     pub fields: IndexMap<String, InterfaceField>,
+    #[builder(default)]
     pub implements: Vec<String>,
 }
 
-impl Interface {
-    pub fn new(name: String, fields: Vec<InterfaceField>, implements: Vec<String>) -> Self {
-        Self {
-            name,
-            fields: fields
+impl InterfaceBuilder {
+    pub fn fields(self, fields: Vec<InterfaceField>) -> Self {
+        let mut new = self;
+        new.fields = Some(
+            fields
                 .into_iter()
                 .map(|field| (field.name.clone(), field))
                 .collect(),
-            implements,
-        }
+        );
+        new
     }
 }
 
