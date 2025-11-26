@@ -3,6 +3,7 @@ mod dependencies;
 mod error;
 mod inscribe;
 mod operation;
+mod parser;
 mod plan;
 mod request;
 mod resolve;
