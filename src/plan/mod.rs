@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use squalid::OptionExt;
+use squalid::{OptionExt, _d};
 
 use crate::{
     fields_in_progress_new, request, types, Argument, IndexMap, OperationType, Request,
@@ -29,10 +29,7 @@ impl<'a> QueryPlan<'a> {
     }
 
     pub fn initial_response_in_progress(&self) -> ResponseInProgress<'_> {
-        ResponseInProgress::new(fields_in_progress_new(
-            &self.field_plans,
-            &Default::default(),
-        ))
+        ResponseInProgress::new(fields_in_progress_new(&self.field_plans, &_d()))
     }
 }
 
@@ -133,7 +130,7 @@ fn get_overlapping_fragment_types<'a>(
         &all_current_concrete_type_names
             .intersection(all_concrete_type_names_for_fragment)
             .cloned()
-            .collect::<HashSet<_>>(),
+            .collect(),
         schema,
         request,
     )
@@ -142,7 +139,7 @@ fn get_overlapping_fragment_types<'a>(
 fn merge_hash_maps<'a>(
     hash_maps: impl Iterator<Item = HashMap<String, IndexMap<String, FieldPlan<'a>>>>,
 ) -> HashMap<String, IndexMap<String, FieldPlan<'a>>> {
-    let mut ret: HashMap<String, IndexMap<String, FieldPlan<'a>>> = Default::default();
+    let mut ret: HashMap<String, IndexMap<String, FieldPlan<'a>>> = _d();
 
     for hash_map in hash_maps {
         for (type_name, mut field_plans) in hash_map {

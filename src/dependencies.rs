@@ -133,13 +133,6 @@ pub struct ExternalDependencyValues {
 }
 
 impl ExternalDependencyValues {
-    pub fn new() -> Self {
-        Self {
-            knowns: Default::default(),
-            anys: Default::default(),
-        }
-    }
-
     pub fn insert(&mut self, name: String, value: DependencyValue) -> Result<(), Error> {
         if self.knowns.contains_key(&name) {
             return Err(Error::DependencyAlreadyPopulated(name));

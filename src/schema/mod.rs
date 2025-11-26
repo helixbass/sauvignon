@@ -328,7 +328,7 @@ async fn populate_internal_dependencies(
     db_pool: &Pool<Postgres>,
     schema: &Schema,
 ) -> InternalDependencyValues {
-    let mut ret = InternalDependencyValues::new();
+    let mut ret = InternalDependencyValues::default();
     for internal_dependency in field_plan.field_type.resolver.internal_dependencies.iter() {
         ret.insert(
             internal_dependency.name.clone(),
