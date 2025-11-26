@@ -212,7 +212,6 @@ pub fn lex(request: &[char]) -> Vec<Token> {
                 if !is_negative {
                     integer_part.push(ch);
                 }
-                println!("integer_part: {integer_part:?}");
                 while matches!(
                     request.get(current_index),
                     Some(ch) if matches!(
@@ -220,14 +219,12 @@ pub fn lex(request: &[char]) -> Vec<Token> {
                         '0'..='9'
                     )
                 ) {
-                    println!("in loop");
                     integer_part.push(request[current_index]);
                     if integer_part.len() == 2 && integer_part[0] == '0' && integer_part[1] == '0' {
                         panic!("Can't have leading zero");
                     }
                     current_index += 1;
                 }
-                println!("integer_part: {integer_part:?}");
                 match request.get(current_index) {
                     Some(ch) if matches!(ch, '.' | 'e' | 'E') => {
                         match ch {
@@ -271,7 +268,8 @@ pub fn lex(request: &[char]) -> Vec<Token> {
                                                     }
                                                     ret.push(Token::Float(
                                                         format!(
-                                                            "{}.{}e{}{}",
+                                                            "{}{}.{}e{}{}",
+                                                            if is_negative { "-" } else { "" },
                                                             integer_part
                                                                 .into_iter()
                                                                 .collect::<String>(),
@@ -298,7 +296,8 @@ pub fn lex(request: &[char]) -> Vec<Token> {
                                     _ => {
                                         ret.push(Token::Float(
                                             format!(
-                                                "{}.{}",
+                                                "{}{}.{}",
+                                                if is_negative { "-" } else { "" },
                                                 integer_part.into_iter().collect::<String>(),
                                                 fractional_part.into_iter().collect::<String>(),
                                             )
@@ -309,6 +308,7 @@ pub fn lex(request: &[char]) -> Vec<Token> {
                                 }
                             }
                             _ => {
+                                current_index += 1;
                                 let mut has_exponent_negative_sign = false;
                                 if matches!(request.get(current_index), Some('-')) {
                                     has_exponent_negative_sign = true;
@@ -327,7 +327,8 @@ pub fn lex(request: &[char]) -> Vec<Token> {
                                             }
                                             ret.push(Token::Float(
                                                 format!(
-                                                    "{}e{}{}",
+                                                    "{}{}e{}{}",
+                                                    if is_negative { "-" } else { "" },
                                                     integer_part.into_iter().collect::<String>(),
                                                     if has_exponent_negative_sign {
                                                         "-"
@@ -388,11 +389,20 @@ pub fn parse(tokens: &[Token]) -> Request {
 mod tests {
     use super::*;
 
+    fn lex_test(request: &str, expected_tokens: impl IntoIterator<Item = Token>) {
+        assert_eq!(
+            lex(&request.chars().collect::<Vec<_>>(),),
+            expected_tokens.into_iter().collect::<Vec<_>>()
+        );
+    }
+
     #[test]
     fn test_lex_float() {
-        assert_eq!(
-            lex(&"10.1".chars().collect::<Vec<_>>(),),
-            vec![Token::Float(10.1),]
-        );
+        lex_test("10.1", [Token::Float(10.1)]);
+        lex_test("-10.1", [Token::Float(-10.1)]);
+        lex_test("10.1e53", [Token::Float(10.1e53)]);
+        lex_test("10.1e-53", [Token::Float(10.1e-53)]);
+        lex_test("10e53", [Token::Float(10e53)]);
+        lex_test("10e-53", [Token::Float(10e-53)]);
     }
 }
