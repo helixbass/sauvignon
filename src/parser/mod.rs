@@ -126,80 +126,79 @@ pub fn lex(request: &[char]) -> Vec<Token> {
                         loop {
                             match request.get(current_index) {
                                 None => panic!("expected closing double-quote"),
-                                Some(ch) => {
-                                    match ch {
-                                        '"' => {
-                                            ret.push(Token::String(
-                                                resolved_chars.into_iter().collect(),
-                                            ));
-                                            break;
-                                        }
-                                        '\\' => {
-                                            current_index += 1;
-                                            match request.get(current_index) {
-                                                Some('u') => {
-                                                    current_index += 1;
-                                                    let mut unicode_hex: Vec<char> = _d();
-                                                    while unicode_hex.len() < 4 {
-                                                        match request.get(current_index) {
-                                                            Some(ch)
-                                                                if matches!(
-                                                                    ch,
-                                                                    '0'..='9' | 'A'..='F' | 'a'..='f'
-                                                                ) =>
-                                                            {
-                                                                unicode_hex.push(*ch);
-                                                                current_index += 1;
-                                                            }
-                                                            _ => panic!("Unexpected hex digit"),
+                                Some(ch) => match ch {
+                                    '"' => {
+                                        current_index += 1;
+                                        ret.push(Token::String(
+                                            resolved_chars.into_iter().collect(),
+                                        ));
+                                        break;
+                                    }
+                                    '\\' => {
+                                        current_index += 1;
+                                        match request.get(current_index) {
+                                            Some('u') => {
+                                                current_index += 1;
+                                                let mut unicode_hex: Vec<char> = _d();
+                                                while unicode_hex.len() < 4 {
+                                                    match request.get(current_index) {
+                                                        Some(ch)
+                                                            if matches!(
+                                                                ch,
+                                                                '0'..='9' | 'A'..='F' | 'a'..='f'
+                                                            ) =>
+                                                        {
+                                                            unicode_hex.push(*ch);
+                                                            current_index += 1;
                                                         }
+                                                        _ => panic!("Unexpected hex digit"),
                                                     }
-                                                    resolved_chars.push(
-                                                        char::from_u32(
-                                                            u32::from_str_radix(
-                                                                &unicode_hex
-                                                                    .into_iter()
-                                                                    .collect::<String>(),
-                                                                16,
-                                                            )
-                                                            .unwrap(),
+                                                }
+                                                resolved_chars.push(
+                                                    char::from_u32(
+                                                        u32::from_str_radix(
+                                                            &unicode_hex
+                                                                .into_iter()
+                                                                .collect::<String>(),
+                                                            16,
                                                         )
-                                                        .expect("Couldn't convert hex to char"),
-                                                    );
-                                                }
-                                                Some('"') => {
-                                                    resolved_chars.push('"');
-                                                }
-                                                Some('\\') => {
-                                                    resolved_chars.push('\\');
-                                                }
-                                                Some('/') => {
-                                                    resolved_chars.push('/');
-                                                }
-                                                Some('b') => {
-                                                    resolved_chars.push('\u{8}');
-                                                }
-                                                Some('f') => {
-                                                    resolved_chars.push('\u{C}');
-                                                }
-                                                Some('n') => {
-                                                    resolved_chars.push('\n');
-                                                }
-                                                Some('r') => {
-                                                    resolved_chars.push('\r');
-                                                }
-                                                Some('t') => {
-                                                    resolved_chars.push('\t');
-                                                }
-                                                _ => panic!("Unexpected escape"),
+                                                        .unwrap(),
+                                                    )
+                                                    .expect("Couldn't convert hex to char"),
+                                                );
                                             }
-                                        }
-                                        ch => {
-                                            resolved_chars.push(*ch);
+                                            Some('"') => {
+                                                resolved_chars.push('"');
+                                            }
+                                            Some('\\') => {
+                                                resolved_chars.push('\\');
+                                            }
+                                            Some('/') => {
+                                                resolved_chars.push('/');
+                                            }
+                                            Some('b') => {
+                                                resolved_chars.push('\u{8}');
+                                            }
+                                            Some('f') => {
+                                                resolved_chars.push('\u{C}');
+                                            }
+                                            Some('n') => {
+                                                resolved_chars.push('\n');
+                                            }
+                                            Some('r') => {
+                                                resolved_chars.push('\r');
+                                            }
+                                            Some('t') => {
+                                                resolved_chars.push('\t');
+                                            }
+                                            _ => panic!("Unexpected escape"),
                                         }
                                     }
-                                    current_index += 1;
-                                }
+                                    ch => {
+                                        current_index += 1;
+                                        resolved_chars.push(*ch);
+                                    }
+                                },
                             }
                         }
                     }
@@ -404,5 +403,26 @@ mod tests {
         lex_test("10.1e-53", [Token::Float(10.1e-53)]);
         lex_test("10e53", [Token::Float(10e53)]);
         lex_test("10e-53", [Token::Float(10e-53)]);
+    }
+
+    #[test]
+    fn test_string() {
+        lex_test(r#""""#, [Token::String("".to_owned())]);
+        lex_test(r#""abc""#, [Token::String("abc".to_owned())]);
+    }
+
+    #[test]
+    fn test_name() {
+        lex_test("Foo", [Token::Name("Foo".to_owned())]);
+    }
+
+    #[test]
+    fn test_int() {
+        lex_test("35", [Token::Int(35)]);
+    }
+
+    #[test]
+    fn test_dot_dot_dot() {
+        lex_test("...a", [Token::DotDotDot, Token::Name("a".to_owned())]);
     }
 }
