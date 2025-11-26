@@ -168,6 +168,28 @@ pub fn lex(request: &[char]) -> Vec<Token> {
                     }
                 }
             }
+            '-' | '0'..='9' => {
+                let is_negative = ch == '-';
+                let mut integer_part: Vec<char> = _d();
+                if !is_negative {
+                    integer_part.push(ch);
+                }
+                current_index += 1;
+                while matches!(
+                    request.get(current_index + 1),
+                    Some(ch) if matches!(
+                        ch,
+                        '0'..='9'
+                    )
+                ) {
+                    integer_part.push(request[current_index + 1]);
+                    if integer_part.len() == 2 && integer_part[0] == '0' && integer_part[1] == '0' {
+                        panic!("Can't have leading zero");
+                    }
+                    current_index += 1;
+                }
+                // HERE
+            }
             UnicodeBOM => {}
         }
 
