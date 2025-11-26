@@ -108,7 +108,7 @@ impl ObjectTypeBuilder {
 
 impl ObjectType {
     pub fn is_query_type(&self) -> bool {
-        matches!(self.is_top_level_type, Some(OperationType::Query))
+        self.is_top_level_type.is(OperationType::Query)
     }
 
     pub fn field(&self, name: &str) -> &Field {
