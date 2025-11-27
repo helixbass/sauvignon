@@ -46,25 +46,25 @@ pub fn lex(request: impl IntoIterator<Item = char>) -> Vec<Token> {
     loop {
         match request.next() {
             Some(ch) => {
-                match ch {
-                    '!' => ret.push(Token::ExclamationPoint),
-                    '$' => ret.push(Token::DollarSign),
-                    '&' => ret.push(Token::Ampersand),
-                    '(' => ret.push(Token::LeftParen),
-                    ')' => ret.push(Token::RightParen),
+                let maybe_token = match ch {
+                    '!' => Some(Token::ExclamationPoint),
+                    '$' => Some(Token::DollarSign),
+                    '&' => Some(Token::Ampersand),
+                    '(' => Some(Token::LeftParen),
+                    ')' => Some(Token::RightParen),
                     '.' => {
                         assert!(request.next() == Some('.'));
                         assert!(request.next() == Some('.'));
-                        ret.push(Token::DotDotDot);
+                        Some(Token::DotDotDot)
                     }
-                    ':' => ret.push(Token::Colon),
-                    '=' => ret.push(Token::Equals),
-                    '@' => ret.push(Token::AtSymbol),
-                    '[' => ret.push(Token::LeftSquareBracket),
-                    ']' => ret.push(Token::RightSquareBracket),
-                    '{' => ret.push(Token::LeftCurlyBracket),
-                    '|' => ret.push(Token::Pipe),
-                    '}' => ret.push(Token::RightCurlyBracket),
+                    ':' => Some(Token::Colon),
+                    '=' => Some(Token::Equals),
+                    '@' => Some(Token::AtSymbol),
+                    '[' => Some(Token::LeftSquareBracket),
+                    ']' => Some(Token::RightSquareBracket),
+                    '{' => Some(Token::LeftCurlyBracket),
+                    '|' => Some(Token::Pipe),
+                    '}' => Some(Token::RightCurlyBracket),
                     'A'..='Z' | 'a'..='z' | '_' => {
                         let mut chars: Vec<char> = vec![ch];
                         loop {
@@ -80,16 +80,14 @@ pub fn lex(request: impl IntoIterator<Item = char>) -> Vec<Token> {
                                 _ => break,
                             }
                         }
-                        ret.push(Token::Name(chars.iter().collect()));
+                        Some(Token::Name(chars.iter().collect()))
                     }
                     '"' => match request.next() {
                         Some('"') => match request.next() {
                             Some('"') => {
                                 unimplemented!()
                             }
-                            _ => {
-                                ret.push(Token::String("".to_owned()));
-                            }
+                            _ => Some(Token::String("".to_owned())),
                         },
                         Some(ch) => {
                             let mut resolved_chars: Vec<char> = vec![ch];
@@ -98,10 +96,9 @@ pub fn lex(request: impl IntoIterator<Item = char>) -> Vec<Token> {
                                     None => panic!("expected closing double-quote"),
                                     Some(ch) => match ch {
                                         '"' => {
-                                            ret.push(Token::String(
+                                            break Some(Token::String(
                                                 resolved_chars.into_iter().collect(),
                                             ));
-                                            break;
                                         }
                                         '\\' => match request.next() {
                                             Some('u') => {
@@ -228,7 +225,7 @@ pub fn lex(request: impl IntoIterator<Item = char>) -> Vec<Token> {
                                                             if exponent_digits.is_empty() {
                                                                 panic!("Expected exponent digits");
                                                             }
-                                                            ret.push(Token::Float(
+                                                            break Some(Token::Float(
                                                                 format!(
                                                                     "{}{}.{}e{}{}",
                                                                     if is_negative {
@@ -254,27 +251,20 @@ pub fn lex(request: impl IntoIterator<Item = char>) -> Vec<Token> {
                                                                 .parse::<f64>()
                                                                 .expect("Couldn't parse float"),
                                                             ));
-                                                            break;
                                                         }
                                                     }
                                                 }
                                             }
-                                            _ => {
-                                                ret.push(Token::Float(
-                                                    format!(
-                                                        "{}{}.{}",
-                                                        if is_negative { "-" } else { "" },
-                                                        integer_part
-                                                            .into_iter()
-                                                            .collect::<String>(),
-                                                        fractional_part
-                                                            .into_iter()
-                                                            .collect::<String>(),
-                                                    )
-                                                    .parse::<f64>()
-                                                    .expect("Couldn't parse float"),
-                                                ));
-                                            }
+                                            _ => Some(Token::Float(
+                                                format!(
+                                                    "{}{}.{}",
+                                                    if is_negative { "-" } else { "" },
+                                                    integer_part.into_iter().collect::<String>(),
+                                                    fractional_part.into_iter().collect::<String>(),
+                                                )
+                                                .parse::<f64>()
+                                                .expect("Couldn't parse float"),
+                                            )),
                                         }
                                     }
                                     _ => {
@@ -293,7 +283,7 @@ pub fn lex(request: impl IntoIterator<Item = char>) -> Vec<Token> {
                                                     if exponent_digits.is_empty() {
                                                         panic!("Expected exponent digits");
                                                     }
-                                                    ret.push(Token::Float(
+                                                    break Some(Token::Float(
                                                         format!(
                                                             "{}{}e{}{}",
                                                             if is_negative { "-" } else { "" },
@@ -312,22 +302,19 @@ pub fn lex(request: impl IntoIterator<Item = char>) -> Vec<Token> {
                                                         .parse::<f64>()
                                                         .expect("Couldn't parse float"),
                                                     ));
-                                                    break;
                                                 }
                                             }
                                         }
                                     }
                                 }
                             }
-                            _ => {
-                                ret.push(Token::Int(
-                                    i32::from_str_radix(
-                                        &integer_part.into_iter().collect::<String>(),
-                                        10,
-                                    )
-                                    .unwrap(),
-                                ));
-                            }
+                            _ => Some(Token::Int(
+                                i32::from_str_radix(
+                                    &integer_part.into_iter().collect::<String>(),
+                                    10,
+                                )
+                                .unwrap(),
+                            )),
                         }
                     }
                     '#' => {
@@ -340,6 +327,7 @@ pub fn lex(request: impl IntoIterator<Item = char>) -> Vec<Token> {
                         ) {
                             let _ = request.next().unwrap();
                         }
+                        None
                     }
                     ch @ UNICODE_BOM
                     | ch @ '\u{9}'
@@ -352,8 +340,13 @@ pub fn lex(request: impl IntoIterator<Item = char>) -> Vec<Token> {
                                 let _ = request.next().unwrap();
                             }
                         }
+                        None
                     }
                     _ => panic!("Unsupported char?"),
+                };
+                match maybe_token {
+                    Some(token) => ret.push(token),
+                    None => {}
                 }
             }
             None => return ret,
