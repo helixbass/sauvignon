@@ -40,130 +40,81 @@ impl Token {
     }
 }
 
-pub fn lex(request: &[char]) -> Vec<Token> {
+pub fn lex(request: impl IntoIterator<Item = char>) -> Vec<Token> {
+    let mut request = request.into_iter().peekable();
     let mut ret = vec![];
-    let mut current_index = 0;
-    while current_index < request.len() {
-        match request[current_index] {
-            '!' => {
-                current_index += 1;
-                ret.push(Token::ExclamationPoint);
-            }
-            '$' => {
-                current_index += 1;
-                ret.push(Token::DollarSign);
-            }
-            '&' => {
-                current_index += 1;
-                ret.push(Token::Ampersand);
-            }
-            '(' => {
-                current_index += 1;
-                ret.push(Token::LeftParen);
-            }
-            ')' => {
-                current_index += 1;
-                ret.push(Token::RightParen);
-            }
-            '.' => {
-                current_index += 1;
-                assert!(request.get(current_index) == Some(&'.'));
-                current_index += 1;
-                assert!(request.get(current_index) == Some(&'.'));
-                current_index += 1;
-                ret.push(Token::DotDotDot);
-            }
-            ':' => {
-                current_index += 1;
-                ret.push(Token::Colon);
-            }
-            '=' => {
-                current_index += 1;
-                ret.push(Token::Equals);
-            }
-            '@' => {
-                current_index += 1;
-                ret.push(Token::AtSymbol);
-            }
-            '[' => {
-                current_index += 1;
-                ret.push(Token::LeftSquareBracket);
-            }
-            ']' => {
-                current_index += 1;
-                ret.push(Token::RightSquareBracket);
-            }
-            '{' => {
-                current_index += 1;
-                ret.push(Token::LeftCurlyBracket);
-            }
-            '|' => {
-                current_index += 1;
-                ret.push(Token::Pipe);
-            }
-            '}' => {
-                current_index += 1;
-                ret.push(Token::RightCurlyBracket);
-            }
-            'A'..='Z' | 'a'..='z' | '_' => {
-                let initial_index = current_index;
-                current_index += 1;
-                while matches!(
-                    request.get(current_index),
-                    Some(ch) if matches!(
-                        ch,
-                        'A'..='Z' | 'a'..='z' | '_' | '0'..='9'
-                    )
-                ) {
-                    current_index += 1;
-                }
-                ret.push(Token::Name(
-                    request[initial_index..current_index].iter().collect(),
-                ));
-            }
-            '"' => {
-                current_index += 1;
-                match request.get(current_index) {
-                    Some('"') => {
-                        current_index += 1;
-                        match request.get(current_index) {
+    loop {
+        match request.next() {
+            Some(ch) => {
+                match ch {
+                    '!' => ret.push(Token::ExclamationPoint),
+                    '$' => ret.push(Token::DollarSign),
+                    '&' => ret.push(Token::Ampersand),
+                    '(' => ret.push(Token::LeftParen),
+                    ')' => ret.push(Token::RightParen),
+                    '.' => {
+                        assert!(request.next() == Some('.'));
+                        assert!(request.next() == Some('.'));
+                        ret.push(Token::DotDotDot);
+                    }
+                    ':' => ret.push(Token::Colon),
+                    '=' => ret.push(Token::Equals),
+                    '@' => ret.push(Token::AtSymbol),
+                    '[' => ret.push(Token::LeftSquareBracket),
+                    ']' => ret.push(Token::RightSquareBracket),
+                    '{' => ret.push(Token::LeftCurlyBracket),
+                    '|' => ret.push(Token::Pipe),
+                    '}' => ret.push(Token::RightCurlyBracket),
+                    'A'..='Z' | 'a'..='z' | '_' => {
+                        let mut chars: Vec<char> = vec![ch];
+                        loop {
+                            match request.peek() {
+                                Some(ch)
+                                    if matches!(
+                                        ch,
+                                        'A'..='Z' | 'a'..='z' | '_' | '0'..='9'
+                                    ) =>
+                                {
+                                    chars.push(request.next().unwrap());
+                                }
+                                _ => break,
+                            }
+                        }
+                        ret.push(Token::Name(chars.iter().collect()));
+                    }
+                    '"' => match request.next() {
+                        Some('"') => match request.next() {
                             Some('"') => {
                                 unimplemented!()
                             }
                             _ => {
                                 ret.push(Token::String("".to_owned()));
                             }
-                        }
-                    }
-                    _ => {
-                        let mut resolved_chars: Vec<char> = _d();
-                        loop {
-                            match request.get(current_index) {
-                                None => panic!("expected closing double-quote"),
-                                Some(ch) => match ch {
-                                    '"' => {
-                                        current_index += 1;
-                                        ret.push(Token::String(
-                                            resolved_chars.into_iter().collect(),
-                                        ));
-                                        break;
-                                    }
-                                    '\\' => {
-                                        current_index += 1;
-                                        match request.get(current_index) {
+                        },
+                        Some(ch) => {
+                            let mut resolved_chars: Vec<char> = vec![ch];
+                            loop {
+                                match request.next() {
+                                    None => panic!("expected closing double-quote"),
+                                    Some(ch) => match ch {
+                                        '"' => {
+                                            ret.push(Token::String(
+                                                resolved_chars.into_iter().collect(),
+                                            ));
+                                            break;
+                                        }
+                                        '\\' => match request.next() {
                                             Some('u') => {
-                                                current_index += 1;
                                                 let mut unicode_hex: Vec<char> = _d();
                                                 while unicode_hex.len() < 4 {
-                                                    match request.get(current_index) {
+                                                    match request.next() {
                                                         Some(ch)
                                                             if matches!(
                                                                 ch,
                                                                 '0'..='9' | 'A'..='F' | 'a'..='f'
                                                             ) =>
                                                         {
-                                                            unicode_hex.push(*ch);
-                                                            current_index += 1;
+                                                            unicode_hex.push(ch);
                                                         }
                                                         _ => panic!("Unexpected hex digit"),
                                                     }
@@ -206,74 +157,137 @@ pub fn lex(request: &[char]) -> Vec<Token> {
                                                 resolved_chars.push('\t');
                                             }
                                             _ => panic!("Unexpected escape"),
+                                        },
+                                        ch => {
+                                            resolved_chars.push(ch);
                                         }
-                                    }
-                                    ch => {
-                                        current_index += 1;
-                                        resolved_chars.push(*ch);
-                                    }
-                                },
+                                    },
+                                }
                             }
                         }
-                    }
-                }
-            }
-            ch @ '-' | ch @ '0'..='9' => {
-                current_index += 1;
-                let is_negative = ch == '-';
-                let mut integer_part: Vec<char> = _d();
-                if !is_negative {
-                    integer_part.push(ch);
-                }
-                while matches!(
-                    request.get(current_index),
-                    Some(ch) if matches!(
-                        ch,
-                        '0'..='9'
-                    )
-                ) {
-                    integer_part.push(request[current_index]);
-                    if integer_part.len() == 2 && integer_part[0] == '0' && integer_part[1] == '0' {
-                        panic!("Can't have leading zero");
-                    }
-                    current_index += 1;
-                }
-                match request.get(current_index) {
-                    Some(ch) if matches!(ch, '.' | 'e' | 'E') => {
-                        match ch {
-                            '.' => {
-                                current_index += 1;
-                                let mut fractional_part: Vec<char> = _d();
-                                loop {
-                                    match request.get(current_index) {
-                                        Some(ch) if matches!(ch, '0'..='9') => {
-                                            fractional_part.push(*ch);
-                                        }
-                                        _ => {
-                                            if fractional_part.is_empty() {
-                                                panic!("expected fractional part digits");
+                        _ => panic!("Expected end of string"),
+                    },
+                    ch @ '-' | ch @ '0'..='9' => {
+                        let is_negative = ch == '-';
+                        let mut integer_part: Vec<char> = _d();
+                        if !is_negative {
+                            integer_part.push(ch);
+                        }
+                        while matches!(
+                            request.peek(),
+                            Some(ch) if matches!(
+                                ch,
+                                '0'..='9'
+                            )
+                        ) {
+                            integer_part.push(request.next().unwrap());
+                            if integer_part.len() == 2
+                                && integer_part[0] == '0'
+                                && integer_part[1] == '0'
+                            {
+                                panic!("Can't have leading zero");
+                            }
+                        }
+                        match request.peek() {
+                            Some(ch) if matches!(ch, '.' | 'e' | 'E') => {
+                                let ch = request.next().unwrap();
+                                match ch {
+                                    '.' => {
+                                        let mut fractional_part: Vec<char> = _d();
+                                        loop {
+                                            match request.peek() {
+                                                Some(ch) if matches!(ch, '0'..='9') => {
+                                                    fractional_part.push(request.next().unwrap());
+                                                }
+                                                _ => {
+                                                    if fractional_part.is_empty() {
+                                                        panic!("expected fractional part digits");
+                                                    }
+                                                    break;
+                                                }
                                             }
-                                            break;
+                                        }
+                                        match request.peek() {
+                                            Some(ch) if matches!(ch, 'e' | 'E') => {
+                                                let _ = request.next().unwrap();
+                                                // TODO: DRY this up wrt non-fractional-part
+                                                // case below
+                                                let mut has_exponent_negative_sign = false;
+                                                if matches!(request.peek(), Some('-')) {
+                                                    let _ = request.next().unwrap();
+                                                    has_exponent_negative_sign = true;
+                                                }
+                                                let mut exponent_digits: Vec<char> = _d();
+                                                loop {
+                                                    match request.peek() {
+                                                        Some(ch) if matches!(ch, '0'..='9') => {
+                                                            exponent_digits
+                                                                .push(request.next().unwrap());
+                                                        }
+                                                        _ => {
+                                                            if exponent_digits.is_empty() {
+                                                                panic!("Expected exponent digits");
+                                                            }
+                                                            ret.push(Token::Float(
+                                                                format!(
+                                                                    "{}{}.{}e{}{}",
+                                                                    if is_negative {
+                                                                        "-"
+                                                                    } else {
+                                                                        ""
+                                                                    },
+                                                                    integer_part
+                                                                        .into_iter()
+                                                                        .collect::<String>(),
+                                                                    fractional_part
+                                                                        .into_iter()
+                                                                        .collect::<String>(),
+                                                                    if has_exponent_negative_sign {
+                                                                        "-"
+                                                                    } else {
+                                                                        ""
+                                                                    },
+                                                                    exponent_digits
+                                                                        .into_iter()
+                                                                        .collect::<String>(),
+                                                                )
+                                                                .parse::<f64>()
+                                                                .expect("Couldn't parse float"),
+                                                            ));
+                                                            break;
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                            _ => {
+                                                ret.push(Token::Float(
+                                                    format!(
+                                                        "{}{}.{}",
+                                                        if is_negative { "-" } else { "" },
+                                                        integer_part
+                                                            .into_iter()
+                                                            .collect::<String>(),
+                                                        fractional_part
+                                                            .into_iter()
+                                                            .collect::<String>(),
+                                                    )
+                                                    .parse::<f64>()
+                                                    .expect("Couldn't parse float"),
+                                                ));
+                                            }
                                         }
                                     }
-                                    current_index += 1;
-                                }
-                                match request.get(current_index) {
-                                    Some(ch) if matches!(ch, 'e' | 'E') => {
-                                        current_index += 1;
-                                        // TODO: DRY this up wrt non-fractional-part
-                                        // case below
+                                    _ => {
                                         let mut has_exponent_negative_sign = false;
-                                        if matches!(request.get(current_index), Some('-')) {
+                                        if matches!(request.peek(), Some('-')) {
+                                            let _ = request.next().unwrap();
                                             has_exponent_negative_sign = true;
-                                            current_index += 1;
                                         }
                                         let mut exponent_digits: Vec<char> = _d();
                                         loop {
-                                            match request.get(current_index) {
+                                            match request.peek() {
                                                 Some(ch) if matches!(ch, '0'..='9') => {
-                                                    exponent_digits.push(*ch);
-                                                    current_index += 1;
+                                                    exponent_digits.push(request.next().unwrap());
                                                 }
                                                 _ => {
                                                     if exponent_digits.is_empty() {
@@ -281,12 +295,9 @@ pub fn lex(request: &[char]) -> Vec<Token> {
                                                     }
                                                     ret.push(Token::Float(
                                                         format!(
-                                                            "{}{}.{}e{}{}",
+                                                            "{}{}e{}{}",
                                                             if is_negative { "-" } else { "" },
                                                             integer_part
-                                                                .into_iter()
-                                                                .collect::<String>(),
-                                                            fractional_part
                                                                 .into_iter()
                                                                 .collect::<String>(),
                                                             if has_exponent_negative_sign {
@@ -306,95 +317,51 @@ pub fn lex(request: &[char]) -> Vec<Token> {
                                             }
                                         }
                                     }
-                                    _ => {
-                                        ret.push(Token::Float(
-                                            format!(
-                                                "{}{}.{}",
-                                                if is_negative { "-" } else { "" },
-                                                integer_part.into_iter().collect::<String>(),
-                                                fractional_part.into_iter().collect::<String>(),
-                                            )
-                                            .parse::<f64>()
-                                            .expect("Couldn't parse float"),
-                                        ));
-                                    }
                                 }
                             }
                             _ => {
-                                current_index += 1;
-                                let mut has_exponent_negative_sign = false;
-                                if matches!(request.get(current_index), Some('-')) {
-                                    has_exponent_negative_sign = true;
-                                    current_index += 1;
-                                }
-                                let mut exponent_digits: Vec<char> = _d();
-                                loop {
-                                    match request.get(current_index) {
-                                        Some(ch) if matches!(ch, '0'..='9') => {
-                                            exponent_digits.push(*ch);
-                                            current_index += 1;
-                                        }
-                                        _ => {
-                                            if exponent_digits.is_empty() {
-                                                panic!("Expected exponent digits");
-                                            }
-                                            ret.push(Token::Float(
-                                                format!(
-                                                    "{}{}e{}{}",
-                                                    if is_negative { "-" } else { "" },
-                                                    integer_part.into_iter().collect::<String>(),
-                                                    if has_exponent_negative_sign {
-                                                        "-"
-                                                    } else {
-                                                        ""
-                                                    },
-                                                    exponent_digits.into_iter().collect::<String>(),
-                                                )
-                                                .parse::<f64>()
-                                                .expect("Couldn't parse float"),
-                                            ));
-                                            break;
-                                        }
-                                    }
-                                }
+                                ret.push(Token::Int(
+                                    i32::from_str_radix(
+                                        &integer_part.into_iter().collect::<String>(),
+                                        10,
+                                    )
+                                    .unwrap(),
+                                ));
                             }
                         }
                     }
-                    _ => {
-                        ret.push(Token::Int(
-                            i32::from_str_radix(&integer_part.into_iter().collect::<String>(), 10)
-                                .unwrap(),
-                        ));
+                    '#' => {
+                        while matches!(
+                            request.peek(),
+                            Some(ch) if !matches!(
+                                ch,
+                                '\n' | '\r'
+                            )
+                        ) {
+                            let _ = request.next().unwrap();
+                        }
                     }
-                }
-            }
-            '#' => {
-                current_index += 1;
-                while matches!(
-                    request.get(current_index),
-                    Some(ch) if !matches!(
-                        ch,
-                        '\n' | '\r'
-                    )
-                ) {
-                    current_index += 1;
-                }
-            }
-            ch @ UNICODE_BOM | ch @ '\u{9}' | ch @ '\u{20}' | ch @ ',' | ch @ '\n' | ch @ '\r' => {
-                current_index += 1;
-                if ch == '\r' {
-                    if request.get(current_index) == Some(&'\n') {
-                        current_index += 1;
+                    ch @ UNICODE_BOM
+                    | ch @ '\u{9}'
+                    | ch @ '\u{20}'
+                    | ch @ ','
+                    | ch @ '\n'
+                    | ch @ '\r' => {
+                        if ch == '\r' {
+                            if request.peek() == Some(&'\n') {
+                                let _ = request.next().unwrap();
+                            }
+                        }
                     }
+                    _ => panic!("Unsupported char?"),
                 }
             }
-            _ => panic!("Unsupported char?"),
+            None => return ret,
         }
     }
-    ret
 }
 
-pub fn parse(request: &[char]) -> Request {
+pub fn parse(request: impl IntoIterator<Item = char>) -> Request {
     parse_tokens(lex(request))
 }
 
@@ -603,7 +570,7 @@ mod tests {
 
     fn lex_test(request: &str, expected_tokens: impl IntoIterator<Item = Token>) {
         assert_eq!(
-            lex(&request.chars().collect::<Vec<_>>(),),
+            lex(request.chars()),
             expected_tokens.into_iter().collect::<Vec<_>>()
         );
     }

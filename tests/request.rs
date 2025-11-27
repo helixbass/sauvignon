@@ -419,7 +419,7 @@ async fn get_db_pool() -> anyhow::Result<Pool<Postgres>> {
 async fn request_test(request: &str, expected: &str) {
     let db_pool = get_db_pool().await.unwrap();
     let schema = get_schema(&db_pool).await.unwrap();
-    let request = parse(&request.chars().collect::<Vec<_>>());
+    let request = parse(request.chars());
     let response = schema.request(request, &db_pool).await;
     let json = json_from_response(&response);
     assert_eq!(pretty_print_json(&json), pretty_print_json(expected));
