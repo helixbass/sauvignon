@@ -64,6 +64,7 @@ where
         loop {
             match self.request.next() {
                 Some(ch) => {
+                    PositionsTracker::emit_token_pre_start();
                     let maybe_token = match ch {
                         '!' => Some(Token::ExclamationPoint),
                         '$' => Some(Token::DollarSign),

@@ -513,7 +513,7 @@ fn validate_operation_name_uniqueness(request: &Request) -> Option<ValidationErr
 }
 
 fn add_all_operation_name_locations(locations: &mut Vec<Location>, name: &str, request: &Request) {
-    let Ok(positions_tracker) = illicit::get::<PositionsTracker>() else {
+    let Some(positions_tracker) = PositionsTracker::current() else {
         return;
     };
 

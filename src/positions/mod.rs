@@ -1,3 +1,7 @@
+use std::{fmt::Debug, ops::Deref};
+
+use crate::Token;
+
 pub struct CharsEmitter<TIterator: Iterator<Item = char>> {
     inner: TIterator,
 }
@@ -30,25 +34,33 @@ impl PositionsTracker {
         unimplemented!()
     }
 
+    pub fn receive_token_pre_start(&self) {
+        unimplemented!()
+    }
+
     pub fn nth_named_operation_name_location(&self, index: usize) -> Location {
         unimplemented!()
     }
 
+    pub fn current() -> Option<impl Deref<Target = Self> + Debug + 'static> {
+        illicit::get::<Self>().ok()
+    }
+
     pub fn emit_char(ch: char) {
-        match illicit::get::<PositionsTracker>() {
-            Ok(positions_tracker) => {
-                positions_tracker.receive_char(ch);
-            }
-            _ => {}
+        if let Some(positions_tracker) = Self::current() {
+            positions_tracker.receive_char(ch);
         }
     }
 
     pub fn emit_operation_name() {
-        match illicit::get::<PositionsTracker>() {
-            Ok(positions_tracker) => {
-                positions_tracker.receive_operation_name();
-            }
-            _ => {}
+        if let Some(positions_tracker) = Self::current() {
+            positions_tracker.receive_operation_name();
+        }
+    }
+
+    pub fn emit_token_pre_start() {
+        if let Some(positions_tracker) = Self::current() {
+            positions_tracker.receive_token_pre_start();
         }
     }
 }
