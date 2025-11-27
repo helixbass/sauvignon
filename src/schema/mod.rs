@@ -6,7 +6,7 @@ use sqlx::{Pool, Postgres};
 use squalid::{OptionExt, _d};
 
 use crate::{
-    builtin_types, fields_in_progress_new, parse, CarverOrPopulator, CharsEmitter, DependencyType,
+    builtin_types, fields_in_progress_new, parse, CarverOrPopulator, DependencyType,
     DependencyValue, Error, ExternalDependencyValues, FieldPlan, FieldsInProgress, Id, InProgress,
     InProgressRecursing, InProgressRecursingList, IndexMap, Interface, InternalDependencyResolver,
     InternalDependencyValues, Location, Populator, PositionsTracker, QueryPlan, Request, Response,
@@ -81,7 +81,7 @@ impl Schema {
         let (request, validation_errors, validated_request) = illicit::Layer::new()
             .offer(PositionsTracker::default())
             .enter(|| {
-                let request = parse(CharsEmitter::new(request_str.chars()));
+                let request = parse(request_str.chars());
                 let (validation_errors, validated_request) = self.validate(&request);
                 (request, validation_errors, validated_request)
             });

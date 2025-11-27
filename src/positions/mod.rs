@@ -1,14 +1,18 @@
-use std::{cell::RefCell, fmt::Debug, ops::Deref};
+use std::{cell::RefCell, fmt::Debug, iter::Peekable, ops::Deref};
 
 use serde::Serialize;
 
 pub struct CharsEmitter<TIterator: Iterator<Item = char>> {
-    inner: TIterator,
+    inner: Peekable<TIterator>,
 }
 
 impl<TIterator: Iterator<Item = char>> CharsEmitter<TIterator> {
-    pub fn new(inner: TIterator) -> Self {
+    pub fn new(inner: Peekable<TIterator>) -> Self {
         Self { inner }
+    }
+
+    pub fn peek(&mut self) -> Option<&char> {
+        self.inner.peek()
     }
 }
 
@@ -53,9 +57,10 @@ impl PositionsTracker {
             }
             None => Location::new(1, 1),
         };
-        if *self.should_next_char_record_as_token_start.borrow() {
+        if { *self.should_next_char_record_as_token_start.borrow() } {
             *self.last_token_start.borrow_mut() = Some(new_last_char);
         }
+        *self.should_next_char_record_as_token_start.borrow_mut() = false;
         *self.last_char.borrow_mut() = Some(new_last_char);
     }
 
