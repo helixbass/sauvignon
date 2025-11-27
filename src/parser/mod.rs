@@ -408,19 +408,21 @@ pub fn parse_tokens(tokens: impl IntoIterator<Item = Token>) -> Request {
                         builder = builder.operation_type(OperationType::Query);
                         match token {
                             Token::Name(_parsed_operation_type) => match tokens.next() {
-                                Some(Token::LeftCurlyBracket) => {
-                                    builder =
-                                        builder.selection_set(parse_selection_set(&mut tokens));
-                                    ExecutableDefinition::Operation(builder.build().unwrap())
-                                }
+                                Some(Token::LeftCurlyBracket) => ExecutableDefinition::Operation(
+                                    builder
+                                        .selection_set(parse_selection_set(&mut tokens))
+                                        .build()
+                                        .unwrap(),
+                                ),
                                 Some(Token::Name(name)) => {
                                     builder = builder.name(name);
                                     match tokens.next() {
                                         Some(Token::LeftCurlyBracket) => {
-                                            builder = builder
-                                                .selection_set(parse_selection_set(&mut tokens));
                                             ExecutableDefinition::Operation(
-                                                builder.build().unwrap(),
+                                                builder
+                                                    .selection_set(parse_selection_set(&mut tokens))
+                                                    .build()
+                                                    .unwrap(),
                                             )
                                         }
                                         _ => panic!("Expected selection set"),
@@ -428,10 +430,12 @@ pub fn parse_tokens(tokens: impl IntoIterator<Item = Token>) -> Request {
                                 }
                                 _ => panic!("Expected query"),
                             },
-                            _ => {
-                                builder = builder.selection_set(parse_selection_set(&mut tokens));
-                                ExecutableDefinition::Operation(builder.build().unwrap())
-                            }
+                            _ => ExecutableDefinition::Operation(
+                                builder
+                                    .selection_set(parse_selection_set(&mut tokens))
+                                    .build()
+                                    .unwrap(),
+                            ),
                         }
                     });
                 }
@@ -474,15 +478,13 @@ where
 
     loop {
         match tokens.next() {
-            Some(Token::DotDotDot) => match tokens.next() {
+            Some(Token::DotDotDot) => ret.push(match tokens.next() {
                 Some(token) => {
                     if matches!(
                         &token,
                         Token::Name(name) if name != "on"
                     ) {
-                        ret.push(Selection::FragmentSpread(FragmentSpread::new(
-                            token.into_name(),
-                        )));
+                        Selection::FragmentSpread(FragmentSpread::new(token.into_name()))
                     } else if matches!(&token, Token::Name(_) | Token::LeftCurlyBracket) {
                         match token {
                             Token::Name(_) => {
@@ -491,21 +493,15 @@ where
                                     _ => panic!("Expected on"),
                                 };
                                 match tokens.next() {
-                                    Some(Token::LeftCurlyBracket) => {
-                                        ret.push(Selection::InlineFragment(InlineFragment::new(
-                                            Some(on),
-                                            parse_selection_set(tokens),
-                                        )));
-                                    }
+                                    Some(Token::LeftCurlyBracket) => Selection::InlineFragment(
+                                        InlineFragment::new(Some(on), parse_selection_set(tokens)),
+                                    ),
                                     _ => panic!("Expected selection set"),
                                 }
                             }
-                            Token::LeftCurlyBracket => {
-                                ret.push(Selection::InlineFragment(InlineFragment::new(
-                                    None,
-                                    parse_selection_set(tokens),
-                                )));
-                            }
+                            Token::LeftCurlyBracket => Selection::InlineFragment(
+                                InlineFragment::new(None, parse_selection_set(tokens)),
+                            ),
                             _ => unreachable!(),
                         }
                     } else {
@@ -515,7 +511,7 @@ where
                 _ => {
                     panic!("Expected fragment selection");
                 }
-            },
+            }),
             Some(Token::Name(name)) => {
                 ret.push(Selection::Field({
                     let mut builder = SelectionFieldBuilder::default();
