@@ -1,7 +1,5 @@
 use std::{fmt::Debug, ops::Deref};
 
-use crate::Token;
-
 pub struct CharsEmitter<TIterator: Iterator<Item = char>> {
     inner: TIterator,
 }
@@ -22,7 +20,7 @@ impl<TIterator: Iterator<Item = char>> Iterator for CharsEmitter<TIterator> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct PositionsTracker {}
 
 impl PositionsTracker {

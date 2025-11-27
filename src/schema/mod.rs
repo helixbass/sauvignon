@@ -78,8 +78,13 @@ impl Schema {
     }
 
     pub async fn request(&self, request_str: &str, db_pool: &Pool<Postgres>) -> Response {
-        let request = parse(CharsEmitter::new(request_str.chars()));
-        let (validation_errors, validated_request) = self.validate(&request);
+        let (request, validation_errors, validated_request) = illicit::Layer::new()
+            .offer(PositionsTracker::default())
+            .enter(|| {
+                let request = parse(CharsEmitter::new(request_str.chars()));
+                let (validation_errors, validated_request) = self.validate(&request);
+                (request, validation_errors, validated_request)
+            });
         if !validation_errors.is_empty() {
             return Response::new(
                 None,
