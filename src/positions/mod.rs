@@ -38,7 +38,7 @@ pub struct PositionsTracker {
 
 impl PositionsTracker {
     pub fn receive_char(&self, ch: char) {
-        if { *self.just_saw_carriage_return.borrow() } {
+        if *self.just_saw_carriage_return.borrow() {
             if ch != '\n' {
                 *self.just_newlined.borrow_mut() = true;
             }
@@ -57,7 +57,7 @@ impl PositionsTracker {
             }
             None => Location::new(1, 1),
         };
-        if { *self.should_next_char_record_as_token_start.borrow() } {
+        if *self.should_next_char_record_as_token_start.borrow() {
             *self.last_token_start.borrow_mut() = Some(new_last_char);
         }
         *self.should_next_char_record_as_token_start.borrow_mut() = false;
