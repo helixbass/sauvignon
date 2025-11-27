@@ -55,7 +55,8 @@ async fn test_operation_name_uniqueness() {
     .await;
 
     validation_test(
-        r#"
+        indoc!(
+            r#"
             query Whee {
               actorKatie {
                 name
@@ -79,12 +80,31 @@ async fn test_operation_name_uniqueness() {
                 name
               }
             }
-        "#,
+        "#
+        ),
         r#"
             {
               "errors": [
                 {
-                  "message": "Non-unique operation names: `Whee`, `Whoa`"
+                  "message": "Non-unique operation names: `Whee`, `Whoa`",
+                  "locations": [
+                    {
+                      "line": 1,
+                      "column": 7
+                    },
+                    {
+                      "line": 13,
+                      "column": 7
+                    },
+                    {
+                      "line": 7,
+                      "column": 7
+                    },
+                    {
+                      "line": 19,
+                      "column": 7
+                    }
+                  ]
                 }
               ]
             }
