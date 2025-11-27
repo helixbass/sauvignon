@@ -3,8 +3,8 @@ use std::{iter::Peekable, vec};
 use squalid::_d;
 
 use crate::{
-    Argument, Document, ExecutableDefinition, FragmentSpread, InlineFragment, OperationType,
-    Request, Selection, SelectionFieldBuilder, Value,
+    Argument, Document, ExecutableDefinition, FragmentSpread, InlineFragment,
+    OperationDefinitionBuilder, OperationType, Request, Selection, SelectionFieldBuilder, Value,
 };
 
 const UNICODE_BOM: char = '\u{feff}';
@@ -402,130 +402,149 @@ pub fn parse_tokens(tokens: Vec<Token>) -> Request {
     let mut tokens_iter = tokens.into_iter().peekable();
     Request::new(Document::new({
         let mut definitions: Vec<ExecutableDefinition> = _d();
-        match tokens_iter.next() {
-            Some(token)
-                if matches!(token, Token::LeftCurlyBracket)
-                    || matches!(
-                        &token,
-                        Token::Name(name) if matches!(
-                            &**name,
-                            "query" // | "mutation" | "subscription"
-                        )
-                    ) =>
-            {
-                let operation_type = OperationType::Query;
-                let mut name: Option<String> = _d();
-                match token {
-                    Token::Name(_parsed_operation_type) => match tokens_iter.next() {
-                        Some(Token::LeftCurlyBracket) => {
-                            parse_selection_set(&mut tokens_iter);
-                        }
-                        Some(Token::Name(parsed_name)) => {
-                            name = Some(parsed_name);
-                            match tokens_iter.next() {
-                                Some(Token::LeftCurlyBracket) => {
-                                    parse_selection_set(&mut tokens_iter);
-                                }
-                                _ => panic!("Expected selection set"),
+        loop {
+            match tokens_iter.next() {
+                Some(token)
+                    if matches!(token, Token::LeftCurlyBracket)
+                        || matches!(
+                            &token,
+                            Token::Name(name) if matches!(
+                                &**name,
+                                "query" // | "mutation" | "subscription"
+                            )
+                        ) =>
+                {
+                    let mut builder = OperationDefinitionBuilder::default();
+                    builder = builder.operation_type(OperationType::Query);
+                    match token {
+                        Token::Name(_parsed_operation_type) => match tokens_iter.next() {
+                            Some(Token::LeftCurlyBracket) => {
+                                builder =
+                                    builder.selection_set(parse_selection_set(&mut tokens_iter));
+                                definitions.push(ExecutableDefinition::Operation(
+                                    builder.build().unwrap(),
+                                ));
                             }
+                            Some(Token::Name(name)) => {
+                                builder = builder.name(name);
+                                match tokens_iter.next() {
+                                    Some(Token::LeftCurlyBracket) => {
+                                        builder = builder
+                                            .selection_set(parse_selection_set(&mut tokens_iter));
+                                        definitions.push(ExecutableDefinition::Operation(
+                                            builder.build().unwrap(),
+                                        ));
+                                    }
+                                    _ => panic!("Expected selection set"),
+                                }
+                            }
+                            _ => panic!("Expected query"),
+                        },
+                        _ => {
+                            builder = builder.selection_set(parse_selection_set(&mut tokens_iter));
+                            definitions
+                                .push(ExecutableDefinition::Operation(builder.build().unwrap()));
                         }
-                        _ => panic!("Expected query"),
-                    },
-                    _ => {
-                        parse_selection_set(&mut tokens_iter);
                     }
                 }
+                Some(Token::Name(name)) if name == "fragment" => {}
+                None => break definitions,
+                _ => panic!("Expected definition"),
             }
-            Some(Token::Name(name)) if name == "fragment" => {}
-            _ => panic!("Expected definition"),
         }
-        definitions
     }))
 }
 
 fn parse_selection_set(tokens_iter: &mut Peekable<vec::IntoIter<Token>>) -> Vec<Selection> {
     let mut ret: Vec<Selection> = _d();
 
-    match tokens_iter.next() {
-        Some(Token::DotDotDot) => match tokens_iter.next() {
-            Some(token) => {
-                if matches!(
-                    &token,
-                    Token::Name(name) if name != "on"
-                ) {
-                    ret.push(Selection::FragmentSpread(FragmentSpread::new(
-                        token.into_name(),
-                    )));
-                } else if matches!(&token, Token::Name(_) | Token::LeftCurlyBracket) {
-                    match token {
-                        Token::Name(_) => {
-                            let on = match tokens_iter.next() {
-                                Some(Token::Name(on)) => on,
-                                _ => panic!("Expected on"),
-                            };
-                            match tokens_iter.next() {
-                                Some(Token::LeftCurlyBracket) => {
-                                    ret.push(Selection::InlineFragment(InlineFragment::new(
-                                        Some(on),
-                                        parse_selection_set(tokens_iter),
-                                    )));
+    loop {
+        match tokens_iter.next() {
+            Some(Token::DotDotDot) => match tokens_iter.next() {
+                Some(token) => {
+                    if matches!(
+                        &token,
+                        Token::Name(name) if name != "on"
+                    ) {
+                        ret.push(Selection::FragmentSpread(FragmentSpread::new(
+                            token.into_name(),
+                        )));
+                    } else if matches!(&token, Token::Name(_) | Token::LeftCurlyBracket) {
+                        match token {
+                            Token::Name(_) => {
+                                let on = match tokens_iter.next() {
+                                    Some(Token::Name(on)) => on,
+                                    _ => panic!("Expected on"),
+                                };
+                                match tokens_iter.next() {
+                                    Some(Token::LeftCurlyBracket) => {
+                                        ret.push(Selection::InlineFragment(InlineFragment::new(
+                                            Some(on),
+                                            parse_selection_set(tokens_iter),
+                                        )));
+                                    }
+                                    _ => panic!("Expected selection set"),
                                 }
-                                _ => panic!("Expected selection set"),
                             }
+                            Token::LeftCurlyBracket => {
+                                ret.push(Selection::InlineFragment(InlineFragment::new(
+                                    None,
+                                    parse_selection_set(tokens_iter),
+                                )));
+                            }
+                            _ => unreachable!(),
                         }
-                        Token::LeftCurlyBracket => {
-                            ret.push(Selection::InlineFragment(InlineFragment::new(
-                                None,
-                                parse_selection_set(tokens_iter),
-                            )));
-                        }
-                        _ => unreachable!(),
+                    } else {
+                        panic!("Expected fragment selection");
                     }
-                } else {
+                }
+                _ => {
                     panic!("Expected fragment selection");
                 }
-            }
-            _ => {
-                panic!("Expected fragment selection");
-            }
-        },
-        Some(Token::Name(name)) => {
-            let mut builder = SelectionFieldBuilder::default();
-            builder = builder.name(name);
-            match tokens_iter.next() {
-                Some(Token::LeftParen) => {
-                    let mut arguments: Vec<Argument> = _d();
-                    loop {
-                        match tokens_iter.peek() {
-                            Some(Token::Name(_)) => {
-                                let name = tokens_iter.next().unwrap().into_name();
-                                if !matches!(tokens_iter.next(), Some(Token::Colon)) {
-                                    panic!("Expected colon");
+            },
+            Some(Token::Name(name)) => {
+                let mut builder = SelectionFieldBuilder::default();
+                builder = builder.name(name);
+                match tokens_iter.next() {
+                    Some(Token::LeftParen) => {
+                        let mut arguments: Vec<Argument> = _d();
+                        loop {
+                            match tokens_iter.peek() {
+                                Some(Token::Name(_)) => {
+                                    let name = tokens_iter.next().unwrap().into_name();
+                                    if !matches!(tokens_iter.next(), Some(Token::Colon)) {
+                                        panic!("Expected colon");
+                                    }
+                                    arguments
+                                        .push(Argument::new(name, parse_value(tokens_iter, false)));
                                 }
-                                arguments
-                                    .push(Argument::new(name, parse_value(tokens_iter, false)));
+                                Some(Token::LeftCurlyBracket) => {
+                                    let _ = tokens_iter.next().unwrap();
+                                    builder =
+                                        builder.selection_set(parse_selection_set(tokens_iter));
+                                    break;
+                                }
+                                _ => break,
                             }
-                            Some(Token::LeftCurlyBracket) => {
-                                let _ = tokens_iter.next().unwrap();
-                                builder = builder.selection_set(parse_selection_set(tokens_iter));
-                                break;
-                            }
-                            _ => break,
                         }
+                        builder = builder.arguments(arguments);
                     }
-                    builder = builder.arguments(arguments);
+                    Some(Token::LeftCurlyBracket) => {
+                        builder = builder.selection_set(parse_selection_set(tokens_iter));
+                    }
+                    _ => panic!("Expected field"),
                 }
-                Some(Token::LeftCurlyBracket) => {
-                    builder = builder.selection_set(parse_selection_set(tokens_iter));
-                }
-                _ => panic!("Expected field"),
+                ret.push(Selection::Field(builder.build().unwrap()));
             }
-            ret.push(Selection::Field(builder.build().unwrap()));
+            Some(Token::RightCurlyBracket) => {
+                if ret.is_empty() {
+                    panic!("Empty selection");
+                }
+                return ret;
+            }
+            _ => panic!("Expected selection set"),
         }
-        _ => panic!("Expected selection set"),
     }
-
-    ret
 }
 
 fn parse_value(tokens_iter: &mut Peekable<vec::IntoIter<Token>>, is_const: bool) -> Value {
