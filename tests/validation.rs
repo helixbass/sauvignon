@@ -32,7 +32,17 @@ async fn test_operation_name_uniqueness() {
             {
               "errors": [
                 {
-                  "message": "Non-unique operation names: `Whee`"
+                  "message": "Non-unique operation names: `Whee`",
+                  "locations": [
+                    {
+                      "line": 1,
+                      "column": 7
+                    },
+                    {
+                      "line": 7,
+                      "column": 7
+                    }
+                  ]
                 }
               ]
             }

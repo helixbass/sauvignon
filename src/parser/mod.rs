@@ -4,7 +4,8 @@ use squalid::_d;
 
 use crate::{
     Argument, Document, ExecutableDefinition, FragmentDefinition, FragmentSpread, InlineFragment,
-    OperationDefinitionBuilder, OperationType, Request, Selection, SelectionFieldBuilder, Value,
+    OperationDefinitionBuilder, OperationType, PositionsTracker, Request, Selection,
+    SelectionFieldBuilder, Value,
 };
 
 const UNICODE_BOM: char = '\u{feff}';
@@ -415,6 +416,7 @@ pub fn parse_tokens(tokens: impl IntoIterator<Item = Token>) -> Request {
                                         .unwrap(),
                                 ),
                                 Some(Token::Name(name)) => {
+                                    PositionsTracker::emit_operation_name();
                                     builder = builder.name(name);
                                     match tokens.next() {
                                         Some(Token::LeftCurlyBracket) => {
