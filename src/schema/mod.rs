@@ -497,7 +497,7 @@ fn validate_operation_name_uniqueness(request: &Request) -> Option<ValidationErr
     duplicates.next().map(|duplicate| {
         let mut message = format!("Non-unique operation names: `{}`", duplicate);
         while let Some(duplicate) = duplicates.next() {
-            message.push_str(duplicate);
+            message.push_str(&format!(", `{duplicate}`"));
         }
 
         ValidationError::new(message)
