@@ -1,10 +1,10 @@
-use std::vec;
+use std::{iter::Peekable, vec};
 
 use squalid::_d;
 
 use crate::{
-    Document, ExecutableDefinition, FragmentSpread, InlineFragment, OperationType, Request,
-    Selection, SelectionFieldBuilder,
+    Argument, Document, ExecutableDefinition, FragmentSpread, InlineFragment, OperationType,
+    Request, Selection, SelectionFieldBuilder, Value,
 };
 
 const UNICODE_BOM: char = '\u{feff}';
@@ -399,7 +399,7 @@ pub fn parse(request: &[char]) -> Request {
 }
 
 pub fn parse_tokens(tokens: Vec<Token>) -> Request {
-    let mut tokens_iter = tokens.into_iter();
+    let mut tokens_iter = tokens.into_iter().peekable();
     Request::new(Document::new({
         let mut definitions: Vec<ExecutableDefinition> = _d();
         match tokens_iter.next() {
@@ -443,7 +443,7 @@ pub fn parse_tokens(tokens: Vec<Token>) -> Request {
     }))
 }
 
-fn parse_selection_set(tokens_iter: &mut vec::IntoIter<Token>) -> Vec<Selection> {
+fn parse_selection_set(tokens_iter: &mut Peekable<vec::IntoIter<Token>>) -> Vec<Selection> {
     let mut ret: Vec<Selection> = _d();
 
     match tokens_iter.next() {
@@ -490,14 +490,50 @@ fn parse_selection_set(tokens_iter: &mut vec::IntoIter<Token>) -> Vec<Selection>
             }
         },
         Some(Token::Name(name)) => {
-            ret.push(Selection::Field(
-                SelectionFieldBuilder::default().build().unwrap(),
-            ));
+            let mut builder = SelectionFieldBuilder::default();
+            builder = builder.name(name);
+            match tokens_iter.next() {
+                Some(Token::LeftParen) => {
+                    let mut arguments: Vec<Argument> = _d();
+                    loop {
+                        match tokens_iter.peek() {
+                            Some(Token::Name(_)) => {
+                                let name = tokens_iter.next().unwrap().into_name();
+                                if !matches!(tokens_iter.next(), Some(Token::Colon)) {
+                                    panic!("Expected colon");
+                                }
+                                arguments
+                                    .push(Argument::new(name, parse_value(tokens_iter, false)));
+                            }
+                            Some(Token::LeftCurlyBracket) => {
+                                let _ = tokens_iter.next().unwrap();
+                                builder = builder.selection_set(parse_selection_set(tokens_iter));
+                                break;
+                            }
+                            _ => break,
+                        }
+                    }
+                    builder = builder.arguments(arguments);
+                }
+                Some(Token::LeftCurlyBracket) => {
+                    builder = builder.selection_set(parse_selection_set(tokens_iter));
+                }
+                _ => panic!("Expected field"),
+            }
+            ret.push(Selection::Field(builder.build().unwrap()));
         }
         _ => panic!("Expected selection set"),
     }
 
     ret
+}
+
+fn parse_value(tokens_iter: &mut Peekable<vec::IntoIter<Token>>, is_const: bool) -> Value {
+    match tokens_iter.next() {
+        Some(Token::Int(int)) => Value::Int(int),
+        Some(Token::String(string)) => Value::String(string),
+        _ => panic!("Expected value"),
+    }
 }
 
 #[cfg(test)]
