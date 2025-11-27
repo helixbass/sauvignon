@@ -40,7 +40,7 @@ pub use crate::response::{
     InProgressRecursingList, Response, ResponseInProgress, ResponseValue,
     ResponseValueOrInProgress,
 };
-pub use crate::schema::{Schema, TypeOrUnionOrInterface};
+pub use crate::schema::{Schema, TypeOrUnionOrInterface, ValidationError};
 pub use crate::types::{
     builtin_types, string_type, BuiltInScalarType, Field as TypeField,
     FieldBuilder as TypeFieldBuilder, Interface, InterfaceBuilder, InterfaceField, ObjectType,

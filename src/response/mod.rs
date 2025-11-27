@@ -1,15 +1,18 @@
 use serde::Serialize;
 
-use crate::{ExternalDependencyValues, FieldPlan, IndexMap};
+use crate::{ExternalDependencyValues, FieldPlan, IndexMap, ValidationError};
 
 #[derive(Serialize)]
 pub struct Response {
-    pub data: ResponseValue,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub errors: Vec<ResponseError>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub data: Option<ResponseValue>,
 }
 
 impl Response {
-    pub fn new(data: ResponseValue) -> Self {
-        Self { data }
+    pub fn new(data: Option<ResponseValue>, errors: Vec<ResponseError>) -> Self {
+        Self { data, errors }
     }
 }
 
@@ -145,5 +148,22 @@ impl<'a> InProgressRecursingList<'a> {
             populated,
             selections,
         }
+    }
+}
+
+#[derive(Serialize)]
+pub struct ResponseError {
+    pub message: String,
+}
+
+impl ResponseError {
+    pub fn new(message: String) -> Self {
+        Self { message }
+    }
+}
+
+impl From<ValidationError> for ResponseError {
+    fn from(value: ValidationError) -> Self {
+        Self::new(value.message)
     }
 }
