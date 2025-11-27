@@ -538,6 +538,7 @@ fn add_all_operation_name_locations(locations: &mut Vec<Location>, name: &str, r
         });
 }
 
+#[derive(Debug)]
 pub struct ValidationError {
     pub message: String,
     pub locations: Vec<Location>,

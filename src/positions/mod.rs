@@ -1,5 +1,7 @@
 use std::{cell::RefCell, fmt::Debug, ops::Deref};
 
+use serde::Serialize;
+
 pub struct CharsEmitter<TIterator: Iterator<Item = char>> {
     inner: TIterator,
 }
@@ -99,7 +101,7 @@ impl PositionsTracker {
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct Location {
     /// 1-based
     pub line: usize,

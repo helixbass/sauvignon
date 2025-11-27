@@ -1,6 +1,6 @@
 use serde::Serialize;
 
-use crate::{ExternalDependencyValues, FieldPlan, IndexMap, ValidationError};
+use crate::{ExternalDependencyValues, FieldPlan, IndexMap, Location, ValidationError};
 
 #[derive(Serialize)]
 pub struct Response {
@@ -154,16 +154,18 @@ impl<'a> InProgressRecursingList<'a> {
 #[derive(Serialize)]
 pub struct ResponseError {
     pub message: String,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub locations: Vec<Location>,
 }
 
 impl ResponseError {
-    pub fn new(message: String) -> Self {
-        Self { message }
+    pub fn new(message: String, locations: Vec<Location>) -> Self {
+        Self { message, locations }
     }
 }
 
 impl From<ValidationError> for ResponseError {
     fn from(value: ValidationError) -> Self {
-        Self::new(value.message)
+        Self::new(value.message, value.locations)
     }
 }
