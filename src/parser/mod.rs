@@ -3,7 +3,7 @@ use std::{iter::Peekable, vec};
 use squalid::_d;
 
 use crate::{
-    Argument, Document, ExecutableDefinition, FragmentSpread, InlineFragment,
+    Argument, Document, ExecutableDefinition, FragmentDefinition, FragmentSpread, InlineFragment,
     OperationDefinitionBuilder, OperationType, Request, Selection, SelectionFieldBuilder, Value,
 };
 
@@ -414,40 +414,64 @@ pub fn parse_tokens(tokens: Vec<Token>) -> Request {
                             )
                         ) =>
                 {
-                    let mut builder = OperationDefinitionBuilder::default();
-                    builder = builder.operation_type(OperationType::Query);
-                    match token {
-                        Token::Name(_parsed_operation_type) => match tokens_iter.next() {
-                            Some(Token::LeftCurlyBracket) => {
+                    definitions.push({
+                        let mut builder = OperationDefinitionBuilder::default();
+                        builder = builder.operation_type(OperationType::Query);
+                        match token {
+                            Token::Name(_parsed_operation_type) => match tokens_iter.next() {
+                                Some(Token::LeftCurlyBracket) => {
+                                    builder = builder
+                                        .selection_set(parse_selection_set(&mut tokens_iter));
+                                    ExecutableDefinition::Operation(builder.build().unwrap())
+                                }
+                                Some(Token::Name(name)) => {
+                                    builder = builder.name(name);
+                                    match tokens_iter.next() {
+                                        Some(Token::LeftCurlyBracket) => {
+                                            builder = builder.selection_set(parse_selection_set(
+                                                &mut tokens_iter,
+                                            ));
+                                            ExecutableDefinition::Operation(
+                                                builder.build().unwrap(),
+                                            )
+                                        }
+                                        _ => panic!("Expected selection set"),
+                                    }
+                                }
+                                _ => panic!("Expected query"),
+                            },
+                            _ => {
                                 builder =
                                     builder.selection_set(parse_selection_set(&mut tokens_iter));
-                                definitions.push(ExecutableDefinition::Operation(
-                                    builder.build().unwrap(),
-                                ));
+                                ExecutableDefinition::Operation(builder.build().unwrap())
                             }
-                            Some(Token::Name(name)) => {
-                                builder = builder.name(name);
-                                match tokens_iter.next() {
-                                    Some(Token::LeftCurlyBracket) => {
-                                        builder = builder
-                                            .selection_set(parse_selection_set(&mut tokens_iter));
-                                        definitions.push(ExecutableDefinition::Operation(
-                                            builder.build().unwrap(),
-                                        ));
-                                    }
-                                    _ => panic!("Expected selection set"),
-                                }
-                            }
-                            _ => panic!("Expected query"),
-                        },
-                        _ => {
-                            builder = builder.selection_set(parse_selection_set(&mut tokens_iter));
-                            definitions
-                                .push(ExecutableDefinition::Operation(builder.build().unwrap()));
                         }
-                    }
+                    });
                 }
-                Some(Token::Name(name)) if name == "fragment" => {}
+                Some(Token::Name(name)) if name == "fragment" => {
+                    definitions.push(ExecutableDefinition::Fragment(FragmentDefinition::new(
+                        match tokens_iter.next() {
+                            Some(Token::Name(name)) => {
+                                if name == "on" {
+                                    panic!("Saw `on` instead of fragment name");
+                                }
+                                name
+                            }
+                            _ => panic!("Expected fragment name"),
+                        },
+                        match tokens_iter.next() {
+                            Some(Token::Name(name)) if name == "on" => match tokens_iter.next() {
+                                Some(Token::Name(name)) => name,
+                                _ => panic!("Expected fragment `on` name"),
+                            },
+                            _ => panic!("Expected fragment `on`"),
+                        },
+                        match tokens_iter.next() {
+                            Some(Token::LeftCurlyBracket) => parse_selection_set(&mut tokens_iter),
+                            _ => panic!("Expected selection set"),
+                        },
+                    )));
+                }
                 None => break definitions,
                 _ => panic!("Expected definition"),
             }
