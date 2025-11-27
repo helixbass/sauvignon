@@ -527,38 +527,56 @@ fn parse_selection_set(tokens_iter: &mut Peekable<vec::IntoIter<Token>>) -> Vec<
                 }
             },
             Some(Token::Name(name)) => {
-                let mut builder = SelectionFieldBuilder::default();
-                builder = builder.name(name);
-                match tokens_iter.next() {
-                    Some(Token::LeftParen) => {
-                        let mut arguments: Vec<Argument> = _d();
-                        loop {
-                            match tokens_iter.peek() {
-                                Some(Token::Name(_)) => {
-                                    let name = tokens_iter.next().unwrap().into_name();
-                                    if !matches!(tokens_iter.next(), Some(Token::Colon)) {
-                                        panic!("Expected colon");
+                ret.push(Selection::Field({
+                    let mut builder = SelectionFieldBuilder::default();
+                    builder = builder.name(name);
+                    match tokens_iter.peek() {
+                        Some(Token::LeftParen) => {
+                            let _ = tokens_iter.next().unwrap();
+                            builder = builder.arguments({
+                                let mut arguments: Vec<Argument> = _d();
+                                loop {
+                                    match tokens_iter.next() {
+                                        Some(Token::Name(name)) => {
+                                            arguments.push(Argument::new(name, {
+                                                if !matches!(tokens_iter.next(), Some(Token::Colon))
+                                                {
+                                                    panic!("Expected colon");
+                                                }
+                                                parse_value(tokens_iter, false)
+                                            }));
+                                        }
+                                        Some(Token::RightParen) => {
+                                            if arguments.is_empty() {
+                                                panic!("Empty arguments");
+                                            }
+                                            break arguments;
+                                        }
+                                        _ => panic!("Expected argument"),
                                     }
-                                    arguments
-                                        .push(Argument::new(name, parse_value(tokens_iter, false)));
                                 }
+                            });
+                            match tokens_iter.peek() {
                                 Some(Token::LeftCurlyBracket) => {
                                     let _ = tokens_iter.next().unwrap();
-                                    builder =
-                                        builder.selection_set(parse_selection_set(tokens_iter));
-                                    break;
+                                    builder
+                                        .selection_set(parse_selection_set(tokens_iter))
+                                        .build()
+                                        .unwrap()
                                 }
-                                _ => break,
+                                _ => builder.build().unwrap(),
                             }
                         }
-                        builder = builder.arguments(arguments);
+                        Some(Token::LeftCurlyBracket) => {
+                            let _ = tokens_iter.next().unwrap();
+                            builder
+                                .selection_set(parse_selection_set(tokens_iter))
+                                .build()
+                                .unwrap()
+                        }
+                        _ => builder.build().unwrap(),
                     }
-                    Some(Token::LeftCurlyBracket) => {
-                        builder = builder.selection_set(parse_selection_set(tokens_iter));
-                    }
-                    _ => panic!("Expected field"),
-                }
-                ret.push(Selection::Field(builder.build().unwrap()));
+                }));
             }
             Some(Token::RightCurlyBracket) => {
                 if ret.is_empty() {
