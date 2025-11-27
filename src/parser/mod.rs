@@ -40,316 +40,339 @@ impl Token {
     }
 }
 
-pub fn lex(request: impl IntoIterator<Item = char>) -> Vec<Token> {
-    let mut request = request.into_iter().peekable();
-    let mut ret = vec![];
-    loop {
-        match request.next() {
-            Some(ch) => {
-                let maybe_token = match ch {
-                    '!' => Some(Token::ExclamationPoint),
-                    '$' => Some(Token::DollarSign),
-                    '&' => Some(Token::Ampersand),
-                    '(' => Some(Token::LeftParen),
-                    ')' => Some(Token::RightParen),
-                    '.' => {
-                        assert!(request.next() == Some('.'));
-                        assert!(request.next() == Some('.'));
-                        Some(Token::DotDotDot)
-                    }
-                    ':' => Some(Token::Colon),
-                    '=' => Some(Token::Equals),
-                    '@' => Some(Token::AtSymbol),
-                    '[' => Some(Token::LeftSquareBracket),
-                    ']' => Some(Token::RightSquareBracket),
-                    '{' => Some(Token::LeftCurlyBracket),
-                    '|' => Some(Token::Pipe),
-                    '}' => Some(Token::RightCurlyBracket),
-                    'A'..='Z' | 'a'..='z' | '_' => {
-                        let mut chars: Vec<char> = vec![ch];
-                        loop {
-                            match request.peek() {
-                                Some(ch)
-                                    if matches!(
-                                        ch,
-                                        'A'..='Z' | 'a'..='z' | '_' | '0'..='9'
-                                    ) =>
-                                {
-                                    chars.push(request.next().unwrap());
-                                }
-                                _ => break,
-                            }
+pub fn lex<TRequest: IntoIterator<Item = char>>(request: TRequest) -> Lex<TRequest::IntoIter> {
+    Lex {
+        request: request.into_iter().peekable(),
+    }
+}
+
+pub struct Lex<TRequest: Iterator<Item = char>> {
+    request: Peekable<TRequest>,
+}
+
+impl<TRequest: Iterator<Item = char>> Iterator for Lex<TRequest> {
+    type Item = Token;
+
+    fn next(&mut self) -> Option<Token> {
+        loop {
+            match self.request.next() {
+                Some(ch) => {
+                    let maybe_token = match ch {
+                        '!' => Some(Token::ExclamationPoint),
+                        '$' => Some(Token::DollarSign),
+                        '&' => Some(Token::Ampersand),
+                        '(' => Some(Token::LeftParen),
+                        ')' => Some(Token::RightParen),
+                        '.' => {
+                            assert!(self.request.next() == Some('.'));
+                            assert!(self.request.next() == Some('.'));
+                            Some(Token::DotDotDot)
                         }
-                        Some(Token::Name(chars.iter().collect()))
-                    }
-                    '"' => match request.next() {
-                        Some('"') => match request.next() {
-                            Some('"') => {
-                                unimplemented!()
-                            }
-                            _ => Some(Token::String("".to_owned())),
-                        },
-                        Some(ch) => {
-                            let mut resolved_chars: Vec<char> = vec![ch];
+                        ':' => Some(Token::Colon),
+                        '=' => Some(Token::Equals),
+                        '@' => Some(Token::AtSymbol),
+                        '[' => Some(Token::LeftSquareBracket),
+                        ']' => Some(Token::RightSquareBracket),
+                        '{' => Some(Token::LeftCurlyBracket),
+                        '|' => Some(Token::Pipe),
+                        '}' => Some(Token::RightCurlyBracket),
+                        'A'..='Z' | 'a'..='z' | '_' => {
+                            let mut chars: Vec<char> = vec![ch];
                             loop {
-                                match request.next() {
-                                    None => panic!("expected closing double-quote"),
-                                    Some(ch) => match ch {
-                                        '"' => {
-                                            break Some(Token::String(
-                                                resolved_chars.into_iter().collect(),
-                                            ));
-                                        }
-                                        '\\' => match request.next() {
-                                            Some('u') => {
-                                                let mut unicode_hex: Vec<char> = _d();
-                                                while unicode_hex.len() < 4 {
-                                                    match request.next() {
-                                                        Some(ch)
-                                                            if matches!(
-                                                                ch,
-                                                                '0'..='9' | 'A'..='F' | 'a'..='f'
-                                                            ) =>
-                                                        {
-                                                            unicode_hex.push(ch);
-                                                        }
-                                                        _ => panic!("Unexpected hex digit"),
-                                                    }
-                                                }
-                                                resolved_chars.push(
-                                                    char::from_u32(
-                                                        u32::from_str_radix(
-                                                            &unicode_hex
-                                                                .into_iter()
-                                                                .collect::<String>(),
-                                                            16,
-                                                        )
-                                                        .unwrap(),
-                                                    )
-                                                    .expect("Couldn't convert hex to char"),
-                                                );
-                                            }
-                                            Some('"') => {
-                                                resolved_chars.push('"');
-                                            }
-                                            Some('\\') => {
-                                                resolved_chars.push('\\');
-                                            }
-                                            Some('/') => {
-                                                resolved_chars.push('/');
-                                            }
-                                            Some('b') => {
-                                                resolved_chars.push('\u{8}');
-                                            }
-                                            Some('f') => {
-                                                resolved_chars.push('\u{C}');
-                                            }
-                                            Some('n') => {
-                                                resolved_chars.push('\n');
-                                            }
-                                            Some('r') => {
-                                                resolved_chars.push('\r');
-                                            }
-                                            Some('t') => {
-                                                resolved_chars.push('\t');
-                                            }
-                                            _ => panic!("Unexpected escape"),
-                                        },
-                                        ch => {
-                                            resolved_chars.push(ch);
-                                        }
-                                    },
+                                match self.request.peek() {
+                                    Some(ch)
+                                        if matches!(
+                                            ch,
+                                            'A'..='Z' | 'a'..='z' | '_' | '0'..='9'
+                                        ) =>
+                                    {
+                                        chars.push(self.request.next().unwrap());
+                                    }
+                                    _ => break,
                                 }
                             }
+                            Some(Token::Name(chars.iter().collect()))
                         }
-                        _ => panic!("Expected end of string"),
-                    },
-                    ch @ '-' | ch @ '0'..='9' => {
-                        let is_negative = ch == '-';
-                        let mut integer_part: Vec<char> = _d();
-                        if !is_negative {
-                            integer_part.push(ch);
-                        }
-                        while matches!(
-                            request.peek(),
-                            Some(ch) if matches!(
-                                ch,
-                                '0'..='9'
-                            )
-                        ) {
-                            integer_part.push(request.next().unwrap());
-                            if integer_part.len() == 2
-                                && integer_part[0] == '0'
-                                && integer_part[1] == '0'
-                            {
-                                panic!("Can't have leading zero");
-                            }
-                        }
-                        match request.peek() {
-                            Some(ch) if matches!(ch, '.' | 'e' | 'E') => {
-                                let ch = request.next().unwrap();
-                                match ch {
-                                    '.' => {
-                                        let mut fractional_part: Vec<char> = _d();
-                                        loop {
-                                            match request.peek() {
-                                                Some(ch) if matches!(ch, '0'..='9') => {
-                                                    fractional_part.push(request.next().unwrap());
-                                                }
-                                                _ => {
-                                                    if fractional_part.is_empty() {
-                                                        panic!("expected fractional part digits");
-                                                    }
-                                                    break;
-                                                }
+                        '"' => match self.request.next() {
+                            Some('"') => match self.request.next() {
+                                Some('"') => {
+                                    unimplemented!()
+                                }
+                                _ => Some(Token::String("".to_owned())),
+                            },
+                            Some(ch) => {
+                                let mut resolved_chars: Vec<char> = vec![ch];
+                                loop {
+                                    match self.request.next() {
+                                        None => panic!("expected closing double-quote"),
+                                        Some(ch) => match ch {
+                                            '"' => {
+                                                break Some(Token::String(
+                                                    resolved_chars.into_iter().collect(),
+                                                ));
                                             }
-                                        }
-                                        match request.peek() {
-                                            Some(ch) if matches!(ch, 'e' | 'E') => {
-                                                let _ = request.next().unwrap();
-                                                // TODO: DRY this up wrt non-fractional-part
-                                                // case below
-                                                let mut has_exponent_negative_sign = false;
-                                                if matches!(request.peek(), Some('-')) {
-                                                    let _ = request.next().unwrap();
-                                                    has_exponent_negative_sign = true;
-                                                }
-                                                let mut exponent_digits: Vec<char> = _d();
-                                                loop {
-                                                    match request.peek() {
-                                                        Some(ch) if matches!(ch, '0'..='9') => {
-                                                            exponent_digits
-                                                                .push(request.next().unwrap());
-                                                        }
-                                                        _ => {
-                                                            if exponent_digits.is_empty() {
-                                                                panic!("Expected exponent digits");
+                                            '\\' => match self.request.next() {
+                                                Some('u') => {
+                                                    let mut unicode_hex: Vec<char> = _d();
+                                                    while unicode_hex.len() < 4 {
+                                                        match self.request.next() {
+                                                            Some(ch)
+                                                                if matches!(
+                                                                    ch,
+                                                                    '0'..='9' | 'A'..='F' | 'a'..='f'
+                                                                ) =>
+                                                            {
+                                                                unicode_hex.push(ch);
                                                             }
-                                                            break Some(Token::Float(
-                                                                format!(
-                                                                    "{}{}.{}e{}{}",
-                                                                    if is_negative {
-                                                                        "-"
-                                                                    } else {
-                                                                        ""
-                                                                    },
-                                                                    integer_part
-                                                                        .into_iter()
-                                                                        .collect::<String>(),
-                                                                    fractional_part
-                                                                        .into_iter()
-                                                                        .collect::<String>(),
-                                                                    if has_exponent_negative_sign {
-                                                                        "-"
-                                                                    } else {
-                                                                        ""
-                                                                    },
-                                                                    exponent_digits
-                                                                        .into_iter()
-                                                                        .collect::<String>(),
-                                                                )
-                                                                .parse::<f64>()
-                                                                .expect("Couldn't parse float"),
-                                                            ));
+                                                            _ => panic!("Unexpected hex digit"),
                                                         }
+                                                    }
+                                                    resolved_chars.push(
+                                                        char::from_u32(
+                                                            u32::from_str_radix(
+                                                                &unicode_hex
+                                                                    .into_iter()
+                                                                    .collect::<String>(),
+                                                                16,
+                                                            )
+                                                            .unwrap(),
+                                                        )
+                                                        .expect("Couldn't convert hex to char"),
+                                                    );
+                                                }
+                                                Some('"') => {
+                                                    resolved_chars.push('"');
+                                                }
+                                                Some('\\') => {
+                                                    resolved_chars.push('\\');
+                                                }
+                                                Some('/') => {
+                                                    resolved_chars.push('/');
+                                                }
+                                                Some('b') => {
+                                                    resolved_chars.push('\u{8}');
+                                                }
+                                                Some('f') => {
+                                                    resolved_chars.push('\u{C}');
+                                                }
+                                                Some('n') => {
+                                                    resolved_chars.push('\n');
+                                                }
+                                                Some('r') => {
+                                                    resolved_chars.push('\r');
+                                                }
+                                                Some('t') => {
+                                                    resolved_chars.push('\t');
+                                                }
+                                                _ => panic!("Unexpected escape"),
+                                            },
+                                            ch => {
+                                                resolved_chars.push(ch);
+                                            }
+                                        },
+                                    }
+                                }
+                            }
+                            _ => panic!("Expected end of string"),
+                        },
+                        ch @ '-' | ch @ '0'..='9' => {
+                            let is_negative = ch == '-';
+                            let mut integer_part: Vec<char> = _d();
+                            if !is_negative {
+                                integer_part.push(ch);
+                            }
+                            while matches!(
+                                self.request.peek(),
+                                Some(ch) if matches!(
+                                    ch,
+                                    '0'..='9'
+                                )
+                            ) {
+                                integer_part.push(self.request.next().unwrap());
+                                if integer_part.len() == 2
+                                    && integer_part[0] == '0'
+                                    && integer_part[1] == '0'
+                                {
+                                    panic!("Can't have leading zero");
+                                }
+                            }
+                            match self.request.peek() {
+                                Some(ch) if matches!(ch, '.' | 'e' | 'E') => {
+                                    let ch = self.request.next().unwrap();
+                                    match ch {
+                                        '.' => {
+                                            let mut fractional_part: Vec<char> = _d();
+                                            loop {
+                                                match self.request.peek() {
+                                                    Some(ch) if matches!(ch, '0'..='9') => {
+                                                        fractional_part
+                                                            .push(self.request.next().unwrap());
+                                                    }
+                                                    _ => {
+                                                        if fractional_part.is_empty() {
+                                                            panic!(
+                                                                "expected fractional part digits"
+                                                            );
+                                                        }
+                                                        break;
                                                     }
                                                 }
                                             }
-                                            _ => Some(Token::Float(
-                                                format!(
-                                                    "{}{}.{}",
-                                                    if is_negative { "-" } else { "" },
-                                                    integer_part.into_iter().collect::<String>(),
-                                                    fractional_part.into_iter().collect::<String>(),
-                                                )
-                                                .parse::<f64>()
-                                                .expect("Couldn't parse float"),
-                                            )),
-                                        }
-                                    }
-                                    _ => {
-                                        let mut has_exponent_negative_sign = false;
-                                        if matches!(request.peek(), Some('-')) {
-                                            let _ = request.next().unwrap();
-                                            has_exponent_negative_sign = true;
-                                        }
-                                        let mut exponent_digits: Vec<char> = _d();
-                                        loop {
-                                            match request.peek() {
-                                                Some(ch) if matches!(ch, '0'..='9') => {
-                                                    exponent_digits.push(request.next().unwrap());
-                                                }
-                                                _ => {
-                                                    if exponent_digits.is_empty() {
-                                                        panic!("Expected exponent digits");
+                                            match self.request.peek() {
+                                                Some(ch) if matches!(ch, 'e' | 'E') => {
+                                                    let _ = self.request.next().unwrap();
+                                                    // TODO: DRY this up wrt non-fractional-part
+                                                    // case below
+                                                    let mut has_exponent_negative_sign = false;
+                                                    if matches!(self.request.peek(), Some('-')) {
+                                                        let _ = self.request.next().unwrap();
+                                                        has_exponent_negative_sign = true;
                                                     }
-                                                    break Some(Token::Float(
-                                                        format!(
-                                                            "{}{}e{}{}",
-                                                            if is_negative { "-" } else { "" },
-                                                            integer_part
-                                                                .into_iter()
-                                                                .collect::<String>(),
-                                                            if has_exponent_negative_sign {
-                                                                "-"
-                                                            } else {
-                                                                ""
-                                                            },
-                                                            exponent_digits
-                                                                .into_iter()
-                                                                .collect::<String>(),
-                                                        )
-                                                        .parse::<f64>()
-                                                        .expect("Couldn't parse float"),
-                                                    ));
+                                                    let mut exponent_digits: Vec<char> = _d();
+                                                    loop {
+                                                        match self.request.peek() {
+                                                            Some(ch) if matches!(ch, '0'..='9') => {
+                                                                exponent_digits.push(
+                                                                    self.request.next().unwrap(),
+                                                                );
+                                                            }
+                                                            _ => {
+                                                                if exponent_digits.is_empty() {
+                                                                    panic!(
+                                                                        "Expected exponent digits"
+                                                                    );
+                                                                }
+                                                                break Some(Token::Float(
+                                                                    format!(
+                                                                        "{}{}.{}e{}{}",
+                                                                        if is_negative {
+                                                                            "-"
+                                                                        } else {
+                                                                            ""
+                                                                        },
+                                                                        integer_part
+                                                                            .into_iter()
+                                                                            .collect::<String>(),
+                                                                        fractional_part
+                                                                            .into_iter()
+                                                                            .collect::<String>(),
+                                                                        if has_exponent_negative_sign {
+                                                                            "-"
+                                                                        } else {
+                                                                            ""
+                                                                        },
+                                                                        exponent_digits
+                                                                            .into_iter()
+                                                                            .collect::<String>(),
+                                                                    )
+                                                                    .parse::<f64>()
+                                                                    .expect("Couldn't parse float"),
+                                                                ));
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                                _ => Some(Token::Float(
+                                                    format!(
+                                                        "{}{}.{}",
+                                                        if is_negative { "-" } else { "" },
+                                                        integer_part
+                                                            .into_iter()
+                                                            .collect::<String>(),
+                                                        fractional_part
+                                                            .into_iter()
+                                                            .collect::<String>(),
+                                                    )
+                                                    .parse::<f64>()
+                                                    .expect("Couldn't parse float"),
+                                                )),
+                                            }
+                                        }
+                                        _ => {
+                                            let mut has_exponent_negative_sign = false;
+                                            if matches!(self.request.peek(), Some('-')) {
+                                                let _ = self.request.next().unwrap();
+                                                has_exponent_negative_sign = true;
+                                            }
+                                            let mut exponent_digits: Vec<char> = _d();
+                                            loop {
+                                                match self.request.peek() {
+                                                    Some(ch) if matches!(ch, '0'..='9') => {
+                                                        exponent_digits
+                                                            .push(self.request.next().unwrap());
+                                                    }
+                                                    _ => {
+                                                        if exponent_digits.is_empty() {
+                                                            panic!("Expected exponent digits");
+                                                        }
+                                                        break Some(Token::Float(
+                                                            format!(
+                                                                "{}{}e{}{}",
+                                                                if is_negative { "-" } else { "" },
+                                                                integer_part
+                                                                    .into_iter()
+                                                                    .collect::<String>(),
+                                                                if has_exponent_negative_sign {
+                                                                    "-"
+                                                                } else {
+                                                                    ""
+                                                                },
+                                                                exponent_digits
+                                                                    .into_iter()
+                                                                    .collect::<String>(),
+                                                            )
+                                                            .parse::<f64>()
+                                                            .expect("Couldn't parse float"),
+                                                        ));
+                                                    }
                                                 }
                                             }
                                         }
                                     }
                                 }
+                                _ => Some(Token::Int(
+                                    i32::from_str_radix(
+                                        &integer_part.into_iter().collect::<String>(),
+                                        10,
+                                    )
+                                    .unwrap(),
+                                )),
                             }
-                            _ => Some(Token::Int(
-                                i32::from_str_radix(
-                                    &integer_part.into_iter().collect::<String>(),
-                                    10,
+                        }
+                        '#' => {
+                            while matches!(
+                                self.request.peek(),
+                                Some(ch) if !matches!(
+                                    ch,
+                                    '\n' | '\r'
                                 )
-                                .unwrap(),
-                            )),
-                        }
-                    }
-                    '#' => {
-                        while matches!(
-                            request.peek(),
-                            Some(ch) if !matches!(
-                                ch,
-                                '\n' | '\r'
-                            )
-                        ) {
-                            let _ = request.next().unwrap();
-                        }
-                        None
-                    }
-                    ch @ UNICODE_BOM
-                    | ch @ '\u{9}'
-                    | ch @ '\u{20}'
-                    | ch @ ','
-                    | ch @ '\n'
-                    | ch @ '\r' => {
-                        if ch == '\r' {
-                            if request.peek() == Some(&'\n') {
-                                let _ = request.next().unwrap();
+                            ) {
+                                let _ = self.request.next().unwrap();
                             }
+                            None
                         }
-                        None
+                        ch @ UNICODE_BOM
+                        | ch @ '\u{9}'
+                        | ch @ '\u{20}'
+                        | ch @ ','
+                        | ch @ '\n'
+                        | ch @ '\r' => {
+                            if ch == '\r' {
+                                if self.request.peek() == Some(&'\n') {
+                                    let _ = self.request.next().unwrap();
+                                }
+                            }
+                            None
+                        }
+                        _ => panic!("Unsupported char?"),
+                    };
+                    match maybe_token {
+                        Some(token) => return Some(token),
+                        None => {}
                     }
-                    _ => panic!("Unsupported char?"),
-                };
-                match maybe_token {
-                    Some(token) => ret.push(token),
-                    None => {}
                 }
+                None => return None,
             }
-            None => return ret,
         }
     }
 }
@@ -358,12 +381,12 @@ pub fn parse(request: impl IntoIterator<Item = char>) -> Request {
     parse_tokens(lex(request))
 }
 
-pub fn parse_tokens(tokens: Vec<Token>) -> Request {
-    let mut tokens_iter = tokens.into_iter().peekable();
+pub fn parse_tokens<TIterator: Iterator<Item = Token>>(tokens: TIterator) -> Request {
+    let mut tokens = tokens.peekable();
     Request::new(Document::new({
         let mut definitions: Vec<ExecutableDefinition> = _d();
         loop {
-            match tokens_iter.next() {
+            match tokens.next() {
                 Some(token)
                     if matches!(token, Token::LeftCurlyBracket)
                         || matches!(
@@ -378,19 +401,18 @@ pub fn parse_tokens(tokens: Vec<Token>) -> Request {
                         let mut builder = OperationDefinitionBuilder::default();
                         builder = builder.operation_type(OperationType::Query);
                         match token {
-                            Token::Name(_parsed_operation_type) => match tokens_iter.next() {
+                            Token::Name(_parsed_operation_type) => match tokens.next() {
                                 Some(Token::LeftCurlyBracket) => {
-                                    builder = builder
-                                        .selection_set(parse_selection_set(&mut tokens_iter));
+                                    builder =
+                                        builder.selection_set(parse_selection_set(&mut tokens));
                                     ExecutableDefinition::Operation(builder.build().unwrap())
                                 }
                                 Some(Token::Name(name)) => {
                                     builder = builder.name(name);
-                                    match tokens_iter.next() {
+                                    match tokens.next() {
                                         Some(Token::LeftCurlyBracket) => {
-                                            builder = builder.selection_set(parse_selection_set(
-                                                &mut tokens_iter,
-                                            ));
+                                            builder = builder
+                                                .selection_set(parse_selection_set(&mut tokens));
                                             ExecutableDefinition::Operation(
                                                 builder.build().unwrap(),
                                             )
@@ -401,8 +423,7 @@ pub fn parse_tokens(tokens: Vec<Token>) -> Request {
                                 _ => panic!("Expected query"),
                             },
                             _ => {
-                                builder =
-                                    builder.selection_set(parse_selection_set(&mut tokens_iter));
+                                builder = builder.selection_set(parse_selection_set(&mut tokens));
                                 ExecutableDefinition::Operation(builder.build().unwrap())
                             }
                         }
@@ -410,7 +431,7 @@ pub fn parse_tokens(tokens: Vec<Token>) -> Request {
                 }
                 Some(Token::Name(name)) if name == "fragment" => {
                     definitions.push(ExecutableDefinition::Fragment(FragmentDefinition::new(
-                        match tokens_iter.next() {
+                        match tokens.next() {
                             Some(Token::Name(name)) => {
                                 if name == "on" {
                                     panic!("Saw `on` instead of fragment name");
@@ -419,15 +440,15 @@ pub fn parse_tokens(tokens: Vec<Token>) -> Request {
                             }
                             _ => panic!("Expected fragment name"),
                         },
-                        match tokens_iter.next() {
-                            Some(Token::Name(name)) if name == "on" => match tokens_iter.next() {
+                        match tokens.next() {
+                            Some(Token::Name(name)) if name == "on" => match tokens.next() {
                                 Some(Token::Name(name)) => name,
                                 _ => panic!("Expected fragment `on` name"),
                             },
                             _ => panic!("Expected fragment `on`"),
                         },
-                        match tokens_iter.next() {
-                            Some(Token::LeftCurlyBracket) => parse_selection_set(&mut tokens_iter),
+                        match tokens.next() {
+                            Some(Token::LeftCurlyBracket) => parse_selection_set(&mut tokens),
                             _ => panic!("Expected selection set"),
                         },
                     )));
@@ -439,12 +460,14 @@ pub fn parse_tokens(tokens: Vec<Token>) -> Request {
     }))
 }
 
-fn parse_selection_set(tokens_iter: &mut Peekable<vec::IntoIter<Token>>) -> Vec<Selection> {
+fn parse_selection_set<TIterator: Iterator<Item = Token>>(
+    tokens: &mut Peekable<TIterator>,
+) -> Vec<Selection> {
     let mut ret: Vec<Selection> = _d();
 
     loop {
-        match tokens_iter.next() {
-            Some(Token::DotDotDot) => match tokens_iter.next() {
+        match tokens.next() {
+            Some(Token::DotDotDot) => match tokens.next() {
                 Some(token) => {
                     if matches!(
                         &token,
@@ -456,15 +479,15 @@ fn parse_selection_set(tokens_iter: &mut Peekable<vec::IntoIter<Token>>) -> Vec<
                     } else if matches!(&token, Token::Name(_) | Token::LeftCurlyBracket) {
                         match token {
                             Token::Name(_) => {
-                                let on = match tokens_iter.next() {
+                                let on = match tokens.next() {
                                     Some(Token::Name(on)) => on,
                                     _ => panic!("Expected on"),
                                 };
-                                match tokens_iter.next() {
+                                match tokens.next() {
                                     Some(Token::LeftCurlyBracket) => {
                                         ret.push(Selection::InlineFragment(InlineFragment::new(
                                             Some(on),
-                                            parse_selection_set(tokens_iter),
+                                            parse_selection_set(tokens),
                                         )));
                                     }
                                     _ => panic!("Expected selection set"),
@@ -473,7 +496,7 @@ fn parse_selection_set(tokens_iter: &mut Peekable<vec::IntoIter<Token>>) -> Vec<
                             Token::LeftCurlyBracket => {
                                 ret.push(Selection::InlineFragment(InlineFragment::new(
                                     None,
-                                    parse_selection_set(tokens_iter),
+                                    parse_selection_set(tokens),
                                 )));
                             }
                             _ => unreachable!(),
@@ -490,20 +513,19 @@ fn parse_selection_set(tokens_iter: &mut Peekable<vec::IntoIter<Token>>) -> Vec<
                 ret.push(Selection::Field({
                     let mut builder = SelectionFieldBuilder::default();
                     builder = builder.name(name);
-                    match tokens_iter.peek() {
+                    match tokens.peek() {
                         Some(Token::LeftParen) => {
-                            let _ = tokens_iter.next().unwrap();
+                            let _ = tokens.next().unwrap();
                             builder = builder.arguments({
                                 let mut arguments: Vec<Argument> = _d();
                                 loop {
-                                    match tokens_iter.next() {
+                                    match tokens.next() {
                                         Some(Token::Name(name)) => {
                                             arguments.push(Argument::new(name, {
-                                                if !matches!(tokens_iter.next(), Some(Token::Colon))
-                                                {
+                                                if !matches!(tokens.next(), Some(Token::Colon)) {
                                                     panic!("Expected colon");
                                                 }
-                                                parse_value(tokens_iter, false)
+                                                parse_value(tokens, false)
                                             }));
                                         }
                                         Some(Token::RightParen) => {
@@ -516,11 +538,11 @@ fn parse_selection_set(tokens_iter: &mut Peekable<vec::IntoIter<Token>>) -> Vec<
                                     }
                                 }
                             });
-                            match tokens_iter.peek() {
+                            match tokens.peek() {
                                 Some(Token::LeftCurlyBracket) => {
-                                    let _ = tokens_iter.next().unwrap();
+                                    let _ = tokens.next().unwrap();
                                     builder
-                                        .selection_set(parse_selection_set(tokens_iter))
+                                        .selection_set(parse_selection_set(tokens))
                                         .build()
                                         .unwrap()
                                 }
@@ -528,9 +550,9 @@ fn parse_selection_set(tokens_iter: &mut Peekable<vec::IntoIter<Token>>) -> Vec<
                             }
                         }
                         Some(Token::LeftCurlyBracket) => {
-                            let _ = tokens_iter.next().unwrap();
+                            let _ = tokens.next().unwrap();
                             builder
-                                .selection_set(parse_selection_set(tokens_iter))
+                                .selection_set(parse_selection_set(tokens))
                                 .build()
                                 .unwrap()
                         }
@@ -549,8 +571,11 @@ fn parse_selection_set(tokens_iter: &mut Peekable<vec::IntoIter<Token>>) -> Vec<
     }
 }
 
-fn parse_value(tokens_iter: &mut Peekable<vec::IntoIter<Token>>, is_const: bool) -> Value {
-    match tokens_iter.next() {
+fn parse_value<TIterator: Iterator<Item = Token>>(
+    tokens: &mut Peekable<TIterator>,
+    is_const: bool,
+) -> Value {
+    match tokens.next() {
         Some(Token::Int(int)) => Value::Int(int),
         Some(Token::String(string)) => Value::String(string),
         _ => panic!("Expected value"),
@@ -563,7 +588,7 @@ mod tests {
 
     fn lex_test(request: &str, expected_tokens: impl IntoIterator<Item = Token>) {
         assert_eq!(
-            lex(request.chars()),
+            lex(request.chars()).collect::<Vec<_>>(),
             expected_tokens.into_iter().collect::<Vec<_>>()
         );
     }
