@@ -40,7 +40,10 @@ impl Token {
     }
 }
 
-pub fn lex<TRequest: IntoIterator<Item = char>>(request: TRequest) -> Lex<TRequest::IntoIter> {
+pub fn lex<TRequest>(request: TRequest) -> Lex<TRequest::IntoIter>
+where
+    TRequest: IntoIterator<Item = char>,
+{
     Lex {
         request: request.into_iter().peekable(),
     }
@@ -50,7 +53,10 @@ pub struct Lex<TRequest: Iterator<Item = char>> {
     request: Peekable<TRequest>,
 }
 
-impl<TRequest: Iterator<Item = char>> Iterator for Lex<TRequest> {
+impl<TRequest> Iterator for Lex<TRequest>
+where
+    TRequest: Iterator<Item = char>,
+{
     type Item = Token;
 
     fn next(&mut self) -> Option<Token> {
@@ -381,8 +387,8 @@ pub fn parse(request: impl IntoIterator<Item = char>) -> Request {
     parse_tokens(lex(request))
 }
 
-pub fn parse_tokens<TIterator: Iterator<Item = Token>>(tokens: TIterator) -> Request {
-    let mut tokens = tokens.peekable();
+pub fn parse_tokens(tokens: impl IntoIterator<Item = Token>) -> Request {
+    let mut tokens = tokens.into_iter().peekable();
     Request::new(Document::new({
         let mut definitions: Vec<ExecutableDefinition> = _d();
         loop {
@@ -460,9 +466,10 @@ pub fn parse_tokens<TIterator: Iterator<Item = Token>>(tokens: TIterator) -> Req
     }))
 }
 
-fn parse_selection_set<TIterator: Iterator<Item = Token>>(
-    tokens: &mut Peekable<TIterator>,
-) -> Vec<Selection> {
+fn parse_selection_set<TIterator>(tokens: &mut Peekable<TIterator>) -> Vec<Selection>
+where
+    TIterator: Iterator<Item = Token>,
+{
     let mut ret: Vec<Selection> = _d();
 
     loop {
@@ -571,10 +578,10 @@ fn parse_selection_set<TIterator: Iterator<Item = Token>>(
     }
 }
 
-fn parse_value<TIterator: Iterator<Item = Token>>(
-    tokens: &mut Peekable<TIterator>,
-    is_const: bool,
-) -> Value {
+fn parse_value<TIterator>(tokens: &mut Peekable<TIterator>, is_const: bool) -> Value
+where
+    TIterator: Iterator<Item = Token>,
+{
     match tokens.next() {
         Some(Token::Int(int)) => Value::Int(int),
         Some(Token::String(string)) => Value::String(string),
