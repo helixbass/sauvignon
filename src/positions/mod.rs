@@ -79,6 +79,8 @@ impl PositionsTracker {
     }
 
     pub fn current() -> Option<impl Deref<Target = Self> + Debug + 'static> {
+        // TODO: per https://github.com/anp/moxie/issues/308 is using illicit
+        // ok thread-local-wise vs eg Tokio can move tasks across threads?
         illicit::get::<Self>().ok()
     }
 
