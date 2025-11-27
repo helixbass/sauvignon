@@ -34,19 +34,14 @@ pub struct PositionsTracker {
 
 impl PositionsTracker {
     pub fn receive_char(&self, ch: char) {
-        let just_newlined = { *self.just_newlined.borrow() };
-        match ch {
-            '\r' => {
+        if { *self.just_saw_carriage_return.borrow() } {
+            if ch != '\n' {
                 *self.just_newlined.borrow_mut() = true;
-                *self.just_saw_carriage_return.borrow_mut() = true;
             }
-            '\n' => {
-                if !*self.just_saw_carriage_return.borrow() {
-                    *self.just_newlined.borrow_mut() = true;
-                }
-            }
-            _ => {}
         }
+        let just_newlined = { *self.just_newlined.borrow() };
+        *self.just_saw_carriage_return.borrow_mut() = ch == '\r';
+        *self.just_newlined.borrow_mut() = ch == '\n';
         let last_char = { *self.last_char.borrow() };
         let new_last_char = match last_char {
             Some(last_char) => {

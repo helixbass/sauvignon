@@ -1,3 +1,5 @@
+use indoc::indoc;
+
 use sauvignon::json_from_response;
 
 mod shared;
@@ -15,7 +17,8 @@ async fn validation_test(request: &str, expected: &str) {
 #[tokio::test]
 async fn test_operation_name_uniqueness() {
     validation_test(
-        r#"
+        indoc!(
+            r#"
             query Whee {
               actorKatie {
                 name
@@ -27,7 +30,8 @@ async fn test_operation_name_uniqueness() {
                 name
               }
             }
-        "#,
+        "#
+        ),
         r#"
             {
               "errors": [
