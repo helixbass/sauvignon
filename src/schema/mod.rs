@@ -6,8 +6,8 @@ use sqlx::{Pool, Postgres};
 use squalid::{OptionExt, _d};
 
 use crate::{
-    builtin_types, fields_in_progress_new, CarverOrPopulator, DependencyType, DependencyValue,
-    Error, ExternalDependencyValues, FieldPlan, FieldsInProgress, Id, InProgress,
+    builtin_types, fields_in_progress_new, parse, CarverOrPopulator, DependencyType,
+    DependencyValue, Error, ExternalDependencyValues, FieldPlan, FieldsInProgress, Id, InProgress,
     InProgressRecursing, InProgressRecursingList, IndexMap, Interface, InternalDependencyResolver,
     InternalDependencyValues, Populator, QueryPlan, Request, Response, ResponseValue,
     ResponseValueOrInProgress, Result as SauvignonResult, Type, TypeInterface, Union, Value,
@@ -76,7 +76,8 @@ impl Schema {
         })
     }
 
-    pub async fn request(&self, request: Request, db_pool: &Pool<Postgres>) -> Response {
+    pub async fn request(&self, request_str: &str, db_pool: &Pool<Postgres>) -> Response {
+        let request = parse(request_str.chars());
         let (validation_errors, validated_request) = self.validate(&request);
         if !validation_errors.is_empty() {
             return Response::new(

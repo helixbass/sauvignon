@@ -5,6 +5,7 @@ mod inscribe;
 mod operation;
 mod parser;
 mod plan;
+mod positions;
 mod request;
 mod resolve;
 mod response;
