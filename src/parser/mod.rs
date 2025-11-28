@@ -477,6 +477,7 @@ fn parse_selection_set<TIterator>(tokens: &mut Peekable<TIterator>) -> Vec<Selec
 where
     TIterator: Iterator<Item = Token>,
 {
+    PositionsTracker::emit_selection_set();
     let mut ret: Vec<Selection> = _d();
 
     loop {
@@ -568,6 +569,7 @@ where
                 }));
             }
             Some(Token::RightCurlyBracket) => {
+                PositionsTracker::emit_end_selection_set();
                 if ret.is_empty() {
                     panic!("Empty selection");
                 }
