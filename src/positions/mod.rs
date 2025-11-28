@@ -92,15 +92,15 @@ impl PositionsTracker {
             .unwrap()
     }
 
-    pub fn anonymous_operation_locations(&self) -> Vec<Location> {
+    pub fn anonymous_operation_location(&self) -> Location {
         self.operations
             .borrow()
             .iter()
-            .filter_map(|operation| match operation.name_location.as_ref() {
+            .find_map(|operation| match operation.name_location.as_ref() {
                 None => Some(operation.location),
                 Some(_) => None,
             })
-            .collect()
+            .unwrap()
     }
 
     pub fn current() -> Option<impl Deref<Target = Self> + Debug + 'static> {

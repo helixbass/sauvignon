@@ -140,17 +140,17 @@ async fn test_operation_name_uniqueness() {
 }
 
 #[tokio::test]
-async fn test_no_multiple_anonymous_operations() {
+async fn test_lone_anonymous_operation() {
     validation_test(
         indoc!(
             r#"
-            query {
+            query Named {
               actorKatie {
                 name
               }
             }
 
-            query {
+            {
               actors {
                 name
               }
@@ -161,12 +161,8 @@ async fn test_no_multiple_anonymous_operations() {
             {
               "errors": [
                 {
-                  "message": "Can't have multiple anonymous operations",
+                  "message": "Anonymous operation must be only operation",
                   "locations": [
-                    {
-                      "line": 1,
-                      "column": 1
-                    },
                     {
                       "line": 7,
                       "column": 1
@@ -182,51 +178,13 @@ async fn test_no_multiple_anonymous_operations() {
     validation_test(
         indoc!(
             r#"
-            {
-              actorKatie {
-                name
-              }
-            }
-
-            {
-              actors {
-                name
-              }
-            }
-        "#
-        ),
-        r#"
-            {
-              "errors": [
-                {
-                  "message": "Can't have multiple anonymous operations",
-                  "locations": [
-                    {
-                      "line": 1,
-                      "column": 1
-                    },
-                    {
-                      "line": 7,
-                      "column": 1
-                    }
-                  ]
-                }
-              ]
-            }
-        "#,
-    )
-    .await;
-
-    validation_test(
-        indoc!(
-            r#"
-            {
-              actorKatie {
-                name
-              }
-            }
-
             query {
+              actorKatie {
+                name
+              }
+            }
+
+            {
               actors {
                 name
               }
@@ -237,14 +195,10 @@ async fn test_no_multiple_anonymous_operations() {
             {
               "errors": [
                 {
-                  "message": "Can't have multiple anonymous operations",
+                  "message": "Anonymous operation must be only operation",
                   "locations": [
                     {
                       "line": 1,
-                      "column": 1
-                    },
-                    {
-                      "line": 7,
                       "column": 1
                     }
                   ]
