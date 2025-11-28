@@ -530,15 +530,17 @@ fn add_all_operation_name_locations(locations: &mut Vec<Location>, name: &str, r
         .document
         .definitions
         .iter()
+        .filter_map(|definition| definition.maybe_as_operation_definition())
         .enumerate()
-        .filter_map(|(index, definition)| {
-            definition
-                .maybe_as_operation_definition()
-                .filter(|operation_definition| operation_definition.name.as_ref().is(name))
+        .filter_map(|(index, operation_definition)| {
+            operation_definition
+                .name
+                .as_ref()
+                .if_is(name)
                 .map(|_| index)
         })
         .for_each(|index| {
-            locations.push(positions_tracker.nth_named_operation_name_location(index));
+            locations.push(positions_tracker.nth_operation_location(index));
         });
 }
 
@@ -572,7 +574,23 @@ fn validate_lone_anonymous_operation(request: &Request) -> Option<ValidationErro
     Some(ValidationError::new(
         "Anonymous operation must be only operation".to_owned(),
         PositionsTracker::current()
-            .map(|positions_tracker| vec![positions_tracker.anonymous_operation_location()])
+            .map(|positions_tracker| {
+                vec![positions_tracker.nth_operation_location(
+                    request
+                        .document
+                        .definitions
+                        .iter()
+                        .filter_map(|definition| definition.maybe_as_operation_definition())
+                        .enumerate()
+                        .find_map(|(index, operation_definition)| {
+                            match operation_definition.name.as_ref() {
+                                None => Some(index),
+                                Some(_) => None,
+                            }
+                        })
+                        .unwrap(),
+                )]
+            })
             .unwrap_or_default(),
     ))
 }

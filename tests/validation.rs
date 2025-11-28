@@ -40,11 +40,11 @@ async fn test_operation_name_uniqueness() {
                   "locations": [
                     {
                       "line": 1,
-                      "column": 7
+                      "column": 1
                     },
                     {
                       "line": 7,
-                      "column": 7
+                      "column": 1
                     }
                   ]
                 }
@@ -90,19 +90,19 @@ async fn test_operation_name_uniqueness() {
                   "locations": [
                     {
                       "line": 1,
-                      "column": 7
+                      "column": 1
                     },
                     {
                       "line": 13,
-                      "column": 7
+                      "column": 1
                     },
                     {
                       "line": 7,
-                      "column": 7
+                      "column": 1
                     },
                     {
                       "line": 19,
-                      "column": 7
+                      "column": 1
                     }
                   ]
                 }

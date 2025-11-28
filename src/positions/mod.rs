@@ -1,7 +1,6 @@
 use std::{cell::RefCell, fmt::Debug, iter::Peekable, ops::Deref};
 
 use serde::Serialize;
-use squalid::_d;
 
 pub struct CharsEmitter<TIterator: Iterator<Item = char>> {
     inner: Peekable<TIterator>,
@@ -71,36 +70,20 @@ impl PositionsTracker {
         ));
     }
 
-    pub fn receive_operation_name(&self) {
-        self.operations
-            .borrow_mut()
-            .last_mut()
-            .unwrap()
-            .name_location = Some(self.last_token_start.borrow().clone().unwrap());
+    pub fn receive_selection_field(&self) {
+        // self.operations
+        //     .borrow_mut()
+        //     .last_mut()
+        //     .unwrap()
+        //     .name_location = Some(self.last_token_start.borrow().clone().unwrap());
     }
 
     pub fn receive_token_pre_start(&self) {
         *self.should_next_char_record_as_token_start.borrow_mut() = true;
     }
 
-    pub fn nth_named_operation_name_location(&self, index: usize) -> Location {
-        self.operations
-            .borrow()
-            .iter()
-            .filter_map(|operation| operation.name_location)
-            .nth(index)
-            .unwrap()
-    }
-
-    pub fn anonymous_operation_location(&self) -> Location {
-        self.operations
-            .borrow()
-            .iter()
-            .find_map(|operation| match operation.name_location.as_ref() {
-                None => Some(operation.location),
-                Some(_) => None,
-            })
-            .unwrap()
+    pub fn nth_operation_location(&self, index: usize) -> Location {
+        self.operations.borrow().iter().nth(index).unwrap().location
     }
 
     pub fn current() -> Option<impl Deref<Target = Self> + Debug + 'static> {
@@ -121,9 +104,9 @@ impl PositionsTracker {
         }
     }
 
-    pub fn emit_operation_name() {
+    pub fn emit_selection_field() {
         if let Some(positions_tracker) = Self::current() {
-            positions_tracker.receive_operation_name();
+            positions_tracker.receive_selection_field();
         }
     }
 
@@ -151,14 +134,10 @@ impl Location {
 #[derive(Debug)]
 struct Operation {
     pub location: Location,
-    pub name_location: Option<Location>,
 }
 
 impl Operation {
     pub fn new(location: Location) -> Self {
-        Self {
-            location,
-            name_location: _d(),
-        }
+        Self { location }
     }
 }

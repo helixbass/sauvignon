@@ -418,7 +418,6 @@ pub fn parse_tokens(tokens: impl IntoIterator<Item = Token>) -> Request {
                                         .unwrap(),
                                 ),
                                 Some(Token::Name(name)) => {
-                                    PositionsTracker::emit_operation_name();
                                     builder = builder.name(name);
                                     match tokens.next() {
                                         Some(Token::LeftCurlyBracket) => {
@@ -517,6 +516,7 @@ where
                 }
             }),
             Some(Token::Name(name)) => {
+                PositionsTracker::emit_selection_field();
                 ret.push(Selection::Field({
                     let mut builder = SelectionFieldBuilder::default();
                     builder = builder.name(name);
