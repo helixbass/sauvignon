@@ -209,3 +209,35 @@ async fn test_lone_anonymous_operation() {
     )
     .await;
 }
+
+// TODO: uncomment this once implemented
+// #[tokio::test]
+// async fn test_selection_fields_exist() {
+//     validation_test(
+//         indoc!(
+//             r#"
+//             {
+//               actorKatie {
+//                 namez
+//               }
+//             }
+//         "#
+//         ),
+//         r#"
+//             {
+//               "errors": [
+//                 {
+//                   "message": "Field doesn't exist on type `Actor`: `namez`",
+//                   "locations": [
+//                     {
+//                       "line": 3,
+//                       "column": 5
+//                     }
+//                   ]
+//                 }
+//               ]
+//             }
+//         "#,
+//     )
+//     .await;
+// }

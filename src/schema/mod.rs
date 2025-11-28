@@ -3,15 +3,15 @@ use std::pin::Pin;
 
 use itertools::Itertools;
 use sqlx::{Pool, Postgres};
-use squalid::{OptionExt, _d};
+use squalid::{OptionExt, VecExt, _d};
 
 use crate::{
     builtin_types, fields_in_progress_new, parse, CarverOrPopulator, DependencyType,
-    DependencyValue, Error, ExternalDependencyValues, FieldPlan, FieldsInProgress, Id, InProgress,
-    InProgressRecursing, InProgressRecursingList, IndexMap, Interface, InternalDependencyResolver,
-    InternalDependencyValues, Location, Populator, PositionsTracker, QueryPlan, Request, Response,
-    ResponseValue, ResponseValueOrInProgress, Result as SauvignonResult, Type, TypeInterface,
-    Union, Value,
+    DependencyValue, Error, ExecutableDefinition, ExternalDependencyValues, FieldPlan,
+    FieldsInProgress, Id, InProgress, InProgressRecursing, InProgressRecursingList, IndexMap,
+    Interface, InternalDependencyResolver, InternalDependencyValues, Location, Populator,
+    PositionsTracker, QueryPlan, Request, Response, ResponseValue, ResponseValueOrInProgress,
+    Result as SauvignonResult, Selection, Type, TypeInterface, Union, Value,
 };
 
 pub struct Schema {
@@ -150,6 +150,8 @@ impl Schema {
 
         validate_operation_name_uniqueness(request).push_if(&mut errors);
         validate_lone_anonymous_operation(request).push_if(&mut errors);
+        // TODO: finish this
+        // validate_selection_fields_exist(request, self).append_to(&mut errors);
 
         return (errors, ValidatedRequest::new());
     }
@@ -593,6 +595,41 @@ fn validate_lone_anonymous_operation(request: &Request) -> Option<ValidationErro
             })
             .unwrap_or_default(),
     ))
+}
+
+fn validate_selection_fields_exist(request: &Request, schema: &Schema) -> Vec<ValidationError> {
+    let mut ret: Vec<ValidationError> = _d();
+
+    request
+        .document
+        .definitions
+        .iter()
+        .for_each(|definition| match definition {
+            ExecutableDefinition::Operation(operation_definition) => {
+                validate_selection_fields_exist_selection_set(
+                    &operation_definition.selection_set,
+                    schema,
+                    &mut ret,
+                );
+            }
+            ExecutableDefinition::Fragment(fragment_definition) => {
+                validate_selection_fields_exist_selection_set(
+                    &fragment_definition.selection_set,
+                    schema,
+                    &mut ret,
+                );
+            }
+        });
+
+    ret
+}
+
+fn validate_selection_fields_exist_selection_set(
+    selection_set: &[Selection],
+    schema: &Schema,
+    ret: &mut Vec<ValidationError>,
+) {
+    unimplemented!()
 }
 
 #[derive(Debug)]
