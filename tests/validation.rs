@@ -138,3 +138,120 @@ async fn test_operation_name_uniqueness() {
     )
     .await;
 }
+
+#[tokio::test]
+async fn test_no_multiple_anonymous_operations() {
+    validation_test(
+        indoc!(
+            r#"
+            query {
+              actorKatie {
+                name
+              }
+            }
+
+            query {
+              actors {
+                name
+              }
+            }
+        "#
+        ),
+        r#"
+            {
+              "errors": [
+                {
+                  "message": "Can't have multiple anonymous operations",
+                  "locations": [
+                    {
+                      "line": 1,
+                      "column": 1
+                    },
+                    {
+                      "line": 7,
+                      "column": 1
+                    }
+                  ]
+                }
+              ]
+            }
+        "#,
+    )
+    .await;
+
+    validation_test(
+        indoc!(
+            r#"
+            {
+              actorKatie {
+                name
+              }
+            }
+
+            {
+              actors {
+                name
+              }
+            }
+        "#
+        ),
+        r#"
+            {
+              "errors": [
+                {
+                  "message": "Can't have multiple anonymous operations",
+                  "locations": [
+                    {
+                      "line": 1,
+                      "column": 1
+                    },
+                    {
+                      "line": 7,
+                      "column": 1
+                    }
+                  ]
+                }
+              ]
+            }
+        "#,
+    )
+    .await;
+
+    validation_test(
+        indoc!(
+            r#"
+            {
+              actorKatie {
+                name
+              }
+            }
+
+            query {
+              actors {
+                name
+              }
+            }
+        "#
+        ),
+        r#"
+            {
+              "errors": [
+                {
+                  "message": "Can't have multiple anonymous operations",
+                  "locations": [
+                    {
+                      "line": 1,
+                      "column": 1
+                    },
+                    {
+                      "line": 7,
+                      "column": 1
+                    }
+                  ]
+                }
+              ]
+            }
+        "#,
+    )
+    .await;
+}

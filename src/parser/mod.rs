@@ -405,6 +405,7 @@ pub fn parse_tokens(tokens: impl IntoIterator<Item = Token>) -> Request {
                             )
                         ) =>
                 {
+                    PositionsTracker::emit_operation();
                     definitions.push({
                         let mut builder = OperationDefinitionBuilder::default();
                         builder = builder.operation_type(OperationType::Query);

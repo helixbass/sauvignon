@@ -1,6 +1,7 @@
 use std::{cell::RefCell, fmt::Debug, iter::Peekable, ops::Deref};
 
 use serde::Serialize;
+use squalid::_d;
 
 pub struct CharsEmitter<TIterator: Iterator<Item = char>> {
     inner: Peekable<TIterator>,
@@ -33,7 +34,7 @@ pub struct PositionsTracker {
     just_saw_carriage_return: RefCell<bool>,
     just_newlined: RefCell<bool>,
     should_next_char_record_as_token_start: RefCell<bool>,
-    operation_name_positions: RefCell<Vec<Location>>,
+    operations: RefCell<Vec<Operation>>,
 }
 
 impl PositionsTracker {
@@ -64,10 +65,18 @@ impl PositionsTracker {
         *self.last_char.borrow_mut() = Some(new_last_char);
     }
 
+    pub fn receive_operation(&self) {
+        self.operations.borrow_mut().push(Operation::new(
+            self.last_token_start.borrow().clone().unwrap(),
+        ));
+    }
+
     pub fn receive_operation_name(&self) {
-        self.operation_name_positions
+        self.operations
             .borrow_mut()
-            .push(self.last_token_start.borrow().clone().unwrap());
+            .last_mut()
+            .unwrap()
+            .name_location = Some(self.last_token_start.borrow().clone().unwrap());
     }
 
     pub fn receive_token_pre_start(&self) {
@@ -75,7 +84,23 @@ impl PositionsTracker {
     }
 
     pub fn nth_named_operation_name_location(&self, index: usize) -> Location {
-        self.operation_name_positions.borrow()[index]
+        self.operations
+            .borrow()
+            .iter()
+            .filter_map(|operation| operation.name_location)
+            .nth(index)
+            .unwrap()
+    }
+
+    pub fn anonymous_operation_locations(&self) -> Vec<Location> {
+        self.operations
+            .borrow()
+            .iter()
+            .filter_map(|operation| match operation.name_location.as_ref() {
+                None => Some(operation.location),
+                Some(_) => None,
+            })
+            .collect()
     }
 
     pub fn current() -> Option<impl Deref<Target = Self> + Debug + 'static> {
@@ -87,6 +112,12 @@ impl PositionsTracker {
     pub fn emit_char(ch: char) {
         if let Some(positions_tracker) = Self::current() {
             positions_tracker.receive_char(ch);
+        }
+    }
+
+    pub fn emit_operation() {
+        if let Some(positions_tracker) = Self::current() {
+            positions_tracker.receive_operation();
         }
     }
 
@@ -114,5 +145,20 @@ pub struct Location {
 impl Location {
     pub fn new(line: usize, column: usize) -> Self {
         Self { line, column }
+    }
+}
+
+#[derive(Debug)]
+struct Operation {
+    pub location: Location,
+    pub name_location: Option<Location>,
+}
+
+impl Operation {
+    pub fn new(location: Location) -> Self {
+        Self {
+            location,
+            name_location: _d(),
+        }
     }
 }

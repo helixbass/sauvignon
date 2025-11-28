@@ -149,6 +149,7 @@ impl Schema {
         let mut errors: Vec<ValidationError> = _d();
 
         validate_operation_name_uniqueness(request).push_if(&mut errors);
+        validate_not_multiple_anonymous_operations(request).push_if(&mut errors);
 
         return (errors, ValidatedRequest::new());
     }
@@ -539,6 +540,30 @@ fn add_all_operation_name_locations(locations: &mut Vec<Location>, name: &str, r
         .for_each(|index| {
             locations.push(positions_tracker.nth_named_operation_name_location(index));
         });
+}
+
+fn validate_not_multiple_anonymous_operations(request: &Request) -> Option<ValidationError> {
+    if !request
+        .document
+        .definitions
+        .iter()
+        .filter_map(|definition| {
+            definition
+                .maybe_as_operation_definition()
+                .filter(|operation_definition| operation_definition.name.is_none())
+        })
+        .nth(1)
+        .is_some()
+    {
+        return None;
+    }
+
+    Some(ValidationError::new(
+        "Can't have multiple anonymous operations".to_owned(),
+        PositionsTracker::current()
+            .map(|positions_tracker| positions_tracker.anonymous_operation_locations())
+            .unwrap_or_default(),
+    ))
 }
 
 #[derive(Debug)]
