@@ -188,7 +188,13 @@ struct Document {
 
 impl FindCurrentlyActiveSelectionSet for Document {
     fn find_currently_active_selection_set(&mut self) -> Option<&mut SelectionSet> {
-        unimplemented!()
+        for definition in &mut self.definitions {
+            match definition.find_currently_active_selection_set() {
+                Some(selection_set) => return Some(selection_set),
+                _ => {}
+            }
+        }
+        None
     }
 }
 
@@ -211,6 +217,15 @@ impl OperationOrFragment {
     }
 }
 
+impl FindCurrentlyActiveSelectionSet for OperationOrFragment {
+    fn find_currently_active_selection_set(&mut self) -> Option<&mut SelectionSet> {
+        match self {
+            Self::Operation(operation) => operation.find_currently_active_selection_set(),
+            Self::Fragment(fragment) => fragment.find_currently_active_selection_set(),
+        }
+    }
+}
+
 #[derive(Debug)]
 struct Operation {
     pub location: Location,
@@ -226,9 +241,21 @@ impl Operation {
     }
 }
 
+impl FindCurrentlyActiveSelectionSet for Operation {
+    fn find_currently_active_selection_set(&mut self) -> Option<&mut SelectionSet> {
+        self.selection_set.find_currently_active_selection_set()
+    }
+}
+
 #[derive(Debug, Default)]
 struct Fragment {
     pub selection_set: SelectionSet,
+}
+
+impl FindCurrentlyActiveSelectionSet for Fragment {
+    fn find_currently_active_selection_set(&mut self) -> Option<&mut SelectionSet> {
+        self.selection_set.find_currently_active_selection_set()
+    }
 }
 
 #[derive(Debug, Default)]
@@ -246,6 +273,34 @@ impl SelectionSet {
     pub fn close(&mut self) {
         assert!(self.status == SelectionSetStatus::Started);
         self.status = SelectionSetStatus::Done;
+    }
+}
+
+impl FindCurrentlyActiveSelectionSet for SelectionSet {
+    fn find_currently_active_selection_set(&mut self) -> Option<&mut SelectionSet> {
+        match self.status {
+            SelectionSetStatus::Started => {
+                // per https://users.rust-lang.org/t/returning-mutable-referernces-to-optional-self-fields/98206
+                let mut found_sub = false;
+                for selection in self.selections.iter_mut() {
+                    if let Some(_) = selection.find_currently_active_selection_set() {
+                        // return Some(selection_set);
+                        found_sub = true;
+                        break;
+                    }
+                }
+                if !found_sub {
+                    return Some(self);
+                }
+                for selection in self.selections.iter_mut() {
+                    if let Some(selection_set) = selection.find_currently_active_selection_set() {
+                        return Some(selection_set);
+                    }
+                }
+                unreachable!()
+            }
+            _ => None,
+        }
     }
 }
 
@@ -274,6 +329,18 @@ impl Selection {
     }
 }
 
+impl FindCurrentlyActiveSelectionSet for Selection {
+    fn find_currently_active_selection_set(&mut self) -> Option<&mut SelectionSet> {
+        match self {
+            Self::Field(field) => field.find_currently_active_selection_set(),
+            Self::InlineFragment(inline_fragment) => {
+                inline_fragment.find_currently_active_selection_set()
+            }
+            Self::FragmentSpread => None,
+        }
+    }
+}
+
 #[derive(Debug)]
 struct Field {
     pub location: Location,
@@ -289,6 +356,12 @@ impl Field {
     }
 }
 
+impl FindCurrentlyActiveSelectionSet for Field {
+    fn find_currently_active_selection_set(&mut self) -> Option<&mut SelectionSet> {
+        self.selection_set.find_currently_active_selection_set()
+    }
+}
+
 #[derive(Debug)]
 struct InlineFragment {
     pub location: Location,
@@ -301,6 +374,12 @@ impl InlineFragment {
             location,
             selection_set: _d(),
         }
+    }
+}
+
+impl FindCurrentlyActiveSelectionSet for InlineFragment {
+    fn find_currently_active_selection_set(&mut self) -> Option<&mut SelectionSet> {
+        self.selection_set.find_currently_active_selection_set()
     }
 }
 
