@@ -163,6 +163,34 @@ impl PositionsTracker {
             .location
     }
 
+    pub fn inline_fragment_location(
+        &self,
+        inline_fragment: &crate::InlineFragment,
+        document: &crate::Document,
+    ) -> Location {
+        document
+            .definitions
+            .iter()
+            .zip(self.document.borrow().definitions.iter())
+            .find_map(|(definition, definition_positions)| {
+                match (definition, definition_positions) {
+                    (
+                        ExecutableDefinition::Operation(operation_definition),
+                        OperationOrFragment::Operation(operation_positions),
+                    ) => maybe_inline_fragment_location_selection_set(
+                        inline_fragment,
+                        &operation_definition.selection_set,
+                        &operation_positions.selection_set,
+                    ),
+                    (
+                        ExecutableDefinition::Fragment(fragment_definition),
+                        OperationOrFragment::Fragment(fragment_positions),
+                    ) => {}
+                    _ => unreachable!(),
+                }
+            });
+    }
+
     pub fn current() -> Option<impl Deref<Target = Self> + Debug + 'static> {
         // TODO: per https://github.com/anp/moxie/issues/308 is using illicit
         // ok thread-local-wise vs eg Tokio can move tasks across threads?
@@ -406,7 +434,7 @@ impl FindCurrentlyActiveSelectionSet for Selection {
 #[derive(Debug)]
 struct Field {
     pub location: Location,
-    pub selection_set: SelectionSet,
+    pub selection_set: Option<SelectionSet>,
 }
 
 impl Field {
@@ -459,4 +487,42 @@ fn find_selection_to_open(selection_set: &mut [Selection]) -> &mut Selection {
         })
         .next()
         .unwrap()
+}
+
+fn maybe_inline_fragment_location_selection_set(
+    inline_fragment: &crate::InlineFragment,
+    selection_set: &[crate::Selection],
+    selection_set_positions: &SelectionSet,
+) -> Option<Location> {
+    selection_set
+        .into_iter()
+        .zip(selection_set_positions.selections.iter())
+        .find_map(
+            |(selection, selection_positions)| match (selection, selection_positions) {
+                (crate::Selection::Field(field), Selection::Field(field_positions)) => {
+                    field.selection_set.as_ref().and_then(|selection_set| {
+                        maybe_inline_fragment_location_selection_set(
+                            inline_fragment,
+                            selection_set,
+                            field_positions.selection_set.as_ref().unwrap(),
+                        )
+                    })
+                }
+                (
+                    crate::Selection::InlineFragment(inline_fragment_current),
+                    Selection::InlineFragment(inline_fragment_positions),
+                ) => {
+                    if ptr::eq(inline_fragment, inline_fragment_current) {
+                        return Some(inline_fragment_positions.location);
+                    }
+                    maybe_inline_fragment_location_selection_set(
+                        inline_fragment,
+                        &inline_fragment.selection_set,
+                        &inline_fragment_positions.selection_set,
+                    )
+                }
+                (crate::Selection::FragmentSpread(_), Selection::FragmentSpread) => None,
+                _ => unreachable!(),
+            },
+        )
 }
