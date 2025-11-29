@@ -1,7 +1,9 @@
-use std::{cell::RefCell, fmt::Debug, iter::Peekable, ops::Deref};
+use std::{cell::RefCell, fmt::Debug, iter::Peekable, ops::Deref, ptr};
 
 use serde::Serialize;
 use squalid::_d;
+
+use crate::ExecutableDefinition;
 
 pub struct CharsEmitter<TIterator: Iterator<Item = char>> {
     inner: Peekable<TIterator>,
@@ -78,6 +80,15 @@ impl PositionsTracker {
             )));
     }
 
+    pub fn receive_fragment_definition(&self) {
+        self.document
+            .borrow_mut()
+            .definitions
+            .push(OperationOrFragment::Fragment(FragmentDefinition::new(
+                self.last_token(),
+            )));
+    }
+
     pub fn receive_selection_set(&self) {
         let mut document = self.document.borrow_mut();
         let currently_active_selection_set = document.find_currently_active_selection_set();
@@ -136,6 +147,22 @@ impl PositionsTracker {
             .location
     }
 
+    pub fn fragment_definition_location(
+        &self,
+        fragment: &crate::FragmentDefinition,
+        document: &crate::Document,
+    ) -> Location {
+        let index = document.definitions.iter().position(|definition| {
+            matches!(
+                definition,
+                ExecutableDefinition::Fragment(fragment_definition) if ptr::eq(fragment_definition, fragment)
+            )
+        }).unwrap();
+        self.document.borrow().definitions[index]
+            .as_fragment_definition()
+            .location
+    }
+
     pub fn current() -> Option<impl Deref<Target = Self> + Debug + 'static> {
         // TODO: per https://github.com/anp/moxie/issues/308 is using illicit
         // ok thread-local-wise vs eg Tokio can move tasks across threads?
@@ -151,6 +178,12 @@ impl PositionsTracker {
     pub fn emit_operation() {
         if let Some(positions_tracker) = Self::current() {
             positions_tracker.receive_operation();
+        }
+    }
+
+    pub fn emit_fragment_definition() {
+        if let Some(positions_tracker) = Self::current() {
+            positions_tracker.receive_fragment_definition();
         }
     }
 
@@ -217,7 +250,7 @@ trait FindCurrentlyActiveSelectionSet {
 #[derive(Debug)]
 enum OperationOrFragment {
     Operation(Operation),
-    Fragment(Fragment),
+    Fragment(FragmentDefinition),
 }
 
 impl OperationOrFragment {
@@ -225,6 +258,13 @@ impl OperationOrFragment {
         match self {
             Self::Operation(operation) => Some(operation),
             _ => None,
+        }
+    }
+
+    pub fn as_fragment_definition(&self) -> &FragmentDefinition {
+        match self {
+            Self::Fragment(fragment_definition) => fragment_definition,
+            _ => panic!("Expected fragment definition"),
         }
     }
 }
@@ -259,12 +299,22 @@ impl FindCurrentlyActiveSelectionSet for Operation {
     }
 }
 
-#[derive(Debug, Default)]
-struct Fragment {
+#[derive(Debug)]
+struct FragmentDefinition {
+    pub location: Location,
     pub selection_set: SelectionSet,
 }
 
-impl FindCurrentlyActiveSelectionSet for Fragment {
+impl FragmentDefinition {
+    pub fn new(location: Location) -> Self {
+        Self {
+            location,
+            selection_set: _d(),
+        }
+    }
+}
+
+impl FindCurrentlyActiveSelectionSet for FragmentDefinition {
     fn find_currently_active_selection_set(&mut self) -> Option<&mut SelectionSet> {
         self.selection_set.find_currently_active_selection_set()
     }

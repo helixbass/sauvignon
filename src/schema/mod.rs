@@ -3,7 +3,7 @@ use std::pin::Pin;
 
 use itertools::Itertools;
 use sqlx::{Pool, Postgres};
-use squalid::{OptionExt, VecExt, _d};
+use squalid::{OptionExt, _d};
 
 use crate::{
     builtin_types, fields_in_progress_new, parse, CarverOrPopulator, DependencyType,
@@ -111,17 +111,25 @@ impl Schema {
         self.maybe_type(name).unwrap()
     }
 
-    pub fn type_or_union_or_interface<'a>(&'a self, name: &str) -> TypeOrUnionOrInterface<'a> {
+    pub fn maybe_type_or_union_or_interface<'a>(
+        &'a self,
+        name: &str,
+    ) -> Option<TypeOrUnionOrInterface<'a>> {
         if let Some(type_) = self.maybe_type(name) {
-            return TypeOrUnionOrInterface::Type(type_);
+            return Some(TypeOrUnionOrInterface::Type(type_));
         }
         if let Some(union) = self.unions.get(name) {
-            return TypeOrUnionOrInterface::Union(union);
+            return Some(TypeOrUnionOrInterface::Union(union));
         }
         if let Some(interface) = self.interfaces.get(name) {
-            return TypeOrUnionOrInterface::Interface(interface);
+            return Some(TypeOrUnionOrInterface::Interface(interface));
         }
-        panic!("Unknown type/union/interface: {name}");
+        None
+    }
+
+    pub fn type_or_union_or_interface<'a>(&'a self, name: &str) -> TypeOrUnionOrInterface<'a> {
+        self.maybe_type_or_union_or_interface(name)
+            .expect_else(|| format!("Unknown type/union/interface: {name}"))
     }
 
     pub fn all_concrete_type_names(
@@ -150,6 +158,10 @@ impl Schema {
         }
         if let Some(error) = validate_lone_anonymous_operation(request) {
             return vec![error].into();
+        }
+        let errors = validate_type_names_exist(request, self);
+        if !errors.is_empty() {
+            return errors.into();
         }
         // TODO: finish these
         // validate_selection_fields_exist(request, self).append_to(&mut errors);
@@ -597,6 +609,91 @@ fn validate_lone_anonymous_operation(request: &Request) -> Option<ValidationErro
             })
             .unwrap_or_default(),
     ))
+}
+
+fn validate_type_names_exist(request: &Request, schema: &Schema) -> Vec<ValidationError> {
+    let mut ret: Vec<ValidationError> = _d();
+
+    request
+        .document
+        .definitions
+        .iter()
+        .for_each(|definition| match definition {
+            ExecutableDefinition::Operation(operation) => {
+                validate_type_names_exist_selection_set(
+                    &operation.selection_set,
+                    schema,
+                    request,
+                    &mut ret,
+                );
+            }
+            ExecutableDefinition::Fragment(fragment) => {
+                if schema
+                    .maybe_type_or_union_or_interface(&fragment.on)
+                    .is_none()
+                {
+                    ret.push(type_names_exist_validation_error(
+                        &fragment.on,
+                        PositionsTracker::current().map(|positions_tracker| {
+                            positions_tracker
+                                .fragment_definition_location(fragment, &request.document)
+                        }),
+                    ));
+                }
+                validate_type_names_exist_selection_set(
+                    &fragment.selection_set,
+                    schema,
+                    request,
+                    &mut ret,
+                );
+            }
+        });
+
+    ret
+}
+
+fn validate_type_names_exist_selection_set(
+    selection_set: &[Selection],
+    schema: &Schema,
+    request: &Request,
+    ret: &mut Vec<ValidationError>,
+) {
+    selection_set
+        .into_iter()
+        .for_each(|selection| match selection {
+            Selection::Field(field) => {
+                if let Some(selection_set) = field.selection_set.as_ref() {
+                    validate_type_names_exist_selection_set(selection_set, schema, request, ret);
+                }
+            }
+            Selection::InlineFragment(inline_fragment) => {
+                if let Some(on) = inline_fragment.on.as_ref() {
+                    if schema.maybe_type_or_union_or_interface(on).is_none() {
+                        ret.push(type_names_exist_validation_error(
+                            on,
+                            PositionsTracker::current().map(|positions_tracker| {
+                                positions_tracker
+                                    .inline_fragment_location(inline_fragment, &request.document)
+                            }),
+                        ));
+                    }
+                }
+            }
+            _ => {}
+        });
+}
+
+fn type_names_exist_validation_error(
+    type_name: &str,
+    location: Option<Location>,
+) -> ValidationError {
+    ValidationError::new(
+        format!("Unknown type name: `{type_name}`"),
+        match location {
+            Some(location) => vec![location],
+            None => _d(),
+        },
+    )
 }
 
 fn validate_selection_fields_exist(request: &Request, schema: &Schema) -> Vec<ValidationError> {

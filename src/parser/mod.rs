@@ -443,6 +443,7 @@ pub fn parse_tokens(tokens: impl IntoIterator<Item = Token>) -> Request {
                     });
                 }
                 Some(Token::Name(name)) if name == "fragment" => {
+                    PositionsTracker::emit_fragment_definition();
                     definitions.push(ExecutableDefinition::Fragment(FragmentDefinition::new(
                         match tokens.next() {
                             Some(Token::Name(name)) => {
