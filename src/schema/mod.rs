@@ -833,7 +833,7 @@ fn validate_type_or_interface_field_exists<TField: FieldInterface>(
                 (true, None) => {
                     ret.push(no_selection_on_object_type_validation_error(
                         &field.name,
-                        type_name,
+                        field_type.type_().name(),
                         PositionsTracker::current().map(|positions_tracker| {
                             positions_tracker.field_location(field, &request.document)
                         }),
@@ -842,7 +842,7 @@ fn validate_type_or_interface_field_exists<TField: FieldInterface>(
                 (false, Some(_)) => {
                     ret.push(selection_on_scalar_type_validation_error(
                         &field.name,
-                        type_name,
+                        field_type.type_().name(),
                         PositionsTracker::current().map(|positions_tracker| {
                             positions_tracker.field_location(field, &request.document)
                         }),
@@ -859,7 +859,7 @@ fn selection_field_doesnt_exist_validation_error(
     location: Option<Location>,
 ) -> ValidationError {
     ValidationError::new(
-        format!("Field `{field_name} doesn't exist on `{type_name}`"),
+        format!("Field `{field_name}` doesn't exist on `{type_name}`"),
         match location {
             Some(location) => vec![location],
             None => _d(),
@@ -873,7 +873,7 @@ fn selection_on_scalar_type_validation_error(
     location: Option<Location>,
 ) -> ValidationError {
     ValidationError::new(
-        format!("Field `{field_name} can't have selection set because it is of scalar type `{type_name}`"),
+        format!("Field `{field_name}` can't have selection set because it is of scalar type `{type_name}`"),
         match location {
             Some(location) => vec![location],
             None => _d(),
@@ -887,7 +887,7 @@ fn no_selection_on_object_type_validation_error(
     location: Option<Location>,
 ) -> ValidationError {
     ValidationError::new(
-        format!("Field `{field_name} must have selection set because it is of non-scalar type `{type_name}`"),
+        format!("Field `{field_name}` must have selection set because it is of non-scalar type `{type_name}`"),
         match location {
             Some(location) => vec![location],
             None => _d(),
