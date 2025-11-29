@@ -761,7 +761,7 @@ fn validate_selection_fields_exist_selection_set(
                         ret,
                     );
                 }
-                TypeOrUnionOrInterface::Union(union) => {
+                TypeOrUnionOrInterface::Union(_) => {
                     if field.name != "__typename" {
                         ret.push(selection_field_doesnt_exist_validation_error(
                             &field.name,
