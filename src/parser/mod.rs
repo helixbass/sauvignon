@@ -489,8 +489,10 @@ where
                         &token,
                         Token::Name(name) if name != "on"
                     ) {
+                        PositionsTracker::emit_selection_fragment_spread();
                         Selection::FragmentSpread(FragmentSpread::new(token.into_name()))
                     } else if matches!(&token, Token::Name(_) | Token::LeftCurlyBracket) {
+                        PositionsTracker::emit_selection_inline_fragment();
                         match token {
                             Token::Name(_) => {
                                 let on = match tokens.next() {

@@ -1,7 +1,7 @@
 use std::{cell::RefCell, fmt::Debug, iter::Peekable, ops::Deref, ptr};
 
 use serde::Serialize;
-use squalid::_d;
+use squalid::{EverythingExt, _d};
 
 use crate::ExecutableDefinition;
 
@@ -132,6 +132,26 @@ impl PositionsTracker {
             .push(Selection::Field(Field::new(self.last_token())));
     }
 
+    pub fn receive_selection_inline_fragment(&self) {
+        self.document
+            .borrow_mut()
+            .find_currently_active_selection_set()
+            .unwrap()
+            .selections
+            .push(Selection::InlineFragment(InlineFragment::new(
+                self.last_token(),
+            )));
+    }
+
+    pub fn receive_selection_fragment_spread(&self) {
+        self.document
+            .borrow_mut()
+            .find_currently_active_selection_set()
+            .unwrap()
+            .selections
+            .push(Selection::FragmentSpread);
+    }
+
     pub fn receive_token_pre_start(&self) {
         *self.should_next_char_record_as_token_start.borrow_mut() = true;
     }
@@ -185,10 +205,15 @@ impl PositionsTracker {
                     (
                         ExecutableDefinition::Fragment(fragment_definition),
                         OperationOrFragment::Fragment(fragment_positions),
-                    ) => {}
+                    ) => maybe_inline_fragment_location_selection_set(
+                        inline_fragment,
+                        &fragment_definition.selection_set,
+                        &fragment_positions.selection_set,
+                    ),
                     _ => unreachable!(),
                 }
-            });
+            })
+            .unwrap()
     }
 
     pub fn current() -> Option<impl Deref<Target = Self> + Debug + 'static> {
@@ -230,6 +255,18 @@ impl PositionsTracker {
     pub fn emit_selection_field() {
         if let Some(positions_tracker) = Self::current() {
             positions_tracker.receive_selection_field();
+        }
+    }
+
+    pub fn emit_selection_inline_fragment() {
+        if let Some(positions_tracker) = Self::current() {
+            positions_tracker.receive_selection_inline_fragment();
+        }
+    }
+
+    pub fn emit_selection_fragment_spread() {
+        if let Some(positions_tracker) = Self::current() {
+            positions_tracker.receive_selection_fragment_spread();
         }
     }
 
@@ -412,7 +449,10 @@ enum Selection {
 impl Selection {
     pub fn open(&mut self) {
         match self {
-            Selection::Field(field) => field.selection_set.open(),
+            Selection::Field(field) => {
+                field.selection_set = Some(_d());
+                field.selection_set.as_mut().unwrap().open();
+            }
             Selection::InlineFragment(inline_fragment) => inline_fragment.selection_set.open(),
             _ => unreachable!(),
         }
@@ -448,7 +488,9 @@ impl Field {
 
 impl FindCurrentlyActiveSelectionSet for Field {
     fn find_currently_active_selection_set(&mut self) -> Option<&mut SelectionSet> {
-        self.selection_set.find_currently_active_selection_set()
+        self.selection_set
+            .as_mut()
+            .and_then(|selection_set| selection_set.find_currently_active_selection_set())
     }
 }
 
@@ -475,18 +517,15 @@ impl FindCurrentlyActiveSelectionSet for InlineFragment {
 
 fn find_selection_to_open(selection_set: &mut [Selection]) -> &mut Selection {
     selection_set
-        .iter_mut()
-        .filter(|selection| match selection {
-            Selection::Field(field) => {
-                field.selection_set.status == SelectionSetStatus::NotYetStarted
-            }
-            Selection::InlineFragment(inline_fragment) => {
-                inline_fragment.selection_set.status == SelectionSetStatus::NotYetStarted
-            }
-            _ => false,
-        })
-        .next()
+        .last_mut()
         .unwrap()
+        .tap(|selection| match selection {
+            Selection::Field(field) => assert!(field.selection_set.is_none()),
+            Selection::InlineFragment(inline_fragment) => {
+                assert!(inline_fragment.selection_set.status == SelectionSetStatus::NotYetStarted)
+            }
+            _ => unreachable!(),
+        })
 }
 
 fn maybe_inline_fragment_location_selection_set(
