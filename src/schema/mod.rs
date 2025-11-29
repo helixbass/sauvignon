@@ -514,6 +514,7 @@ fn to_recursing_after_populating<'a>(
     ))
 }
 
+#[derive(Copy, Clone)]
 pub enum TypeOrUnionOrInterface<'a> {
     Type(&'a Type),
     Union(&'a Union),
@@ -720,6 +721,7 @@ fn validate_selection_fields_exist(request: &Request, schema: &Schema) -> Vec<Va
                     &operation_definition.selection_set,
                     schema.type_name_for_operation_type(operation_definition.operation_type),
                     schema,
+                    request,
                     &mut ret,
                 );
             }
@@ -728,6 +730,7 @@ fn validate_selection_fields_exist(request: &Request, schema: &Schema) -> Vec<Va
                     &fragment_definition.selection_set,
                     &fragment_definition.on,
                     schema,
+                    request,
                     &mut ret,
                 );
             }
@@ -740,10 +743,11 @@ fn validate_selection_fields_exist_selection_set(
     selection_set: &[Selection],
     type_name: &str,
     schema: &Schema,
+    request: &Request,
     ret: &mut Vec<ValidationError>,
 ) {
     let type_ = schema.type_or_union_or_interface(type_name);
-    assert!(is_non_scalar_type(type_));
+    assert!(is_non_scalar_type(&type_));
     for selection in selection_set {
         match selection {
             Selection::Field(field) => match type_ {
@@ -753,6 +757,7 @@ fn validate_selection_fields_exist_selection_set(
                         type_name,
                         field,
                         schema,
+                        request,
                         ret,
                     );
                 }
@@ -761,6 +766,9 @@ fn validate_selection_fields_exist_selection_set(
                         ret.push(selection_field_doesnt_exist_validation_error(
                             &field.name,
                             type_name,
+                            PositionsTracker::current().map(|positions_tracker| {
+                                positions_tracker.field_location(field, &request.document)
+                            }),
                         ));
                     }
                 }
@@ -770,6 +778,7 @@ fn validate_selection_fields_exist_selection_set(
                         type_name,
                         field,
                         schema,
+                        request,
                         ret,
                     );
                 }
@@ -779,6 +788,7 @@ fn validate_selection_fields_exist_selection_set(
                     &inline_fragment.selection_set,
                     inline_fragment.on.as_deref().unwrap_or(type_name),
                     schema,
+                    request,
                     ret,
                 );
             }
@@ -792,6 +802,7 @@ fn validate_type_or_interface_field_exists<TField: FieldInterface>(
     type_name: &str,
     field: &SelectionField,
     schema: &Schema,
+    request: &Request,
     ret: &mut Vec<ValidationError>,
 ) {
     match type_field {
@@ -799,11 +810,14 @@ fn validate_type_or_interface_field_exists<TField: FieldInterface>(
             ret.push(selection_field_doesnt_exist_validation_error(
                 &field.name,
                 type_name,
+                PositionsTracker::current().map(|positions_tracker| {
+                    positions_tracker.field_location(field, &request.document)
+                }),
             ));
         }
         Some(field_type) => {
             match (
-                is_non_scalar_type(schema.type_or_union_or_interface(field_type.type_().name())),
+                is_non_scalar_type(&schema.type_or_union_or_interface(field_type.type_().name())),
                 field.selection_set.as_ref(),
             ) {
                 (true, Some(selection_set)) => {
@@ -811,6 +825,7 @@ fn validate_type_or_interface_field_exists<TField: FieldInterface>(
                         selection_set,
                         field_type.type_().name(),
                         schema,
+                        request,
                         ret,
                     );
                 }
@@ -819,12 +834,18 @@ fn validate_type_or_interface_field_exists<TField: FieldInterface>(
                     ret.push(no_selection_on_object_type_validation_error(
                         &field.name,
                         type_name,
+                        PositionsTracker::current().map(|positions_tracker| {
+                            positions_tracker.field_location(field, &request.document)
+                        }),
                     ));
                 }
                 (false, Some(_)) => {
                     ret.push(selection_on_scalar_type_validation_error(
                         &field.name,
                         type_name,
+                        PositionsTracker::current().map(|positions_tracker| {
+                            positions_tracker.field_location(field, &request.document)
+                        }),
                     ));
                 }
             }
@@ -962,7 +983,7 @@ impl From<Vec<ValidationError>> for ValidationRequestOrErrors {
     }
 }
 
-fn is_non_scalar_type(type_: TypeOrUnionOrInterface) -> bool {
+fn is_non_scalar_type(type_: &TypeOrUnionOrInterface) -> bool {
     match type_ {
         TypeOrUnionOrInterface::Type(Type::Object(_)) => true,
         TypeOrUnionOrInterface::Union(_) => true,
