@@ -150,8 +150,9 @@ impl Schema {
 
         validate_operation_name_uniqueness(request).push_if(&mut errors);
         validate_lone_anonymous_operation(request).push_if(&mut errors);
-        // TODO: finish this
+        // TODO: finish these
         // validate_selection_fields_exist(request, self).append_to(&mut errors);
+        // validate_argument_names_exist(request, self).append_to(&mut errors);
 
         return (errors, ValidatedRequest::new());
     }
@@ -630,6 +631,48 @@ fn validate_selection_fields_exist_selection_set(
     ret: &mut Vec<ValidationError>,
 ) {
     unimplemented!()
+}
+
+fn validate_argument_names_exist(request: &Request, schema: &Schema) -> Vec<ValidationError> {
+    let mut ret: Vec<ValidationError> = _d();
+
+    request
+        .document
+        .definitions
+        .iter()
+        .for_each(|definition| match definition {
+            ExecutableDefinition::Operation(operation_definition) => {
+                validate_argument_names_exist_selection_set(
+                    &operation_definition.selection_set,
+                    schema,
+                    &mut ret,
+                );
+            }
+            ExecutableDefinition::Fragment(fragment_definition) => {
+                validate_argument_names_exist_selection_set(
+                    &fragment_definition.selection_set,
+                    schema,
+                    &mut ret,
+                );
+            }
+        });
+
+    ret
+}
+
+fn validate_argument_names_exist_selection_set(
+    selection_set: &[Selection],
+    schema: &Schema,
+    ret: &mut Vec<ValidationError>,
+) {
+    unimplemented!();
+    selection_set
+        .into_iter()
+        .for_each(|selection| match selection {
+            Selection::Field(field) => {}
+            Selection::InlineFragment(inline_fragment) => {}
+            _ => {}
+        })
 }
 
 #[derive(Debug)]
