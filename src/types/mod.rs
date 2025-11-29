@@ -235,6 +235,21 @@ impl Field {
     }
 }
 
+impl FieldInterface for Field {
+    fn name(&self) -> &str {
+        &self.name
+    }
+
+    fn type_(&self) -> &TypeFull {
+        &self.type_
+    }
+}
+
+pub trait FieldInterface {
+    fn name(&self) -> &str;
+    fn type_(&self) -> &TypeFull;
+}
+
 pub fn builtin_types() -> HashMap<String, Type> {
     [
         ("String".to_owned(), string_type()),
@@ -337,6 +352,16 @@ pub struct InterfaceField {
 impl InterfaceField {
     pub fn new(name: String, type_: TypeFull) -> Self {
         Self { name, type_ }
+    }
+}
+
+impl FieldInterface for InterfaceField {
+    fn name(&self) -> &str {
+        &self.name
+    }
+
+    fn type_(&self) -> &TypeFull {
+        &self.type_
     }
 }
 

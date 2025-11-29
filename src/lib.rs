@@ -45,6 +45,7 @@ pub use crate::response::{
 pub use crate::schema::{Schema, TypeOrUnionOrInterface, ValidationError};
 pub use crate::types::{
     builtin_types, string_type, BuiltInScalarType, Field as TypeField,
-    FieldBuilder as TypeFieldBuilder, Interface, InterfaceBuilder, InterfaceField, ObjectType,
-    ObjectTypeBuilder, Param, ScalarType, StringType, Type, TypeFull, TypeInterface, Union,
+    FieldBuilder as TypeFieldBuilder, FieldInterface, Interface, InterfaceBuilder, InterfaceField,
+    ObjectType, ObjectTypeBuilder, Param, ScalarType, StringType, Type, TypeFull, TypeInterface,
+    Union,
 };
