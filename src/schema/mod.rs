@@ -753,7 +753,7 @@ fn validate_selection_fields_exist_selection_set(
             Selection::Field(field) => match type_ {
                 TypeOrUnionOrInterface::Type(type_) => {
                     validate_type_or_interface_field_exists(
-                        type_.as_object().fields.get(&field.name),
+                        type_.as_object().maybe_field(&field.name),
                         type_name,
                         field,
                         schema,
@@ -774,7 +774,7 @@ fn validate_selection_fields_exist_selection_set(
                 }
                 TypeOrUnionOrInterface::Interface(interface) => {
                     validate_type_or_interface_field_exists(
-                        interface.fields.get(&field.name),
+                        interface.maybe_field(&field.name),
                         type_name,
                         field,
                         schema,
