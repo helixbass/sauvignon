@@ -483,42 +483,48 @@ where
 
     loop {
         match tokens.next() {
-            Some(Token::DotDotDot) => ret.push(match tokens.next() {
-                Some(token) => {
-                    if matches!(
-                        &token,
-                        Token::Name(name) if name != "on"
-                    ) {
-                        PositionsTracker::emit_selection_fragment_spread();
-                        Selection::FragmentSpread(FragmentSpread::new(token.into_name()))
-                    } else if matches!(&token, Token::Name(_) | Token::LeftCurlyBracket) {
-                        PositionsTracker::emit_selection_inline_fragment();
-                        match token {
-                            Token::Name(_) => {
-                                let on = match tokens.next() {
-                                    Some(Token::Name(on)) => on,
-                                    _ => panic!("Expected on"),
-                                };
-                                match tokens.next() {
-                                    Some(Token::LeftCurlyBracket) => Selection::InlineFragment(
-                                        InlineFragment::new(Some(on), parse_selection_set(tokens)),
-                                    ),
-                                    _ => panic!("Expected selection set"),
+            Some(Token::DotDotDot) => {
+                PositionsTracker::emit_selection_inline_fragment_or_fragment_spread();
+                ret.push(match tokens.next() {
+                    Some(token) => {
+                        if matches!(
+                            &token,
+                            Token::Name(name) if name != "on"
+                        ) {
+                            PositionsTracker::emit_selection_fragment_spread();
+                            Selection::FragmentSpread(FragmentSpread::new(token.into_name()))
+                        } else if matches!(&token, Token::Name(_) | Token::LeftCurlyBracket) {
+                            PositionsTracker::emit_selection_inline_fragment();
+                            match token {
+                                Token::Name(_) => {
+                                    let on = match tokens.next() {
+                                        Some(Token::Name(on)) => on,
+                                        _ => panic!("Expected on"),
+                                    };
+                                    match tokens.next() {
+                                        Some(Token::LeftCurlyBracket) => {
+                                            Selection::InlineFragment(InlineFragment::new(
+                                                Some(on),
+                                                parse_selection_set(tokens),
+                                            ))
+                                        }
+                                        _ => panic!("Expected selection set"),
+                                    }
                                 }
+                                Token::LeftCurlyBracket => Selection::InlineFragment(
+                                    InlineFragment::new(None, parse_selection_set(tokens)),
+                                ),
+                                _ => unreachable!(),
                             }
-                            Token::LeftCurlyBracket => Selection::InlineFragment(
-                                InlineFragment::new(None, parse_selection_set(tokens)),
-                            ),
-                            _ => unreachable!(),
+                        } else {
+                            panic!("Expected fragment selection");
                         }
-                    } else {
+                    }
+                    _ => {
                         panic!("Expected fragment selection");
                     }
-                }
-                _ => {
-                    panic!("Expected fragment selection");
-                }
-            }),
+                });
+            }
             Some(Token::Name(name)) => {
                 PositionsTracker::emit_selection_field();
                 ret.push(Selection::Field({

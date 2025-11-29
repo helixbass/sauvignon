@@ -37,6 +37,7 @@ pub struct PositionsTracker {
     just_newlined: RefCell<bool>,
     should_next_char_record_as_token_start: RefCell<bool>,
     document: RefCell<Document>,
+    start_of_upcoming_selection_inline_fragment_or_fragment_spread: RefCell<Option<Location>>,
 }
 
 impl PositionsTracker {
@@ -132,6 +133,12 @@ impl PositionsTracker {
             .push(Selection::Field(Field::new(self.last_token())));
     }
 
+    pub fn receive_selection_inline_fragment_or_fragment_spread(&self) {
+        *self
+            .start_of_upcoming_selection_inline_fragment_or_fragment_spread
+            .borrow_mut() = Some(self.last_token());
+    }
+
     pub fn receive_selection_inline_fragment(&self) {
         self.document
             .borrow_mut()
@@ -139,8 +146,14 @@ impl PositionsTracker {
             .unwrap()
             .selections
             .push(Selection::InlineFragment(InlineFragment::new(
-                self.last_token(),
+                self.start_of_upcoming_selection_inline_fragment_or_fragment_spread
+                    .borrow()
+                    .clone()
+                    .unwrap(),
             )));
+        *self
+            .start_of_upcoming_selection_inline_fragment_or_fragment_spread
+            .borrow_mut() = None;
     }
 
     pub fn receive_selection_fragment_spread(&self) {
@@ -255,6 +268,12 @@ impl PositionsTracker {
     pub fn emit_selection_field() {
         if let Some(positions_tracker) = Self::current() {
             positions_tracker.receive_selection_field();
+        }
+    }
+
+    pub fn emit_selection_inline_fragment_or_fragment_spread() {
+        if let Some(positions_tracker) = Self::current() {
+            positions_tracker.receive_selection_inline_fragment_or_fragment_spread();
         }
     }
 

@@ -210,6 +210,52 @@ async fn test_lone_anonymous_operation() {
     .await;
 }
 
+#[tokio::test]
+async fn test_type_names_exist() {
+    validation_test(
+        indoc!(
+            r#"
+            query {
+              actorKatie {
+                ... on NonExistent {
+                  name
+                }
+              }
+            }
+
+            fragment greatFragment on SomethingNonExistent {
+              expression
+            }
+        "#
+        ),
+        r#"
+            {
+              "errors": [
+                {
+                  "message": "Unknown type name: `NonExistent`",
+                  "locations": [
+                    {
+                      "line": 3,
+                      "column": 5
+                    }
+                  ]
+                },
+                {
+                  "message": "Unknown type name: `SomethingNonExistent`",
+                  "locations": [
+                    {
+                      "line": 9,
+                      "column": 1
+                    }
+                  ]
+                }
+              ]
+            }
+        "#,
+    )
+    .await;
+}
+
 // TODO: uncomment this once implemented
 // #[tokio::test]
 // async fn test_selection_fields_exist() {
