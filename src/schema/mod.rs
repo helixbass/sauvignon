@@ -79,14 +79,13 @@ impl Schema {
 
     pub async fn request(&self, request_str: &str, db_pool: &Pool<Postgres>) -> Response {
         let request = parse(request_str.chars());
-        let (validation_errors, validated_request) = self.validate(&request);
-        if !validation_errors.is_empty() {
+        let validation_request_or_errors = self.validate(&request);
+        if let ValidationRequestOrErrors::Errors(_) = validation_request_or_errors {
             let validation_errors = illicit::Layer::new()
                 .offer(PositionsTracker::default())
                 .enter(|| {
                     let request = parse(request_str.chars());
-                    let (validation_errors, _) = self.validate(&request);
-                    validation_errors
+                    self.validate(&request).into_errors()
                 });
             assert!(!validation_errors.is_empty());
             return Response::new(
@@ -145,16 +144,18 @@ impl Schema {
         self.all_concrete_type_names(&self.type_or_union_or_interface(name))
     }
 
-    pub fn validate(&self, request: &Request) -> (Vec<ValidationError>, ValidatedRequest) {
-        let mut errors: Vec<ValidationError> = _d();
-
-        validate_operation_name_uniqueness(request).push_if(&mut errors);
-        validate_lone_anonymous_operation(request).push_if(&mut errors);
+    pub fn validate(&self, request: &Request) -> ValidationRequestOrErrors {
+        if let Some(error) = validate_operation_name_uniqueness(request) {
+            return vec![error].into();
+        }
+        if let Some(error) = validate_lone_anonymous_operation(request) {
+            return vec![error].into();
+        }
         // TODO: finish these
         // validate_selection_fields_exist(request, self).append_to(&mut errors);
         // validate_argument_names_exist(request, self).append_to(&mut errors);
 
-        return (errors, ValidatedRequest::new());
+        return ValidatedRequest::new().into();
     }
 }
 
@@ -692,5 +693,31 @@ pub struct ValidatedRequest {}
 impl ValidatedRequest {
     pub fn new() -> Self {
         Self {}
+    }
+}
+
+pub enum ValidationRequestOrErrors {
+    Request(ValidatedRequest),
+    Errors(Vec<ValidationError>),
+}
+
+impl ValidationRequestOrErrors {
+    pub fn into_errors(self) -> Vec<ValidationError> {
+        match self {
+            Self::Errors(errors) => errors,
+            _ => panic!("Expected errors"),
+        }
+    }
+}
+
+impl From<ValidatedRequest> for ValidationRequestOrErrors {
+    fn from(value: ValidatedRequest) -> Self {
+        Self::Request(value)
+    }
+}
+
+impl From<Vec<ValidationError>> for ValidationRequestOrErrors {
+    fn from(value: Vec<ValidationError>) -> Self {
+        Self::Errors(value)
     }
 }
