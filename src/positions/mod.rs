@@ -163,6 +163,9 @@ impl PositionsTracker {
             .unwrap()
             .selections
             .push(Selection::FragmentSpread);
+        *self
+            .start_of_upcoming_selection_inline_fragment_or_fragment_spread
+            .borrow_mut() = None;
     }
 
     pub fn receive_token_pre_start(&self) {
