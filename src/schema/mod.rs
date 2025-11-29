@@ -167,7 +167,7 @@ impl Schema {
         // validate_selection_fields_exist(request, self).append_to(&mut errors);
         // validate_argument_names_exist(request, self).append_to(&mut errors);
 
-        return ValidatedRequest::new().into();
+        ValidatedRequest::new().into()
     }
 }
 
