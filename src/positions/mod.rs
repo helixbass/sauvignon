@@ -94,21 +94,21 @@ impl PositionsTracker {
         let mut document = self.document.borrow_mut();
         let currently_active_selection_set = document.find_currently_active_selection_set();
         match currently_active_selection_set {
-            None => match document
-                .definitions
-                .iter_mut()
-                .find(|definition| match definition {
-                    OperationOrFragment::Operation(operation) => {
-                        operation.selection_set.status == SelectionSetStatus::NotYetStarted
-                    }
-                    OperationOrFragment::Fragment(fragment) => {
-                        fragment.selection_set.status == SelectionSetStatus::NotYetStarted
-                    }
-                })
-                .unwrap()
-            {
-                OperationOrFragment::Operation(operation) => operation.selection_set.open(),
-                OperationOrFragment::Fragment(fragment) => fragment.selection_set.open(),
+            None => match document.definitions.last_mut().unwrap() {
+                OperationOrFragment::Operation(operation) => {
+                    assert_eq!(
+                        operation.selection_set.status,
+                        SelectionSetStatus::NotYetStarted
+                    );
+                    operation.selection_set.open();
+                }
+                OperationOrFragment::Fragment(fragment) => {
+                    assert_eq!(
+                        fragment.selection_set.status,
+                        SelectionSetStatus::NotYetStarted
+                    );
+                    fragment.selection_set.open();
+                }
             },
             Some(currently_active_selection_set) => {
                 find_selection_to_open(&mut currently_active_selection_set.selections).open()
