@@ -308,3 +308,46 @@ async fn test_selection_fields_exist() {
     )
     .await;
 }
+
+#[tokio::test]
+async fn test_fragment_name_duplicate() {
+    validation_test(
+        indoc!(
+            r#"
+            {
+              actorKatie {
+                ...wheeFragment
+              }
+            }
+
+            fragment wheeFragment on Actor {
+              name
+            }
+
+            fragment wheeFragment on Actor {
+              expression
+            }
+        "#
+        ),
+        r#"
+            {
+              "errors": [
+                {
+                  "message": "Non-unique fragment name: `wheeFragment`",
+                  "locations": [
+                    {
+                      "line": 7,
+                      "column": 1
+                    },
+                    {
+                      "line": 11,
+                      "column": 1
+                    }
+                  ]
+                }
+              ]
+            }
+        "#,
+    )
+    .await;
+}
