@@ -24,6 +24,9 @@ impl Schema {
         }
         // TODO: finish this
         // validate_argument_names_exist(request, self).append_to(&mut errors);
+        if let Some(error) = validate_fragment_name_uniqueness(request) {
+            return vec![error].into();
+        }
 
         ValidatedRequest::new().into()
     }
@@ -443,6 +446,54 @@ fn validate_argument_names_exist_selection_set(
             Selection::InlineFragment(inline_fragment) => {}
             _ => {}
         })
+}
+
+fn validate_fragment_name_uniqueness(request: &Request) -> Option<ValidationError> {
+    let mut duplicates = request
+        .document
+        .definitions
+        .iter()
+        .filter_map(|definition| {
+            definition
+                .maybe_as_fragment_definition()
+                .map(|fragment_definition| &fragment_definition.name)
+        })
+        // TODO: same as validate_operation_name_uniqueness() above
+        // could make my own eg `.duplicates_all()`
+        // (returning a sub-list of each group of duplicates, not just
+        // one of each duplicate group)
+        .duplicates();
+
+    duplicates.next().map(|duplicate| {
+        let mut locations: Vec<Location> = _d();
+        add_all_fragment_name_locations(&mut locations, duplicate, request);
+        let mut message = format!("Non-unique fragment names: `{}`", duplicate);
+        while let Some(duplicate) = duplicates.next() {
+            add_all_fragment_name_locations(&mut locations, duplicate, request);
+            message.push_str(&format!(", `{duplicate}`"));
+        }
+
+        ValidationError::new(message, locations)
+    })
+}
+
+fn add_all_fragment_name_locations(locations: &mut Vec<Location>, name: &str, request: &Request) {
+    let Some(positions_tracker) = PositionsTracker::current() else {
+        return;
+    };
+
+    request
+        .document
+        .definitions
+        .iter()
+        .filter_map(|definition| definition.maybe_as_fragment_definition())
+        .enumerate()
+        .filter_map(|(index, fragment_definition)| {
+            (fragment_definition.name == name).then_some(index)
+        })
+        .for_each(|index| {
+            locations.push(positions_tracker.nth_fragment_location(index));
+        });
 }
 
 #[derive(Debug)]

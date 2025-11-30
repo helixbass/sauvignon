@@ -183,6 +183,17 @@ impl PositionsTracker {
             .location
     }
 
+    pub fn nth_fragment_location(&self, index: usize) -> Location {
+        self.document
+            .borrow()
+            .definitions
+            .iter()
+            .filter_map(|definition| definition.maybe_as_fragment())
+            .nth(index)
+            .unwrap()
+            .location
+    }
+
     pub fn fragment_definition_location(
         &self,
         fragment: &crate::FragmentDefinition,
@@ -195,7 +206,7 @@ impl PositionsTracker {
             )
         }).unwrap();
         self.document.borrow().definitions[index]
-            .as_fragment_definition()
+            .as_fragment()
             .location
     }
 
@@ -381,11 +392,16 @@ impl OperationOrFragment {
         }
     }
 
-    pub fn as_fragment_definition(&self) -> &FragmentDefinition {
+    pub fn maybe_as_fragment(&self) -> Option<&FragmentDefinition> {
         match self {
-            Self::Fragment(fragment_definition) => fragment_definition,
-            _ => panic!("Expected fragment definition"),
+            Self::Fragment(fragment_definition) => Some(fragment_definition),
+            _ => None,
         }
+    }
+
+    pub fn as_fragment(&self) -> &FragmentDefinition {
+        self.maybe_as_fragment()
+            .expect("Expected fragment definition")
     }
 }
 
