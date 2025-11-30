@@ -219,6 +219,9 @@ async fn test_type_names_exist() {
               actorKatie {
                 ... on NonExistent {
                   name
+                  ... on OtherNonExistent {
+                    expression
+                  }
                 }
               }
             }
@@ -241,10 +244,19 @@ async fn test_type_names_exist() {
                   ]
                 },
                 {
+                  "message": "Unknown type name: `OtherNonExistent`",
+                  "locations": [
+                    {
+                      "line": 5,
+                      "column": 7
+                    }
+                  ]
+                },
+                {
                   "message": "Unknown type name: `SomethingNonExistent`",
                   "locations": [
                     {
-                      "line": 9,
+                      "line": 12,
                       "column": 1
                     }
                   ]
