@@ -361,6 +361,10 @@ impl Interface {
             name => self.fields.get(name),
         }
     }
+
+    pub fn field(&self, name: &str) -> &InterfaceField {
+        self.maybe_field(name).unwrap()
+    }
 }
 
 pub struct InterfaceField {

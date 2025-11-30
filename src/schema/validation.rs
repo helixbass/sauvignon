@@ -293,6 +293,182 @@ fn collect_selection_set<
         .collect()
 }
 
+trait CollectorTyped<TItem, TCollection: FromIterator<TItem> + IntoIterator<Item = TItem> + Default>
+{
+    fn visit_operation(
+        &self,
+        _operation: &OperationDefinition,
+        _schema: &Schema,
+        _request: &Request,
+    ) -> (TCollection, bool) {
+        (_d(), true)
+    }
+
+    fn visit_fragment_definition(
+        &self,
+        _fragment_definition: &FragmentDefinition,
+        _schema: &Schema,
+        _request: &Request,
+    ) -> (TCollection, bool) {
+        (_d(), true)
+    }
+
+    fn visit_field(
+        &self,
+        _field: &SelectionField,
+        _enclosing_type: TypeOrUnionOrInterface<'_>,
+        _schema: &Schema,
+        _request: &Request,
+    ) -> (TCollection, bool) {
+        (_d(), true)
+    }
+
+    fn visit_fragment_spread(
+        &self,
+        _fragment_spread: &FragmentSpread,
+        _enclosing_type: TypeOrUnionOrInterface<'_>,
+        _schema: &Schema,
+        _request: &Request,
+    ) -> TCollection {
+        _d()
+    }
+
+    fn visit_inline_fragment(
+        &self,
+        _inline_fragment: &InlineFragment,
+        _enclosing_type: TypeOrUnionOrInterface<'_>,
+        _schema: &Schema,
+        _request: &Request,
+    ) -> (TCollection, bool) {
+        (_d(), true)
+    }
+}
+
+fn collect_typed<
+    TItem,
+    TCollection: FromIterator<TItem> + IntoIterator<Item = TItem> + Default,
+    TCollector: CollectorTyped<TItem, TCollection>,
+>(
+    collector: &TCollector,
+    request: &Request,
+    schema: &Schema,
+) -> TCollection {
+    request
+        .document
+        .definitions
+        .iter()
+        .flat_map(|definition| match definition {
+            ExecutableDefinition::Operation(operation_definition) => {
+                let (errors, should_recurse) =
+                    collector.visit_operation(operation_definition, schema, request);
+                if !should_recurse {
+                    return errors;
+                }
+                errors
+                    .into_iter()
+                    .chain(collect_typed_selection_set(
+                        collector,
+                        &operation_definition.selection_set,
+                        schema.type_name_for_operation_type(operation_definition.operation_type),
+                        request,
+                        schema,
+                    ))
+                    .collect()
+            }
+            ExecutableDefinition::Fragment(fragment_definition) => {
+                let (errors, should_recurse) =
+                    collector.visit_fragment_definition(fragment_definition, schema, request);
+                if !should_recurse {
+                    return errors;
+                }
+                errors
+                    .into_iter()
+                    .chain(collect_typed_selection_set(
+                        collector,
+                        &fragment_definition.selection_set,
+                        &fragment_definition.on,
+                        request,
+                        schema,
+                    ))
+                    .collect()
+            }
+        })
+        .collect()
+}
+
+fn collect_typed_selection_set<
+    TItem,
+    TCollection: FromIterator<TItem> + IntoIterator<Item = TItem> + Default,
+    TCollector: CollectorTyped<TItem, TCollection>,
+>(
+    collector: &TCollector,
+    selection_set: &[Selection],
+    enclosing_type_name: &str,
+    request: &Request,
+    schema: &Schema,
+) -> TCollection {
+    let enclosing_type = schema.type_or_union_or_interface(enclosing_type_name);
+    assert!(is_non_scalar_type(&enclosing_type));
+    selection_set
+        .into_iter()
+        .flat_map(|selection| match selection {
+            Selection::Field(field) => {
+                let (errors, should_recurse) =
+                    collector.visit_field(field, enclosing_type, schema, request);
+                if !should_recurse {
+                    return errors;
+                }
+                if let Some(selection_set) = field.selection_set.as_ref() {
+                    errors
+                        .into_iter()
+                        .chain(collect_typed_selection_set(
+                            collector,
+                            selection_set,
+                            match enclosing_type {
+                                TypeOrUnionOrInterface::Type(type_) => {
+                                    type_.as_object().field(&field.name).type_.name()
+                                }
+                                TypeOrUnionOrInterface::Interface(interface) => {
+                                    interface.field(&field.name).type_.name()
+                                }
+                                _ => unreachable!(),
+                            },
+                            request,
+                            schema,
+                        ))
+                        .collect()
+                } else {
+                    errors
+                }
+            }
+            Selection::InlineFragment(inline_fragment) => {
+                let (errors, should_recurse) = collector.visit_inline_fragment(
+                    inline_fragment,
+                    enclosing_type,
+                    schema,
+                    request,
+                );
+                if !should_recurse {
+                    return errors;
+                }
+                errors
+                    .into_iter()
+                    .chain(collect_typed_selection_set(
+                        collector,
+                        &inline_fragment.selection_set,
+                        inline_fragment.on.as_deref().unwrap_or(enclosing_type_name),
+                        request,
+                        schema,
+                    ))
+                    .collect()
+            }
+            Selection::FragmentSpread(fragment_spread) => {
+                collector.visit_fragment_spread(fragment_spread, enclosing_type, schema, request)
+            }
+        })
+        .collect()
+}
+
 fn validate_type_names_exist(request: &Request, schema: &Schema) -> Vec<ValidationError> {
     collect(&TypeNamesExistCollector::default(), request, schema)
 }
