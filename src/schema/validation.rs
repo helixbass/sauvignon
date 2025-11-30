@@ -237,6 +237,21 @@ fn validate_selection_fields_exist(request: &Request, schema: &Schema) -> Vec<Va
                 );
             }
             ExecutableDefinition::Fragment(fragment_definition) => {
+                if !is_non_scalar_type(&schema.type_or_union_or_interface(&fragment_definition.on))
+                {
+                    ret.push(selection_on_scalar_type_fragment_validation_error(
+                        &fragment_definition.name,
+                        &fragment_definition.on,
+                        PositionsTracker::current().map(|positions_tracker| {
+                            positions_tracker.fragment_definition_location(
+                                fragment_definition,
+                                &request.document,
+                            )
+                        }),
+                    ));
+                    return;
+                }
+
                 validate_selection_fields_exist_selection_set(
                     &fragment_definition.selection_set,
                     &fragment_definition.on,
@@ -295,6 +310,21 @@ fn validate_selection_fields_exist_selection_set(
                 }
             },
             Selection::InlineFragment(inline_fragment) => {
+                if let Some(on) = inline_fragment
+                    .on
+                    .as_ref()
+                    .filter(|on| !is_non_scalar_type(&schema.type_or_union_or_interface(on)))
+                {
+                    ret.push(selection_on_scalar_type_inline_fragment_validation_error(
+                        on,
+                        PositionsTracker::current().map(|positions_tracker| {
+                            positions_tracker
+                                .inline_fragment_location(inline_fragment, &request.document)
+                        }),
+                    ));
+                    continue;
+                }
+
                 validate_selection_fields_exist_selection_set(
                     &inline_fragment.selection_set,
                     inline_fragment.on.as_deref().unwrap_or(type_name),
@@ -371,6 +401,33 @@ fn selection_field_doesnt_exist_validation_error(
 ) -> ValidationError {
     ValidationError::new(
         format!("Field `{field_name}` doesn't exist on `{type_name}`"),
+        match location {
+            Some(location) => vec![location],
+            None => _d(),
+        },
+    )
+}
+
+fn selection_on_scalar_type_fragment_validation_error(
+    fragment_name: &str,
+    type_name: &str,
+    location: Option<Location>,
+) -> ValidationError {
+    ValidationError::new(
+        format!("Fragment `{fragment_name}` can't be of scalar type `{type_name}`"),
+        match location {
+            Some(location) => vec![location],
+            None => _d(),
+        },
+    )
+}
+
+fn selection_on_scalar_type_inline_fragment_validation_error(
+    type_name: &str,
+    location: Option<Location>,
+) -> ValidationError {
+    ValidationError::new(
+        format!("Inline fragment can't be of scalar type `{type_name}`"),
         match location {
             Some(location) => vec![location],
             None => _d(),

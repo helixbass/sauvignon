@@ -417,3 +417,68 @@ async fn test_fragment_name_duplicate() {
     )
     .await;
 }
+
+#[tokio::test]
+async fn test_fragment_on_scalar_type() {
+    validation_test(
+        indoc!(
+            r#"
+            {
+              actorKatie {
+                ...wheeFragment
+              }
+            }
+
+            fragment wheeFragment on String {
+              name
+            }
+        "#
+        ),
+        r#"
+            {
+              "errors": [
+                {
+                  "message": "Fragment `wheeFragment` can't be of scalar type `String`",
+                  "locations": [
+                    {
+                      "line": 7,
+                      "column": 1
+                    }
+                  ]
+                }
+              ]
+            }
+        "#,
+    )
+    .await;
+
+    validation_test(
+        indoc!(
+            r#"
+            {
+              actorKatie {
+                ... on String {
+                  whee
+                }
+              }
+            }
+        "#
+        ),
+        r#"
+            {
+              "errors": [
+                {
+                  "message": "Inline fragment can't be of scalar type `String`",
+                  "locations": [
+                    {
+                      "line": 3,
+                      "column": 5
+                    }
+                  ]
+                }
+              ]
+            }
+        "#,
+    )
+    .await;
+}
