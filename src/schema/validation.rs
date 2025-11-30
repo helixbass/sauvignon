@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use itertools::Itertools;
 use squalid::{OptionExt, _d};
 
@@ -26,6 +28,10 @@ impl Schema {
         // validate_argument_names_exist(request, self).append_to(&mut errors);
         if let Some(error) = validate_fragment_name_uniqueness(request) {
             return vec![error].into();
+        }
+        let errors = validate_unused_fragments(request);
+        if !errors.is_empty() {
+            return errors.into();
         }
 
         ValidatedRequest::new().into()
@@ -551,6 +557,64 @@ fn add_all_fragment_name_locations(locations: &mut Vec<Location>, name: &str, re
         .for_each(|index| {
             locations.push(positions_tracker.nth_fragment_location(index));
         });
+}
+
+fn validate_unused_fragments(request: &Request) -> Vec<ValidationError> {
+    let all_used_fragment_names = request
+        .document
+        .definitions
+        .iter()
+        .flat_map(|definition| match definition {
+            ExecutableDefinition::Operation(operation_definition) => {
+                get_all_used_fragment_names_selection_set(&operation_definition.selection_set)
+            }
+            ExecutableDefinition::Fragment(fragment_definition) => {
+                get_all_used_fragment_names_selection_set(&fragment_definition.selection_set)
+            }
+        })
+        .collect::<HashSet<_>>();
+
+    request
+        .document
+        .definitions
+        .iter()
+        .filter_map(|definition| {
+            definition
+                .maybe_as_fragment_definition()
+                .filter(|fragment_definition| {
+                    !all_used_fragment_names.contains(&fragment_definition.name)
+                })
+        })
+        .map(|fragment_definition| {
+            ValidationError::new(
+                format!("Unused fragment: `{}`", fragment_definition.name),
+                PositionsTracker::current()
+                    .map(|positions_tracker| {
+                        positions_tracker
+                            .fragment_definition_location(fragment_definition, &request.document)
+                    })
+                    .into_iter()
+                    .collect::<Vec<_>>(),
+            )
+        })
+        .collect()
+}
+
+fn get_all_used_fragment_names_selection_set(selection_set: &[Selection]) -> HashSet<String> {
+    selection_set
+        .into_iter()
+        .flat_map(|selection| match selection {
+            Selection::Field(field) => field
+                .selection_set
+                .as_deref()
+                .map(get_all_used_fragment_names_selection_set)
+                .unwrap_or_default(),
+            Selection::InlineFragment(inline_fragment) => {
+                get_all_used_fragment_names_selection_set(&inline_fragment.selection_set)
+            }
+            Selection::FragmentSpread(fragment_spread) => [fragment_spread.name.clone()].into(),
+        })
+        .collect()
 }
 
 #[derive(Debug)]

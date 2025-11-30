@@ -482,3 +482,51 @@ async fn test_fragment_on_scalar_type() {
     )
     .await;
 }
+
+#[tokio::test]
+async fn test_unused_fragment() {
+    validation_test(
+        indoc!(
+            r#"
+            {
+              actorKatie {
+                name
+              }
+            }
+
+            fragment wheeFragment on Actor {
+              expression
+            }
+
+            fragment whoaFragment on Actor {
+                name
+            }
+        "#
+        ),
+        r#"
+            {
+              "errors": [
+                {
+                  "message": "Unused fragment: `wheeFragment`",
+                  "locations": [
+                    {
+                      "line": 7,
+                      "column": 1
+                    }
+                  ]
+                },
+                {
+                  "message": "Unused fragment: `whoaFragment`",
+                  "locations": [
+                    {
+                      "line": 11,
+                      "column": 1
+                    }
+                  ]
+                }
+              ]
+            }
+        "#,
+    )
+    .await;
+}
