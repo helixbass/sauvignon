@@ -4,8 +4,9 @@ use itertools::Itertools;
 use squalid::{OptionExt, _d};
 
 use crate::{
-    ExecutableDefinition, FieldInterface, Location, PositionsTracker, Request, Schema, Selection,
-    SelectionField, Type, TypeOrUnionOrInterface,
+    ExecutableDefinition, FieldInterface, FragmentDefinition, FragmentSpread, InlineFragment,
+    Location, OperationDefinition, PositionsTracker, Request, Schema, Selection, SelectionField,
+    Type, TypeOrUnionOrInterface,
 };
 
 impl Schema {
@@ -140,76 +141,200 @@ fn validate_lone_anonymous_operation(request: &Request) -> Option<ValidationErro
     ))
 }
 
-fn validate_type_names_exist(request: &Request, schema: &Schema) -> Vec<ValidationError> {
-    let mut ret: Vec<ValidationError> = _d();
+trait ValidationErrorsCollector {
+    fn visit_operation(
+        &self,
+        _operation: &OperationDefinition,
+        _schema: &Schema,
+        _request: &Request,
+    ) -> (Vec<ValidationError>, bool) {
+        (_d(), true)
+    }
 
+    fn visit_fragment_definition(
+        &self,
+        _fragment_definition: &FragmentDefinition,
+        _schema: &Schema,
+        _request: &Request,
+    ) -> (Vec<ValidationError>, bool) {
+        (_d(), true)
+    }
+
+    fn visit_field(
+        &self,
+        _field: &SelectionField,
+        _schema: &Schema,
+        _request: &Request,
+    ) -> (Vec<ValidationError>, bool) {
+        (_d(), true)
+    }
+
+    fn visit_fragment_spread(
+        &self,
+        _fragment_spread: &FragmentSpread,
+        _schema: &Schema,
+        _request: &Request,
+    ) -> Vec<ValidationError> {
+        _d()
+    }
+
+    fn visit_inline_fragment(
+        &self,
+        _inline_fragment: &InlineFragment,
+        _schema: &Schema,
+        _request: &Request,
+    ) -> (Vec<ValidationError>, bool) {
+        (_d(), true)
+    }
+}
+
+fn collect<TCollector: ValidationErrorsCollector>(
+    collector: &TCollector,
+    request: &Request,
+    schema: &Schema,
+) -> Vec<ValidationError> {
     request
         .document
         .definitions
         .iter()
-        .for_each(|definition| match definition {
-            ExecutableDefinition::Operation(operation) => {
-                validate_type_names_exist_selection_set(
-                    &operation.selection_set,
-                    schema,
-                    request,
-                    &mut ret,
-                );
-            }
-            ExecutableDefinition::Fragment(fragment) => {
-                if schema
-                    .maybe_type_or_union_or_interface(&fragment.on)
-                    .is_none()
-                {
-                    ret.push(type_names_exist_validation_error(
-                        &fragment.on,
-                        PositionsTracker::current().map(|positions_tracker| {
-                            positions_tracker
-                                .fragment_definition_location(fragment, &request.document)
-                        }),
-                    ));
+        .flat_map(|definition| match definition {
+            ExecutableDefinition::Operation(operation_definition) => {
+                let (mut errors, should_recurse) =
+                    collector.visit_operation(operation_definition, schema, request);
+                if !should_recurse {
+                    return errors;
                 }
-                validate_type_names_exist_selection_set(
-                    &fragment.selection_set,
-                    schema,
+                errors.append(&mut collect_selection_set(
+                    collector,
+                    &operation_definition.selection_set,
                     request,
-                    &mut ret,
-                );
+                    schema,
+                ));
+                errors
             }
-        });
-
-    ret
+            ExecutableDefinition::Fragment(fragment_definition) => {
+                let (mut errors, should_recurse) =
+                    collector.visit_fragment_definition(fragment_definition, schema, request);
+                if !should_recurse {
+                    return errors;
+                }
+                errors.append(&mut collect_selection_set(
+                    collector,
+                    &fragment_definition.selection_set,
+                    request,
+                    schema,
+                ));
+                errors
+            }
+        })
+        .collect()
 }
 
-fn validate_type_names_exist_selection_set(
+fn collect_selection_set<TCollector: ValidationErrorsCollector>(
+    collector: &TCollector,
     selection_set: &[Selection],
-    schema: &Schema,
     request: &Request,
-    ret: &mut Vec<ValidationError>,
-) {
+    schema: &Schema,
+) -> Vec<ValidationError> {
     selection_set
         .into_iter()
-        .for_each(|selection| match selection {
+        .flat_map(|selection| match selection {
             Selection::Field(field) => {
-                if let Some(selection_set) = field.selection_set.as_ref() {
-                    validate_type_names_exist_selection_set(selection_set, schema, request, ret);
+                let (mut errors, should_recurse) = collector.visit_field(field, schema, request);
+                if !should_recurse {
+                    return errors;
                 }
+                if let Some(selection_set) = field.selection_set.as_ref() {
+                    errors.append(&mut collect_selection_set(
+                        collector,
+                        selection_set,
+                        request,
+                        schema,
+                    ));
+                }
+                errors
             }
             Selection::InlineFragment(inline_fragment) => {
-                if let Some(on) = inline_fragment.on.as_ref() {
-                    if schema.maybe_type_or_union_or_interface(on).is_none() {
-                        ret.push(type_names_exist_validation_error(
-                            on,
-                            PositionsTracker::current().map(|positions_tracker| {
-                                positions_tracker
-                                    .inline_fragment_location(inline_fragment, &request.document)
-                            }),
-                        ));
-                    }
+                let (mut errors, should_recurse) =
+                    collector.visit_inline_fragment(inline_fragment, schema, request);
+                if !should_recurse {
+                    return errors;
                 }
+                errors.append(&mut collect_selection_set(
+                    collector,
+                    &inline_fragment.selection_set,
+                    request,
+                    schema,
+                ));
+                errors
             }
-            _ => {}
-        });
+            Selection::FragmentSpread(fragment_spread) => {
+                collector.visit_fragment_spread(fragment_spread, schema, request)
+            }
+        })
+        .collect()
+}
+
+fn validate_type_names_exist(request: &Request, schema: &Schema) -> Vec<ValidationError> {
+    collect(&TypeNamesExistCollector::default(), request, schema)
+}
+
+#[derive(Default)]
+struct TypeNamesExistCollector {}
+
+impl ValidationErrorsCollector for TypeNamesExistCollector {
+    fn visit_fragment_definition(
+        &self,
+        fragment_definition: &FragmentDefinition,
+        schema: &Schema,
+        request: &Request,
+    ) -> (Vec<ValidationError>, bool) {
+        (
+            schema
+                .maybe_type_or_union_or_interface(&fragment_definition.on)
+                .is_none()
+                .then(|| {
+                    type_names_exist_validation_error(
+                        &fragment_definition.on,
+                        PositionsTracker::current().map(|positions_tracker| {
+                            positions_tracker.fragment_definition_location(
+                                fragment_definition,
+                                &request.document,
+                            )
+                        }),
+                    )
+                })
+                .into_iter()
+                .collect(),
+            true,
+        )
+    }
+
+    fn visit_inline_fragment(
+        &self,
+        inline_fragment: &InlineFragment,
+        schema: &Schema,
+        request: &Request,
+    ) -> (Vec<ValidationError>, bool) {
+        (
+            inline_fragment
+                .on
+                .as_ref()
+                .filter(|on| schema.maybe_type_or_union_or_interface(on).is_none())
+                .map(|on| {
+                    type_names_exist_validation_error(
+                        on,
+                        PositionsTracker::current().map(|positions_tracker| {
+                            positions_tracker
+                                .inline_fragment_location(inline_fragment, &request.document)
+                        }),
+                    )
+                })
+                .into_iter()
+                .collect(),
+            true,
+        )
+    }
 }
 
 fn type_names_exist_validation_error(
