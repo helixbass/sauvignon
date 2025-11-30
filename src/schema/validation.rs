@@ -30,7 +30,7 @@ impl Schema {
         if let Some(error) = validate_fragment_name_uniqueness(request) {
             return vec![error].into();
         }
-        let errors = validate_unused_fragments(request);
+        let errors = validate_unused_fragments(request, self);
         if !errors.is_empty() {
             return errors.into();
         }
@@ -141,13 +141,13 @@ fn validate_lone_anonymous_operation(request: &Request) -> Option<ValidationErro
     ))
 }
 
-trait ValidationErrorsCollector {
+trait Collector<TItem, TCollection: FromIterator<TItem> + IntoIterator<Item = TItem> + Default> {
     fn visit_operation(
         &self,
         _operation: &OperationDefinition,
         _schema: &Schema,
         _request: &Request,
-    ) -> (Vec<ValidationError>, bool) {
+    ) -> (TCollection, bool) {
         (_d(), true)
     }
 
@@ -156,7 +156,7 @@ trait ValidationErrorsCollector {
         _fragment_definition: &FragmentDefinition,
         _schema: &Schema,
         _request: &Request,
-    ) -> (Vec<ValidationError>, bool) {
+    ) -> (TCollection, bool) {
         (_d(), true)
     }
 
@@ -165,7 +165,7 @@ trait ValidationErrorsCollector {
         _field: &SelectionField,
         _schema: &Schema,
         _request: &Request,
-    ) -> (Vec<ValidationError>, bool) {
+    ) -> (TCollection, bool) {
         (_d(), true)
     }
 
@@ -174,7 +174,7 @@ trait ValidationErrorsCollector {
         _fragment_spread: &FragmentSpread,
         _schema: &Schema,
         _request: &Request,
-    ) -> Vec<ValidationError> {
+    ) -> TCollection {
         _d()
     }
 
@@ -183,90 +183,108 @@ trait ValidationErrorsCollector {
         _inline_fragment: &InlineFragment,
         _schema: &Schema,
         _request: &Request,
-    ) -> (Vec<ValidationError>, bool) {
+    ) -> (TCollection, bool) {
         (_d(), true)
     }
 }
 
-fn collect<TCollector: ValidationErrorsCollector>(
+fn collect<
+    TItem,
+    TCollection: FromIterator<TItem> + IntoIterator<Item = TItem> + Default,
+    TCollector: Collector<TItem, TCollection>,
+>(
     collector: &TCollector,
     request: &Request,
     schema: &Schema,
-) -> Vec<ValidationError> {
+) -> TCollection {
     request
         .document
         .definitions
         .iter()
         .flat_map(|definition| match definition {
             ExecutableDefinition::Operation(operation_definition) => {
-                let (mut errors, should_recurse) =
+                let (errors, should_recurse) =
                     collector.visit_operation(operation_definition, schema, request);
                 if !should_recurse {
                     return errors;
                 }
-                errors.append(&mut collect_selection_set(
-                    collector,
-                    &operation_definition.selection_set,
-                    request,
-                    schema,
-                ));
                 errors
+                    .into_iter()
+                    .chain(collect_selection_set(
+                        collector,
+                        &operation_definition.selection_set,
+                        request,
+                        schema,
+                    ))
+                    .collect()
             }
             ExecutableDefinition::Fragment(fragment_definition) => {
-                let (mut errors, should_recurse) =
+                let (errors, should_recurse) =
                     collector.visit_fragment_definition(fragment_definition, schema, request);
                 if !should_recurse {
                     return errors;
                 }
-                errors.append(&mut collect_selection_set(
-                    collector,
-                    &fragment_definition.selection_set,
-                    request,
-                    schema,
-                ));
                 errors
+                    .into_iter()
+                    .chain(collect_selection_set(
+                        collector,
+                        &fragment_definition.selection_set,
+                        request,
+                        schema,
+                    ))
+                    .collect()
             }
         })
         .collect()
 }
 
-fn collect_selection_set<TCollector: ValidationErrorsCollector>(
+fn collect_selection_set<
+    TItem,
+    TCollection: FromIterator<TItem> + IntoIterator<Item = TItem> + Default,
+    TCollector: Collector<TItem, TCollection>,
+>(
     collector: &TCollector,
     selection_set: &[Selection],
     request: &Request,
     schema: &Schema,
-) -> Vec<ValidationError> {
+) -> TCollection {
     selection_set
         .into_iter()
         .flat_map(|selection| match selection {
             Selection::Field(field) => {
-                let (mut errors, should_recurse) = collector.visit_field(field, schema, request);
+                let (errors, should_recurse) = collector.visit_field(field, schema, request);
                 if !should_recurse {
                     return errors;
                 }
                 if let Some(selection_set) = field.selection_set.as_ref() {
-                    errors.append(&mut collect_selection_set(
-                        collector,
-                        selection_set,
-                        request,
-                        schema,
-                    ));
+                    errors
+                        .into_iter()
+                        .chain(collect_selection_set(
+                            collector,
+                            selection_set,
+                            request,
+                            schema,
+                        ))
+                        .collect()
+                } else {
+                    errors
                 }
-                errors
             }
             Selection::InlineFragment(inline_fragment) => {
-                let (mut errors, should_recurse) =
+                let (errors, should_recurse) =
                     collector.visit_inline_fragment(inline_fragment, schema, request);
                 if !should_recurse {
                     return errors;
                 }
-                errors.append(&mut collect_selection_set(
-                    collector,
-                    &inline_fragment.selection_set,
-                    request,
-                    schema,
-                ));
                 errors
+                    .into_iter()
+                    .chain(collect_selection_set(
+                        collector,
+                        &inline_fragment.selection_set,
+                        request,
+                        schema,
+                    ))
+                    .collect()
             }
             Selection::FragmentSpread(fragment_spread) => {
                 collector.visit_fragment_spread(fragment_spread, schema, request)
@@ -282,7 +300,7 @@ fn validate_type_names_exist(request: &Request, schema: &Schema) -> Vec<Validati
 #[derive(Default)]
 struct TypeNamesExistCollector {}
 
-impl ValidationErrorsCollector for TypeNamesExistCollector {
+impl Collector<ValidationError, Vec<ValidationError>> for TypeNamesExistCollector {
     fn visit_fragment_definition(
         &self,
         fragment_definition: &FragmentDefinition,
@@ -684,20 +702,8 @@ fn add_all_fragment_name_locations(locations: &mut Vec<Location>, name: &str, re
         });
 }
 
-fn validate_unused_fragments(request: &Request) -> Vec<ValidationError> {
-    let all_used_fragment_names = request
-        .document
-        .definitions
-        .iter()
-        .flat_map(|definition| match definition {
-            ExecutableDefinition::Operation(operation_definition) => {
-                get_all_used_fragment_names_selection_set(&operation_definition.selection_set)
-            }
-            ExecutableDefinition::Fragment(fragment_definition) => {
-                get_all_used_fragment_names_selection_set(&fragment_definition.selection_set)
-            }
-        })
-        .collect::<HashSet<_>>();
+fn validate_unused_fragments(request: &Request, schema: &Schema) -> Vec<ValidationError> {
+    let all_used_fragment_names = collect(&FragmentNamesUsedCollector::default(), request, schema);
 
     request
         .document
@@ -725,21 +731,18 @@ fn validate_unused_fragments(request: &Request) -> Vec<ValidationError> {
         .collect()
 }
 
-fn get_all_used_fragment_names_selection_set(selection_set: &[Selection]) -> HashSet<String> {
-    selection_set
-        .into_iter()
-        .flat_map(|selection| match selection {
-            Selection::Field(field) => field
-                .selection_set
-                .as_deref()
-                .map(get_all_used_fragment_names_selection_set)
-                .unwrap_or_default(),
-            Selection::InlineFragment(inline_fragment) => {
-                get_all_used_fragment_names_selection_set(&inline_fragment.selection_set)
-            }
-            Selection::FragmentSpread(fragment_spread) => [fragment_spread.name.clone()].into(),
-        })
-        .collect()
+#[derive(Default)]
+struct FragmentNamesUsedCollector {}
+
+impl Collector<String, HashSet<String>> for FragmentNamesUsedCollector {
+    fn visit_fragment_spread(
+        &self,
+        fragment_spread: &FragmentSpread,
+        _schema: &Schema,
+        _request: &Request,
+    ) -> HashSet<String> {
+        [fragment_spread.name.clone()].into()
+    }
 }
 
 #[derive(Debug)]
