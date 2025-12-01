@@ -643,7 +643,7 @@ where
     })
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct LexError {
     pub message: String,
     pub location: Option<Location>,
@@ -658,7 +658,7 @@ impl LexError {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum ParseOrLexError {
     Lex(LexError),
     Parse(ParseError),
@@ -680,7 +680,7 @@ impl ParseOrLexError {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct ParseError {
     pub message: String,
     pub location: Option<Location>,
@@ -751,5 +751,17 @@ mod tests {
     #[test]
     fn test_dot_dot_dot() {
         lex_test("...a", [Token::DotDotDot, Token::Name("a".to_owned())]);
+    }
+
+    fn lex_error_test(request: &str, expected_error_message: &str) {
+        assert_eq!(
+            parse(request.chars()).unwrap_err(),
+            ParseOrLexError::Lex(LexError::new(expected_error_message.to_owned())),
+        );
+    }
+
+    #[test]
+    fn test_lex_unterminated_string() {
+        lex_error_test(r#""abc"#, "expected closing double-quote");
     }
 }

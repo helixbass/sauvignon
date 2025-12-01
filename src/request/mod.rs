@@ -4,6 +4,7 @@ use derive_builder::Builder;
 
 use crate::OperationType;
 
+#[derive(Debug)]
 pub struct Request {
     pub document: Document,
 }
@@ -22,6 +23,7 @@ impl Request {
     }
 }
 
+#[derive(Debug)]
 pub struct Document {
     pub definitions: Vec<ExecutableDefinition>,
     pub fragments_by_name: HashMap<String, usize>,
@@ -60,6 +62,7 @@ impl Document {
     }
 }
 
+#[derive(Debug)]
 pub enum ExecutableDefinition {
     Operation(OperationDefinition),
     Fragment(FragmentDefinition),
@@ -86,7 +89,7 @@ impl ExecutableDefinition {
     }
 }
 
-#[derive(Builder)]
+#[derive(Builder, Debug)]
 #[builder(pattern = "owned")]
 pub struct OperationDefinition {
     pub operation_type: OperationType,
@@ -95,6 +98,7 @@ pub struct OperationDefinition {
     pub selection_set: Vec<Selection>,
 }
 
+#[derive(Debug)]
 pub struct FragmentDefinition {
     pub name: String,
     pub on: String,
@@ -111,13 +115,14 @@ impl FragmentDefinition {
     }
 }
 
+#[derive(Debug)]
 pub enum Selection {
     Field(Field),
     FragmentSpread(FragmentSpread),
     InlineFragment(InlineFragment),
 }
 
-#[derive(Builder)]
+#[derive(Builder, Debug)]
 #[builder(pattern = "owned")]
 pub struct Field {
     #[builder(setter(into), default)]
@@ -138,6 +143,7 @@ impl FieldBuilder {
     }
 }
 
+#[derive(Debug)]
 pub struct FragmentSpread {
     pub name: String,
 }
@@ -148,6 +154,7 @@ impl FragmentSpread {
     }
 }
 
+#[derive(Debug)]
 pub struct InlineFragment {
     pub on: Option<String>,
     pub selection_set: Vec<Selection>,
