@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 
 use itertools::Itertools;
-use squalid::{IteratorExt, OptionExt, _d};
+use squalid::{OptionExt, _d};
 
 use crate::{
     ExecutableDefinition, FieldInterface, FragmentDefinition, FragmentSpread, InlineFragment,
@@ -875,7 +875,6 @@ impl CollectorTyped<ValidationError, Vec<ValidationError>> for NoDuplicateArgume
                             .enumerate()
                             .into_group_map_by(|(_, argument)| argument.name.clone())
                             .into_iter()
-                            .log("grouped")
                             .filter(|(_, arguments)| arguments.len() > 1)
                             .map(|(name, arguments)| {
                                 ValidationError::new(
