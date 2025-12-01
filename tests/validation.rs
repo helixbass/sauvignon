@@ -542,3 +542,43 @@ async fn test_unused_fragment() {
     )
     .await;
 }
+
+#[tokio::test]
+async fn test_arguments_exist() {
+    validation_test(
+        indoc!(
+            r#"
+            {
+              actorKatie(foo: 123, bar: "whee") {
+                name
+              }
+            }
+        "#
+        ),
+        r#"
+            {
+              "errors": [
+                {
+                  "message": "Non-existent argument: `foo`",
+                  "locations": [
+                    {
+                      "line": 2,
+                      "column": 14
+                    }
+                  ]
+                },
+                {
+                  "message": "Non-existent argument: `bar`",
+                  "locations": [
+                    {
+                      "line": 2,
+                      "column": 24
+                    }
+                  ]
+                }
+              ]
+            }
+        "#,
+    )
+    .await;
+}
