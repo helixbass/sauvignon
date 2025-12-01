@@ -122,7 +122,11 @@ where
                                 _ => Some(Token::String("".to_owned())),
                             },
                             Some(ch) => {
-                                let mut resolved_chars: Vec<char> = vec![ch];
+                                let mut resolved_chars: Vec<char> =
+                                    vec![match regular_or_escaped_string_char(ch, self) {
+                                        Ok(ch) => ch,
+                                        Err(error) => return Some(Err(error)),
+                                    }];
                                 loop {
                                     match self.request.next() {
                                         None => {
@@ -136,72 +140,12 @@ where
                                                     resolved_chars.into_iter().collect(),
                                                 ));
                                             }
-                                            '\\' => match self.request.next() {
-                                                Some('u') => {
-                                                    let mut unicode_hex: Vec<char> = _d();
-                                                    while unicode_hex.len() < 4 {
-                                                        match self.request.next() {
-                                                            Some(ch)
-                                                                if matches!(
-                                                                    ch,
-                                                                    '0'..='9' | 'A'..='F' | 'a'..='f'
-                                                                ) =>
-                                                            {
-                                                                unicode_hex.push(ch);
-                                                            }
-                                                            _ => {
-                                                                return Some(Err(self.error(
-                                                                    "Unexpected hex digit",
-                                                                )))
-                                                            }
-                                                        }
-                                                    }
-                                                    resolved_chars.push(
-                                                        char::from_u32(
-                                                            u32::from_str_radix(
-                                                                &unicode_hex
-                                                                    .into_iter()
-                                                                    .collect::<String>(),
-                                                                16,
-                                                            )
-                                                            .unwrap(),
-                                                        )
-                                                        .expect("Couldn't convert hex to char"),
-                                                    );
-                                                }
-                                                Some('"') => {
-                                                    resolved_chars.push('"');
-                                                }
-                                                Some('\\') => {
-                                                    resolved_chars.push('\\');
-                                                }
-                                                Some('/') => {
-                                                    resolved_chars.push('/');
-                                                }
-                                                Some('b') => {
-                                                    resolved_chars.push('\u{8}');
-                                                }
-                                                Some('f') => {
-                                                    resolved_chars.push('\u{C}');
-                                                }
-                                                Some('n') => {
-                                                    resolved_chars.push('\n');
-                                                }
-                                                Some('r') => {
-                                                    resolved_chars.push('\r');
-                                                }
-                                                Some('t') => {
-                                                    resolved_chars.push('\t');
-                                                }
-                                                _ => {
-                                                    return Some(Err(
-                                                        self.error("Unexpected escape")
-                                                    ))
-                                                }
-                                            },
-                                            ch => {
-                                                resolved_chars.push(ch);
-                                            }
+                                            ch => resolved_chars.push(
+                                                match regular_or_escaped_string_char(ch, self) {
+                                                    Ok(ch) => ch,
+                                                    Err(error) => return Some(Err(error)),
+                                                },
+                                            ),
                                         },
                                     }
                                 }
@@ -415,6 +359,47 @@ where
             }
         }
     }
+}
+
+fn regular_or_escaped_string_char<TRequest>(ch: char, lex: &mut Lex<TRequest>) -> LexResult<char>
+where
+    TRequest: Iterator<Item = char>,
+{
+    Ok(match ch {
+        '"' => unreachable!(),
+        '\\' => match lex.request.next() {
+            Some('u') => {
+                let mut unicode_hex: Vec<char> = _d();
+                while unicode_hex.len() < 4 {
+                    match lex.request.next() {
+                        Some(ch)
+                            if matches!(
+                                ch,
+                                '0'..='9' | 'A'..='F' | 'a'..='f'
+                            ) =>
+                        {
+                            unicode_hex.push(ch);
+                        }
+                        _ => return Err(lex.error("Unexpected hex digit")),
+                    }
+                }
+                char::from_u32(
+                    u32::from_str_radix(&unicode_hex.into_iter().collect::<String>(), 16).unwrap(),
+                )
+                .expect("Couldn't convert hex to char")
+            }
+            Some('"') => '"',
+            Some('\\') => '\\',
+            Some('/') => '/',
+            Some('b') => '\u{8}',
+            Some('f') => '\u{C}',
+            Some('n') => '\n',
+            Some('r') => '\r',
+            Some('t') => '\t',
+            _ => return Err(lex.error("Unexpected escape")),
+        },
+        ch => ch,
+    })
 }
 
 pub fn parse(request: impl IntoIterator<Item = char>) -> ParseResult<Request> {
@@ -763,5 +748,10 @@ mod tests {
     #[test]
     fn test_lex_unterminated_string() {
         lex_error_test(r#""abc"#, "expected closing double-quote");
+    }
+
+    #[test]
+    fn test_lex_unicode_escape_non_hex_digit() {
+        lex_error_test(r#""\u123z""#, "Unexpected hex digit");
     }
 }
