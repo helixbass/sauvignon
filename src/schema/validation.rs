@@ -44,6 +44,10 @@ impl Schema {
         if !errors.is_empty() {
             return errors.into();
         }
+        let errors = validate_fragment_spreads_relevant_type(request, self);
+        if !errors.is_empty() {
+            return errors.into();
+        }
 
         ValidatedRequest::new().into()
     }
@@ -1035,6 +1039,70 @@ impl CollectorTyped<ValidationError, Vec<ValidationError>> for FragmentSpreadsEx
                 )
             ]
         }).unwrap_or_default()
+    }
+}
+
+fn validate_fragment_spreads_relevant_type(
+    request: &Request,
+    schema: &Schema,
+) -> Vec<ValidationError> {
+    collect_typed(
+        &FragmentSpreadsRelevantTypeCollector::default(),
+        request,
+        schema,
+    )
+}
+
+#[derive(Default)]
+struct FragmentSpreadsRelevantTypeCollector {}
+
+impl CollectorTyped<ValidationError, Vec<ValidationError>>
+    for FragmentSpreadsRelevantTypeCollector
+{
+    fn visit_fragment_spread(
+        &self,
+        fragment_spread: &FragmentSpread,
+        enclosing_type: TypeOrUnionOrInterface<'_>,
+        schema: &Schema,
+        request: &Request,
+    ) -> Vec<ValidationError> {
+        let fragment_definition = request
+            .document
+            .definitions
+            .iter()
+            .find_map(|definition| {
+                definition
+                    .maybe_as_fragment_definition()
+                    .filter(|fragment_definition| fragment_definition.name == fragment_spread.name)
+            })
+            .unwrap();
+
+        schema
+            .all_concrete_type_names(&enclosing_type)
+            .intersection(
+                &schema.all_concrete_type_names_for_type_or_union_or_interface(
+                    &fragment_definition.on,
+                ),
+            )
+            .next()
+            .is_none()
+            .then(|| {
+                vec![ValidationError::new(
+                    format!(
+                        "Fragment `{}` has no overlap with parent type `{}`",
+                        fragment_spread.name,
+                        enclosing_type.name()
+                    ),
+                    PositionsTracker::current()
+                        .map(|positions_tracker| {
+                            positions_tracker
+                                .fragment_spread_location(fragment_spread, &request.document)
+                        })
+                        .into_iter()
+                        .collect(),
+                )]
+            })
+            .unwrap_or_default()
     }
 }
 
