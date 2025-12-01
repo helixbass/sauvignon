@@ -47,5 +47,5 @@ pub use crate::types::{
     builtin_types, string_type, BuiltInScalarType, Field as TypeField,
     FieldBuilder as TypeFieldBuilder, FieldInterface, Interface, InterfaceBuilder, InterfaceField,
     ObjectType, ObjectTypeBuilder, Param, ScalarType, StringType, Type, TypeFull, TypeInterface,
-    Union,
+    TypeOrInterfaceField, Union,
 };

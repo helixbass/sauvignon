@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use derive_builder::Builder;
-use squalid::OptionExt;
+use squalid::{OptionExt, _d};
 
 use crate::{
     ArgumentInternalDependencyResolver, CarverOrPopulator, DependencyType, DependencyValue,
@@ -247,11 +247,16 @@ impl FieldInterface for Field {
     fn type_(&self) -> &TypeFull {
         &self.type_
     }
+
+    fn params(&self) -> &IndexMap<String, Param> {
+        &self.params
+    }
 }
 
 pub trait FieldInterface {
     fn name(&self) -> &str;
     fn type_(&self) -> &TypeFull;
+    fn params(&self) -> &IndexMap<String, Param>;
 }
 
 pub fn builtin_types() -> HashMap<String, Type> {
@@ -370,17 +375,26 @@ impl Interface {
 pub struct InterfaceField {
     pub name: String,
     pub type_: TypeFull,
+    pub params: IndexMap<String, Param>,
 }
 
 impl InterfaceField {
-    pub fn new(name: String, type_: TypeFull) -> Self {
-        Self { name, type_ }
+    pub fn new(name: String, type_: TypeFull, params: impl IntoIterator<Item = Param>) -> Self {
+        Self {
+            name,
+            type_,
+            params: params
+                .into_iter()
+                .map(|param| (param.name.clone(), param))
+                .collect(),
+        }
     }
 
     pub fn new_typename() -> Self {
         Self {
             name: "__typename".to_owned(),
             type_: TypeFull::Type("String".to_owned()),
+            params: _d(),
         }
     }
 }
@@ -392,6 +406,51 @@ impl FieldInterface for InterfaceField {
 
     fn type_(&self) -> &TypeFull {
         &self.type_
+    }
+
+    fn params(&self) -> &IndexMap<String, Param> {
+        &self.params
+    }
+}
+
+#[derive(Copy, Clone)]
+pub enum TypeOrInterfaceField<'a> {
+    Type(&'a Field),
+    Interface(&'a InterfaceField),
+}
+
+impl<'a> FieldInterface for TypeOrInterfaceField<'a> {
+    fn name(&self) -> &str {
+        match self {
+            Self::Type(type_) => type_.name(),
+            Self::Interface(interface) => interface.name(),
+        }
+    }
+
+    fn type_(&self) -> &TypeFull {
+        match self {
+            Self::Type(type_) => type_.type_(),
+            Self::Interface(interface) => interface.type_(),
+        }
+    }
+
+    fn params(&self) -> &IndexMap<String, Param> {
+        match self {
+            Self::Type(type_) => type_.params(),
+            Self::Interface(interface) => interface.params(),
+        }
+    }
+}
+
+impl<'a> From<&'a Field> for TypeOrInterfaceField<'a> {
+    fn from(value: &'a Field) -> Self {
+        Self::Type(value)
+    }
+}
+
+impl<'a> From<&'a InterfaceField> for TypeOrInterfaceField<'a> {
+    fn from(value: &'a InterfaceField) -> Self {
+        Self::Interface(value)
     }
 }
 

@@ -6,7 +6,7 @@ use squalid::{OptionExt, _d};
 use crate::{
     ExecutableDefinition, FieldInterface, FragmentDefinition, FragmentSpread, InlineFragment,
     Location, OperationDefinition, PositionsTracker, Request, Schema, Selection, SelectionField,
-    Type, TypeOrUnionOrInterface,
+    Type, TypeOrInterfaceField, TypeOrUnionOrInterface,
 };
 
 impl Schema {
@@ -316,7 +316,7 @@ trait CollectorTyped<TItem, TCollection: FromIterator<TItem> + IntoIterator<Item
     fn visit_field(
         &self,
         _field: &SelectionField,
-        _enclosing_type: TypeOrUnionOrInterface<'_>,
+        _type_field: TypeOrInterfaceField<'_>,
         _schema: &Schema,
         _request: &Request,
     ) -> (TCollection, bool) {
@@ -413,8 +413,17 @@ fn collect_typed_selection_set<
         .into_iter()
         .flat_map(|selection| match selection {
             Selection::Field(field) => {
+                let field_type: TypeOrInterfaceField<'_> = match enclosing_type {
+                    TypeOrUnionOrInterface::Type(type_) => {
+                        type_.as_object().field(&field.name).into()
+                    }
+                    TypeOrUnionOrInterface::Interface(interface) => {
+                        interface.field(&field.name).into()
+                    }
+                    _ => unreachable!(),
+                };
                 let (errors, should_recurse) =
-                    collector.visit_field(field, enclosing_type, schema, request);
+                    collector.visit_field(field, field_type, schema, request);
                 if !should_recurse {
                     return errors;
                 }
@@ -424,15 +433,7 @@ fn collect_typed_selection_set<
                         .chain(collect_typed_selection_set(
                             collector,
                             selection_set,
-                            match enclosing_type {
-                                TypeOrUnionOrInterface::Type(type_) => {
-                                    type_.as_object().field(&field.name).type_.name()
-                                }
-                                TypeOrUnionOrInterface::Interface(interface) => {
-                                    interface.field(&field.name).type_.name()
-                                }
-                                _ => unreachable!(),
-                            },
+                            field_type.type_().name(),
                             request,
                             schema,
                         ))
@@ -788,46 +789,47 @@ fn no_selection_on_object_type_validation_error(
     )
 }
 
-fn validate_argument_names_exist(request: &Request, schema: &Schema) -> Vec<ValidationError> {
-    let mut ret: Vec<ValidationError> = _d();
+#[derive(Default)]
+struct ArgumentNamesExistCollector {}
 
-    request
-        .document
-        .definitions
-        .iter()
-        .for_each(|definition| match definition {
-            ExecutableDefinition::Operation(operation_definition) => {
-                validate_argument_names_exist_selection_set(
-                    &operation_definition.selection_set,
-                    schema,
-                    &mut ret,
-                );
-            }
-            ExecutableDefinition::Fragment(fragment_definition) => {
-                validate_argument_names_exist_selection_set(
-                    &fragment_definition.selection_set,
-                    schema,
-                    &mut ret,
-                );
-            }
-        });
-
-    ret
-}
-
-fn validate_argument_names_exist_selection_set(
-    selection_set: &[Selection],
-    schema: &Schema,
-    ret: &mut Vec<ValidationError>,
-) {
-    unimplemented!();
-    selection_set
-        .into_iter()
-        .for_each(|selection| match selection {
-            Selection::Field(field) => {}
-            Selection::InlineFragment(inline_fragment) => {}
-            _ => {}
-        })
+impl CollectorTyped<ValidationError, Vec<ValidationError>> for ArgumentNamesExistCollector {
+    fn visit_field(
+        &self,
+        field: &SelectionField,
+        type_field: TypeOrInterfaceField<'_>,
+        _schema: &Schema,
+        request: &Request,
+    ) -> (Vec<ValidationError>, bool) {
+        (
+            {
+                let params = type_field.params();
+                field
+                    .arguments
+                    .as_ref()
+                    .map(|arguments| {
+                        arguments
+                            .keys()
+                            .enumerate()
+                            .filter(|(index, key)| !params.contains_key(&**key))
+                            .map(|(index, key)| {
+                                ValidationError::new(
+                                    format!("Non-existent argument: `{key}`"),
+                                    PositionsTracker::current().map(|positions_tracker| {
+                                        positions_tracker.field_nth_argument_location(
+                                            field,
+                                            index,
+                                            &request.document,
+                                        )
+                                    }),
+                                )
+                            })
+                            .collect()
+                    })
+                    .unwrap_or_default()
+            },
+            true,
+        )
+    }
 }
 
 fn validate_fragment_name_uniqueness(request: &Request) -> Option<ValidationError> {
