@@ -658,3 +658,38 @@ async fn test_fragment_exists() {
     )
     .await;
 }
+
+#[tokio::test]
+async fn test_fragment_relevant_type() {
+    validation_test(
+        indoc!(
+            r#"
+            {
+              actorKatie {
+                ...wheeFragment
+              }
+            }
+
+            fragment wheeFragment on Designer {
+              name
+            }
+        "#
+        ),
+        r#"
+            {
+              "errors": [
+                {
+                  "message": "Fragment `wheeFragment` has no overlap with parent type `Actor`",
+                  "locations": [
+                    {
+                      "line": 3,
+                      "column": 5
+                    }
+                  ]
+                }
+              ]
+            }
+        "#,
+    )
+    .await;
+}
