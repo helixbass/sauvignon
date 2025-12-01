@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 
 use itertools::Itertools;
-use squalid::{OptionExt, _d};
+use squalid::{IteratorExt, OptionExt, _d};
 
 use crate::{
     ExecutableDefinition, FieldInterface, FragmentDefinition, FragmentSpread, InlineFragment,
@@ -22,6 +22,10 @@ impl Schema {
             return errors.into();
         }
         let errors = validate_selection_fields_exist(request, self);
+        if !errors.is_empty() {
+            return errors.into();
+        }
+        let errors = validate_no_duplicate_arguments(request, self);
         if !errors.is_empty() {
             return errors.into();
         }
@@ -794,6 +798,10 @@ fn no_selection_on_object_type_validation_error(
     )
 }
 
+fn validate_argument_names_exist(request: &Request, schema: &Schema) -> Vec<ValidationError> {
+    collect_typed(&ArgumentNamesExistCollector::default(), request, schema)
+}
+
 #[derive(Default)]
 struct ArgumentNamesExistCollector {}
 
@@ -813,12 +821,13 @@ impl CollectorTyped<ValidationError, Vec<ValidationError>> for ArgumentNamesExis
                     .as_ref()
                     .map(|arguments| {
                         arguments
-                            .keys()
+                            .into_iter()
                             .enumerate()
-                            .filter(|(_index, key)| !params.contains_key(&**key))
-                            .map(|(index, key)| {
+                            .unique_by(|(_, argument)| &argument.name)
+                            .filter(|(_, argument)| !params.contains_key(&argument.name))
+                            .map(|(index, argument)| {
                                 ValidationError::new(
-                                    format!("Non-existent argument: `{key}`"),
+                                    format!("Non-existent argument: `{}`", argument.name),
                                     PositionsTracker::current()
                                         .map(|positions_tracker| {
                                             positions_tracker.field_nth_argument_location(
@@ -840,8 +849,60 @@ impl CollectorTyped<ValidationError, Vec<ValidationError>> for ArgumentNamesExis
     }
 }
 
-fn validate_argument_names_exist(request: &Request, schema: &Schema) -> Vec<ValidationError> {
-    collect_typed(&ArgumentNamesExistCollector::default(), request, schema)
+fn validate_no_duplicate_arguments(request: &Request, schema: &Schema) -> Vec<ValidationError> {
+    collect_typed(&NoDuplicateArgumentsCollector::default(), request, schema)
+}
+
+#[derive(Default)]
+struct NoDuplicateArgumentsCollector {}
+
+impl CollectorTyped<ValidationError, Vec<ValidationError>> for NoDuplicateArgumentsCollector {
+    fn visit_field(
+        &self,
+        field: &SelectionField,
+        _type_field: TypeOrInterfaceField<'_>,
+        _schema: &Schema,
+        request: &Request,
+    ) -> (Vec<ValidationError>, bool) {
+        (
+            {
+                field
+                    .arguments
+                    .as_ref()
+                    .map(|arguments| {
+                        arguments
+                            .into_iter()
+                            .enumerate()
+                            .into_group_map_by(|(_, argument)| argument.name.clone())
+                            .into_iter()
+                            .log("grouped")
+                            .filter(|(_, arguments)| arguments.len() > 1)
+                            .map(|(name, arguments)| {
+                                ValidationError::new(
+                                    format!("Duplicate argument: `{name}`"),
+                                    PositionsTracker::current()
+                                        .map(|positions_tracker| {
+                                            arguments
+                                                .into_iter()
+                                                .map(|(index, _)| {
+                                                    positions_tracker.field_nth_argument_location(
+                                                        field,
+                                                        index,
+                                                        &request.document,
+                                                    )
+                                                })
+                                                .collect()
+                                        })
+                                        .unwrap_or_default(),
+                                )
+                            })
+                            .collect()
+                    })
+                    .unwrap_or_default()
+            },
+            true,
+        )
+    }
 }
 
 fn validate_fragment_name_uniqueness(request: &Request) -> Option<ValidationError> {

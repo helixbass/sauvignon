@@ -582,3 +582,38 @@ async fn test_arguments_exist() {
     )
     .await;
 }
+
+#[tokio::test]
+async fn test_duplicate_arguments() {
+    validation_test(
+        indoc!(
+            r#"
+            {
+              actor(id: 1, id: 2) {
+                name
+              }
+            }
+        "#
+        ),
+        r#"
+            {
+              "errors": [
+                {
+                  "message": "Duplicate argument: `id`",
+                  "locations": [
+                    {
+                      "line": 2,
+                      "column": 9
+                    },
+                    {
+                      "line": 2,
+                      "column": 16
+                    }
+                  ]
+                }
+              ]
+            }
+        "#,
+    )
+    .await;
+}

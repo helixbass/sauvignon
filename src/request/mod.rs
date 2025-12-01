@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use derive_builder::Builder;
 
-use crate::{IndexMap, OperationType};
+use crate::OperationType;
 
 pub struct Request {
     pub document: Document,
@@ -127,18 +127,13 @@ pub struct Field {
     #[builder(setter(strip_option), default)]
     pub selection_set: Option<Vec<Selection>>,
     #[builder(setter(custom), default)]
-    pub arguments: Option<IndexMap<String, Argument>>,
+    pub arguments: Option<Vec<Argument>>,
 }
 
 impl FieldBuilder {
     pub fn arguments(self, arguments: impl IntoIterator<Item = Argument>) -> Self {
         let mut new = self;
-        new.arguments = Some(Some(
-            arguments
-                .into_iter()
-                .map(|argument| (argument.name.clone(), argument))
-                .collect(),
-        ));
+        new.arguments = Some(Some(arguments.into_iter().collect()));
         new
     }
 }
@@ -164,6 +159,7 @@ impl InlineFragment {
     }
 }
 
+#[derive(Clone, Debug)]
 pub struct Argument {
     pub name: String,
     pub value: Value,
@@ -175,6 +171,7 @@ impl Argument {
     }
 }
 
+#[derive(Clone, Debug)]
 pub enum Value {
     Int(i32),
     String(String),
