@@ -1,6 +1,8 @@
 use serde::Serialize;
 
-use crate::{ExternalDependencyValues, FieldPlan, IndexMap, Location, ValidationError};
+use crate::{
+    ExternalDependencyValues, FieldPlan, IndexMap, Location, ParseOrLexError, ValidationError,
+};
 
 #[derive(Serialize)]
 pub struct Response {
@@ -167,5 +169,14 @@ impl ResponseError {
 impl From<ValidationError> for ResponseError {
     fn from(value: ValidationError) -> Self {
         Self::new(value.message, value.locations)
+    }
+}
+
+impl From<ParseOrLexError> for ResponseError {
+    fn from(value: ParseOrLexError) -> Self {
+        Self::new(
+            value.message().to_owned(),
+            value.location().into_iter().collect(),
+        )
     }
 }
