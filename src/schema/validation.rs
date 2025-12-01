@@ -25,8 +25,10 @@ impl Schema {
         if !errors.is_empty() {
             return errors.into();
         }
-        // TODO: finish this
-        // validate_argument_names_exist(request, self).append_to(&mut errors);
+        let errors = validate_argument_names_exist(request, self);
+        if !errors.is_empty() {
+            return errors.into();
+        }
         if let Some(error) = validate_fragment_name_uniqueness(request) {
             return vec![error].into();
         }
@@ -420,7 +422,10 @@ fn collect_typed_selection_set<
                     TypeOrUnionOrInterface::Interface(interface) => {
                         interface.field(&field.name).into()
                     }
-                    _ => unreachable!(),
+                    TypeOrUnionOrInterface::Union(_) => {
+                        assert!(field.name == "__typename");
+                        (&schema.dummy_union_typename_field).into()
+                    }
                 };
                 let (errors, should_recurse) =
                     collector.visit_field(field, field_type, schema, request);
@@ -810,17 +815,20 @@ impl CollectorTyped<ValidationError, Vec<ValidationError>> for ArgumentNamesExis
                         arguments
                             .keys()
                             .enumerate()
-                            .filter(|(index, key)| !params.contains_key(&**key))
+                            .filter(|(_index, key)| !params.contains_key(&**key))
                             .map(|(index, key)| {
                                 ValidationError::new(
                                     format!("Non-existent argument: `{key}`"),
-                                    PositionsTracker::current().map(|positions_tracker| {
-                                        positions_tracker.field_nth_argument_location(
-                                            field,
-                                            index,
-                                            &request.document,
-                                        )
-                                    }),
+                                    PositionsTracker::current()
+                                        .map(|positions_tracker| {
+                                            positions_tracker.field_nth_argument_location(
+                                                field,
+                                                index,
+                                                &request.document,
+                                            )
+                                        })
+                                        .into_iter()
+                                        .collect(),
                                 )
                             })
                             .collect()
@@ -830,6 +838,10 @@ impl CollectorTyped<ValidationError, Vec<ValidationError>> for ArgumentNamesExis
             true,
         )
     }
+}
+
+fn validate_argument_names_exist(request: &Request, schema: &Schema) -> Vec<ValidationError> {
+    collect_typed(&ArgumentNamesExistCollector::default(), request, schema)
 }
 
 fn validate_fragment_name_uniqueness(request: &Request) -> Option<ValidationError> {

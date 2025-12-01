@@ -417,6 +417,7 @@ impl FieldInterface for InterfaceField {
 pub enum TypeOrInterfaceField<'a> {
     Type(&'a Field),
     Interface(&'a InterfaceField),
+    Union(&'a DummyUnionTypenameField),
 }
 
 impl<'a> FieldInterface for TypeOrInterfaceField<'a> {
@@ -424,6 +425,7 @@ impl<'a> FieldInterface for TypeOrInterfaceField<'a> {
         match self {
             Self::Type(type_) => type_.name(),
             Self::Interface(interface) => interface.name(),
+            Self::Union(union) => &union.name,
         }
     }
 
@@ -431,6 +433,7 @@ impl<'a> FieldInterface for TypeOrInterfaceField<'a> {
         match self {
             Self::Type(type_) => type_.type_(),
             Self::Interface(interface) => interface.type_(),
+            Self::Union(union) => &union.type_,
         }
     }
 
@@ -438,6 +441,7 @@ impl<'a> FieldInterface for TypeOrInterfaceField<'a> {
         match self {
             Self::Type(type_) => type_.params(),
             Self::Interface(interface) => interface.params(),
+            Self::Union(union) => &union.params,
         }
     }
 }
@@ -454,6 +458,12 @@ impl<'a> From<&'a InterfaceField> for TypeOrInterfaceField<'a> {
     }
 }
 
+impl<'a> From<&'a DummyUnionTypenameField> for TypeOrInterfaceField<'a> {
+    fn from(value: &'a DummyUnionTypenameField) -> Self {
+        Self::Union(value)
+    }
+}
+
 pub struct Param {
     pub name: String,
     pub type_: TypeFull,
@@ -462,5 +472,21 @@ pub struct Param {
 impl Param {
     pub fn new(name: String, type_: TypeFull) -> Self {
         Self { name, type_ }
+    }
+}
+
+pub struct DummyUnionTypenameField {
+    pub name: String,
+    pub type_: TypeFull,
+    pub params: IndexMap<String, Param>,
+}
+
+impl Default for DummyUnionTypenameField {
+    fn default() -> Self {
+        Self {
+            name: "__typename".to_owned(),
+            type_: TypeFull::Type("String".to_owned()),
+            params: _d(),
+        }
     }
 }

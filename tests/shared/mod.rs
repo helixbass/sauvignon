@@ -1,5 +1,4 @@
 use sqlx::{postgres::PgPoolOptions, Pool, Postgres};
-use squalid::_d;
 
 use sauvignon::{
     ArgumentInternalDependencyResolver, CarverOrPopulator, ColumnGetter, ColumnGetterList,
