@@ -40,6 +40,10 @@ impl Schema {
         if !errors.is_empty() {
             return errors.into();
         }
+        let errors = validate_fragment_spreads_exist(request, self);
+        if !errors.is_empty() {
+            return errors.into();
+        }
 
         ValidatedRequest::new().into()
     }
@@ -992,6 +996,45 @@ impl Collector<String, HashSet<String>> for FragmentNamesUsedCollector {
         _request: &Request,
     ) -> HashSet<String> {
         [fragment_spread.name.clone()].into()
+    }
+}
+
+fn validate_fragment_spreads_exist(request: &Request, schema: &Schema) -> Vec<ValidationError> {
+    collect_typed(&FragmentSpreadsExistCollector::default(), request, schema)
+}
+
+#[derive(Default)]
+struct FragmentSpreadsExistCollector {}
+
+impl CollectorTyped<ValidationError, Vec<ValidationError>> for FragmentSpreadsExistCollector {
+    fn visit_fragment_spread(
+        &self,
+        fragment_spread: &FragmentSpread,
+        _enclosing_type: TypeOrUnionOrInterface<'_>,
+        _schema: &Schema,
+        request: &Request,
+    ) -> Vec<ValidationError> {
+        (!request.document.definitions.iter().any(|definition| {
+            matches!(
+                definition,
+                ExecutableDefinition::Fragment(fragment_definition) if fragment_definition.name == fragment_spread.name
+            )
+        })).then(|| {
+            vec![
+                ValidationError::new(
+                    format!("Non-existent fragment: `{}`", fragment_spread.name),
+                    PositionsTracker::current()
+                        .map(|positions_tracker| {
+                            positions_tracker.fragment_spread_location(
+                                fragment_spread,
+                                &request.document,
+                            )
+                        })
+                        .into_iter()
+                        .collect(),
+                )
+            ]
+        }).unwrap_or_default()
     }
 }
 
