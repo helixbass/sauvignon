@@ -617,3 +617,44 @@ async fn test_duplicate_arguments() {
     )
     .await;
 }
+
+#[tokio::test]
+async fn test_fragment_exists() {
+    validation_test(
+        indoc!(
+            r#"
+            {
+              actorKatie {
+                ...wheeFragment
+                ...whoaFragment
+              }
+            }
+        "#
+        ),
+        r#"
+            {
+              "errors": [
+                {
+                  "message": "Non-existent fragment: `wheeFragment`",
+                  "locations": [
+                    {
+                      "line": 3,
+                      "column": 5
+                    }
+                  ]
+                },
+                {
+                  "message": "Non-existent fragment: `whoaFragment`",
+                  "locations": [
+                    {
+                      "line": 4,
+                      "column": 5
+                    }
+                  ]
+                }
+              ]
+            }
+        "#,
+    )
+    .await;
+}
