@@ -240,10 +240,10 @@ where
                                                                             .collect::<String>(),
                                                                     )
                                                                     .parse::<f64>()
-                                                                    // TODO: look for \.expect()'s
-                                                                    // also as panic sites that
-                                                                    // need to be converted to
-                                                                    // Result's
+                                                                    // TODO: look for .expect()'s
+                                                                    // /.unwrap()'s also as panic
+                                                                    // sites that need to be
+                                                                    // converted to Result's
                                                                     .expect("Couldn't parse float"),
                                                                 ));
                                                             }
@@ -451,10 +451,12 @@ pub fn parse_tokens(tokens: impl IntoIterator<Item = LexResult<Token>>) -> Parse
                                                     .unwrap(),
                                             )
                                         }
-                                        _ => panic!("Expected selection set"),
+                                        _ => {
+                                            return Err(parse_error("Expected selection set").into())
+                                        }
                                     }
                                 }
-                                _ => panic!("Expected query"),
+                                _ => return Err(parse_error("Expected query").into()),
                             },
                             _ => ExecutableDefinition::Operation(
                                 builder
@@ -471,29 +473,35 @@ pub fn parse_tokens(tokens: impl IntoIterator<Item = LexResult<Token>>) -> Parse
                         match tokens.next().transpose()? {
                             Some(Token::Name(name)) => {
                                 if name == "on" {
-                                    panic!("Saw `on` instead of fragment name");
+                                    return Err(
+                                        parse_error("Saw `on` instead of fragment name").into()
+                                    );
                                 }
                                 name
                             }
-                            _ => panic!("Expected fragment name"),
+                            _ => return Err(parse_error("Expected fragment name").into()),
                         },
                         match tokens.next().transpose()? {
                             Some(Token::Name(name)) if name == "on" => {
                                 match tokens.next().transpose()? {
                                     Some(Token::Name(name)) => name,
-                                    _ => panic!("Expected fragment `on` name"),
+                                    _ => {
+                                        return Err(
+                                            parse_error("Expected fragment `on` name").into()
+                                        )
+                                    }
                                 }
                             }
-                            _ => panic!("Expected fragment `on`"),
+                            _ => return Err(parse_error("Expected fragment `on`").into()),
                         },
                         match tokens.next().transpose()? {
                             Some(Token::LeftCurlyBracket) => parse_selection_set(&mut tokens)?,
-                            _ => panic!("Expected selection set"),
+                            _ => return Err(parse_error("Expected selection set").into()),
                         },
                     )));
                 }
                 None => break definitions,
-                _ => panic!("Expected definition"),
+                _ => return Err(parse_error("Expected definition").into()),
             }
         }
     })))
@@ -524,7 +532,7 @@ where
                                 Token::Name(_) => {
                                     let on = match tokens.next().transpose()? {
                                         Some(Token::Name(on)) => on,
-                                        _ => panic!("Expected on"),
+                                        _ => return Err(parse_error("Expected on").into()),
                                     };
                                     match tokens.next().transpose()? {
                                         Some(Token::LeftCurlyBracket) => {
@@ -533,7 +541,9 @@ where
                                                 parse_selection_set(tokens)?,
                                             ))
                                         }
-                                        _ => panic!("Expected selection set"),
+                                        _ => {
+                                            return Err(parse_error("Expected selection set").into())
+                                        }
                                     }
                                 }
                                 Token::LeftCurlyBracket => Selection::InlineFragment(
@@ -542,11 +552,11 @@ where
                                 _ => unreachable!(),
                             }
                         } else {
-                            panic!("Expected fragment selection");
+                            return Err(parse_error("Expected fragment selection").into());
                         }
                     }
                     _ => {
-                        panic!("Expected fragment selection");
+                        return Err(parse_error("Expected fragment selection").into());
                     }
                 });
             }
@@ -569,18 +579,20 @@ where
                                                     tokens.next().transpose()?,
                                                     Some(Token::Colon)
                                                 ) {
-                                                    panic!("Expected colon");
+                                                    return Err(
+                                                        parse_error("Expected colon").into()
+                                                    );
                                                 }
                                                 parse_value(tokens, false)?
                                             }));
                                         }
                                         Some(Token::RightParen) => {
                                             if arguments.is_empty() {
-                                                panic!("Empty arguments");
+                                                return Err(parse_error("Empty arguments").into());
                                             }
                                             break arguments;
                                         }
-                                        _ => panic!("Expected argument"),
+                                        _ => return Err(parse_error("Expected argument").into()),
                                     }
                                 }
                             });
@@ -609,11 +621,11 @@ where
             Some(Token::RightCurlyBracket) => {
                 PositionsTracker::emit_end_selection_set();
                 if ret.is_empty() {
-                    panic!("Empty selection");
+                    return Err(parse_error("Empty selection").into());
                 }
                 return Ok(ret);
             }
-            _ => panic!("Expected selection set"),
+            _ => return Err(parse_error("Expected selection set").into()),
         }
     }
 }
@@ -625,8 +637,12 @@ where
     Ok(match tokens.next().transpose()? {
         Some(Token::Int(int)) => Value::Int(int),
         Some(Token::String(string)) => Value::String(string),
-        _ => panic!("Expected value"),
+        _ => return Err(parse_error("Expected value").into()),
     })
+}
+
+fn parse_error(message: &str) -> ParseError {
+    ParseError::new(message.to_owned())
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -772,5 +788,138 @@ mod tests {
     #[test]
     fn test_lex_exponent_digits() {
         lex_error_test(r#"1.0e name"#, "Expected exponent digits");
+        lex_error_test(r#"1e name"#, "Expected exponent digits");
+    }
+
+    fn parse_error_test(request: &str, expected_error_message: &str) {
+        assert_eq!(
+            parse(request.chars()).unwrap_err(),
+            ParseOrLexError::Parse(ParseError::new(expected_error_message.to_owned())),
+        );
+    }
+
+    #[test]
+    fn test_parse_query_selection_set() {
+        parse_error_test(r#"query abc 1"#, "Expected selection set");
+        parse_error_test(r#"query 1"#, "Expected query");
+    }
+
+    #[test]
+    fn test_parse_fragment_definition_name() {
+        parse_error_test(r#"fragment on"#, "Saw `on` instead of fragment name");
+        parse_error_test(r#"fragment 1"#, "Expected fragment name");
+        parse_error_test(
+            r#"fragment fooFragment on 1"#,
+            "Expected fragment `on` name",
+        );
+        parse_error_test(r#"fragment fooFragment { name }"#, "Expected fragment `on`");
+        parse_error_test(
+            r#"fragment fooFragment on Actor 1"#,
+            "Expected selection set",
+        );
+    }
+
+    #[test]
+    fn test_parse_definition() {
+        parse_error_test(
+            r#"
+              {
+                name
+              }
+
+              1
+            "#,
+            "Expected definition",
+        );
+    }
+
+    #[test]
+    fn test_parse_inline_fragment_on() {
+        parse_error_test(
+            r#"
+              {
+                ... on {
+                  name
+                }
+              }
+            "#,
+            "Expected on",
+        );
+        parse_error_test(
+            r#"
+              {
+                ... on Actor 1
+              }
+            "#,
+            "Expected selection set",
+        );
+        parse_error_test(
+            r#"
+              {
+                ...1
+              }
+            "#,
+            "Expected fragment selection",
+        );
+    }
+
+    #[test]
+    fn test_parse_argument() {
+        parse_error_test(
+            r#"
+              {
+                actor(id 1) {
+                  name
+                }
+              }
+            "#,
+            "Expected colon",
+        );
+        parse_error_test(
+            r#"
+              {
+                actor() {
+                  name
+                }
+              }
+            "#,
+            "Empty arguments",
+        );
+        parse_error_test(
+            r#"
+              {
+                actor(1) {
+                  name
+                }
+              }
+            "#,
+            "Expected argument",
+        );
+    }
+
+    #[test]
+    fn test_parse_selection_set() {
+        parse_error_test(
+            r#"
+              {
+                actorKatie { }
+              }
+            "#,
+            "Empty selection",
+        );
+    }
+
+    #[test]
+    fn test_parse_value() {
+        parse_error_test(
+            r#"
+              {
+                actor(id: !) {
+                  name
+                }
+              }
+            "#,
+            "Expected value",
+        );
     }
 }
