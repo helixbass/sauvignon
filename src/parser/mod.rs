@@ -166,10 +166,7 @@ where
                                 )
                             ) {
                                 integer_part.push(self.request.next().unwrap());
-                                if integer_part.len() == 2
-                                    && integer_part[0] == '0'
-                                    && integer_part[1] == '0'
-                                {
+                                if integer_part.len() == 2 && integer_part[0] == '0' {
                                     return Some(Err(self.error("Can't have leading zero")));
                                 }
                             }
@@ -243,6 +240,10 @@ where
                                                                             .collect::<String>(),
                                                                     )
                                                                     .parse::<f64>()
+                                                                    // TODO: look for \.expect()'s
+                                                                    // also as panic sites that
+                                                                    // need to be converted to
+                                                                    // Result's
                                                                     .expect("Couldn't parse float"),
                                                                 ));
                                                             }
@@ -715,6 +716,7 @@ mod tests {
         lex_test("10.1e-53", [Token::Float(10.1e-53)]);
         lex_test("10e53", [Token::Float(10e53)]);
         lex_test("10e-53", [Token::Float(10e-53)]);
+        lex_test("0.0", [Token::Float(0.0)]);
     }
 
     #[test]
@@ -731,6 +733,7 @@ mod tests {
     #[test]
     fn test_int() {
         lex_test("35", [Token::Int(35)]);
+        lex_test("0", [Token::Int(0)]);
     }
 
     #[test]
@@ -753,5 +756,21 @@ mod tests {
     #[test]
     fn test_lex_unicode_escape_non_hex_digit() {
         lex_error_test(r#""\u123z""#, "Unexpected hex digit");
+    }
+
+    #[test]
+    fn test_lex_leading_zero() {
+        lex_error_test(r#"01"#, "Can't have leading zero");
+        lex_error_test(r#"01.1"#, "Can't have leading zero");
+    }
+
+    #[test]
+    fn test_lex_fractional_part() {
+        lex_error_test(r#"1.e1"#, "expected fractional part digits");
+    }
+
+    #[test]
+    fn test_lex_exponent_digits() {
+        lex_error_test(r#"1.0e name"#, "Expected exponent digits");
     }
 }
