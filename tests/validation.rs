@@ -693,3 +693,62 @@ async fn test_fragment_relevant_type() {
     )
     .await;
 }
+
+#[tokio::test]
+async fn test_null_argument() {
+    validation_test(
+        indoc!(
+            r#"
+            {
+              actor(id: null) {
+                name
+              }
+            }
+        "#
+        ),
+        r#"
+            {
+              "errors": [
+                {
+                  "message": "Missing required argument `id`",
+                  "locations": [
+                    {
+                      "line": 2,
+                      "column": 3
+                    }
+                  ]
+                }
+              ]
+            }
+        "#,
+    )
+    .await;
+
+    validation_test(
+        indoc!(
+            r#"
+            {
+              actor {
+                name
+              }
+            }
+        "#
+        ),
+        r#"
+            {
+              "errors": [
+                {
+                  "message": "Missing required argument `id`",
+                  "locations": [
+                    {
+                      "line": 2,
+                      "column": 3
+                    }
+                  ]
+                }
+              ]
+            }
+        "#,
+    )
+    .await;
+}

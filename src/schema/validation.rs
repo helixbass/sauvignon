@@ -6,7 +6,7 @@ use squalid::{OptionExt, _d};
 use crate::{
     ExecutableDefinition, FieldInterface, FragmentDefinition, FragmentSpread, InlineFragment,
     Location, OperationDefinition, PositionsTracker, Request, Schema, Selection, SelectionField,
-    Type, TypeOrInterfaceField, TypeOrUnionOrInterface,
+    Type, TypeFull, TypeOrInterfaceField, TypeOrUnionOrInterface, Value,
 };
 
 impl Schema {
@@ -30,6 +30,10 @@ impl Schema {
             return errors.into();
         }
         let errors = validate_argument_names_exist(request, self);
+        if !errors.is_empty() {
+            return errors.into();
+        }
+        let errors = validate_required_arguments(request, self);
         if !errors.is_empty() {
             return errors.into();
         }
@@ -906,6 +910,52 @@ impl CollectorTyped<ValidationError, Vec<ValidationError>> for NoDuplicateArgume
                             .collect()
                     })
                     .unwrap_or_default()
+            },
+            true,
+        )
+    }
+}
+
+fn validate_required_arguments(request: &Request, schema: &Schema) -> Vec<ValidationError> {
+    collect_typed(&RequiredArgumentCollector::default(), request, schema)
+}
+
+#[derive(Default)]
+struct RequiredArgumentCollector {}
+
+impl CollectorTyped<ValidationError, Vec<ValidationError>> for RequiredArgumentCollector {
+    fn visit_field(
+        &self,
+        field: &SelectionField,
+        type_field: TypeOrInterfaceField<'_>,
+        _schema: &Schema,
+        request: &Request,
+    ) -> (Vec<ValidationError>, bool) {
+        (
+            {
+                type_field
+                    .params()
+                    .into_iter()
+                    .filter(|(_, param)| matches!(param.type_, TypeFull::NonNull(_)))
+                    .filter(|(name, _)| {
+                        !field.arguments.as_ref().is_some_and(|arguments| {
+                            arguments.into_iter().any(|argument| {
+                                argument.name == **name && !matches!(argument.value, Value::Null)
+                            })
+                        })
+                    })
+                    .map(|(name, _)| {
+                        ValidationError::new(
+                            format!("Missing required argument `{}`", name),
+                            PositionsTracker::current()
+                                .map(|positions_tracker| {
+                                    positions_tracker.field_location(field, &request.document)
+                                })
+                                .into_iter()
+                                .collect(),
+                        )
+                    })
+                    .collect()
             },
             true,
         )

@@ -640,6 +640,7 @@ where
     Ok(match tokens.next().transpose()? {
         Some(Token::Int(int)) => Value::Int(int),
         Some(Token::String(string)) => Value::String(string),
+        Some(Token::Name(name)) if name == "null" => Value::Null,
         _ => return Err(parse_error("Expected value").into()),
     })
 }
