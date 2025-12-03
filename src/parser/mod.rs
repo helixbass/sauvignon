@@ -576,32 +576,54 @@ where
                             Token::Name(name) if name != "on"
                         ) {
                             PositionsTracker::emit_selection_fragment_spread();
-                            Selection::FragmentSpread(FragmentSpread::new(token.into_name()))
-                        } else if matches!(&token, Token::Name(_) | Token::LeftCurlyBracket) {
+                            Selection::FragmentSpread(FragmentSpread::new(
+                                token.into_name(),
+                                match tokens.peek() {
+                                    Some(Ok(Token::AtSymbol)) => {
+                                        let _ = tokens.next().unwrap().unwrap();
+                                        parse_directives(tokens, false)?
+                                    }
+                                    _ => _d(),
+                                },
+                            ))
+                        } else if matches!(
+                            &token,
+                            Token::Name(_) | Token::LeftCurlyBracket | Token::AtSymbol
+                        ) {
                             PositionsTracker::emit_selection_inline_fragment();
-                            match token {
-                                Token::Name(_) => {
-                                    let on = match tokens.next().transpose()? {
+                            Selection::InlineFragment(InlineFragment::new(
+                                if matches!(token, Token::Name(_)) {
+                                    Some(match tokens.next().transpose()? {
                                         Some(Token::Name(on)) => on,
                                         _ => return Err(parse_error("Expected on").into()),
-                                    };
+                                    })
+                                } else {
+                                    None
+                                },
+                                if matches!(token, Token::AtSymbol)
+                                    || matches!(token, Token::Name(_))
+                                        && matches!(tokens.peek(), Some(Ok(Token::AtSymbol)))
+                                {
+                                    if !matches!(token, Token::Name(_)) {
+                                        let _ = tokens.next().unwrap().unwrap();
+                                    }
+                                    parse_directives(tokens, false)?
+                                } else {
+                                    _d()
+                                },
+                                if matches!(token, Token::LeftCurlyBracket) {
+                                    parse_selection_set(tokens)?
+                                } else {
                                     match tokens.next().transpose()? {
                                         Some(Token::LeftCurlyBracket) => {
-                                            Selection::InlineFragment(InlineFragment::new(
-                                                Some(on),
-                                                parse_selection_set(tokens)?,
-                                            ))
+                                            parse_selection_set(tokens)?
                                         }
                                         _ => {
                                             return Err(parse_error("Expected selection set").into())
                                         }
                                     }
-                                }
-                                Token::LeftCurlyBracket => Selection::InlineFragment(
-                                    InlineFragment::new(None, parse_selection_set(tokens)?),
-                                ),
-                                _ => unreachable!(),
-                            }
+                                },
+                            ))
                         } else {
                             return Err(parse_error("Expected fragment selection").into());
                         }

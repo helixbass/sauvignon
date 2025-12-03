@@ -157,11 +157,12 @@ impl FieldBuilder {
 #[derive(Debug)]
 pub struct FragmentSpread {
     pub name: String,
+    pub directives: Vec<Directive>,
 }
 
 impl FragmentSpread {
-    pub fn new(name: String) -> Self {
-        Self { name }
+    pub fn new(name: String, directives: Vec<Directive>) -> Self {
+        Self { name, directives }
     }
 }
 
@@ -169,11 +170,20 @@ impl FragmentSpread {
 pub struct InlineFragment {
     pub on: Option<String>,
     pub selection_set: Vec<Selection>,
+    pub directives: Vec<Directive>,
 }
 
 impl InlineFragment {
-    pub fn new(on: Option<String>, selection_set: Vec<Selection>) -> Self {
-        Self { on, selection_set }
+    pub fn new(
+        on: Option<String>,
+        directives: Vec<Directive>,
+        selection_set: Vec<Selection>,
+    ) -> Self {
+        Self {
+            on,
+            selection_set,
+            directives,
+        }
     }
 }
 
