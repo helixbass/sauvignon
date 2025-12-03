@@ -105,14 +105,21 @@ pub struct FragmentDefinition {
     pub name: String,
     pub on: String,
     pub selection_set: Vec<Selection>,
+    pub directives: Vec<Directive>,
 }
 
 impl FragmentDefinition {
-    pub fn new(name: String, on: String, selection_set: Vec<Selection>) -> Self {
+    pub fn new(
+        name: String,
+        on: String,
+        directives: Vec<Directive>,
+        selection_set: Vec<Selection>,
+    ) -> Self {
         Self {
             name,
             on,
             selection_set,
+            directives,
         }
     }
 }
@@ -135,6 +142,8 @@ pub struct Field {
     pub selection_set: Option<Vec<Selection>>,
     #[builder(setter(custom), default)]
     pub arguments: Option<Vec<Argument>>,
+    #[builder(default)]
+    pub directives: Vec<Directive>,
 }
 
 impl FieldBuilder {

@@ -538,6 +538,13 @@ pub fn parse_tokens(tokens: impl IntoIterator<Item = LexResult<Token>>) -> Parse
                             }
                             _ => return Err(parse_error("Expected fragment `on`").into()),
                         },
+                        match tokens.peek() {
+                            Some(Ok(Token::AtSymbol)) => {
+                                let _ = tokens.next().unwrap().unwrap();
+                                parse_directives(&mut tokens, false)?
+                            }
+                            _ => _d(),
+                        },
                         match tokens.next().transpose()? {
                             Some(Token::LeftCurlyBracket) => parse_selection_set(&mut tokens)?,
                             _ => return Err(parse_error("Expected selection set").into()),
@@ -609,20 +616,13 @@ where
                 ret.push(Selection::Field({
                     let mut builder = SelectionFieldBuilder::default();
                     builder = builder.name(name);
+                    if matches!(tokens.peek(), Some(Ok(Token::LeftParen))) {
+                        builder = builder.arguments(parse_arguments(tokens, false)?);
+                    }
+                    if matches!(tokens.peek(), Some(Ok(Token::AtSymbol))) {
+                        builder = builder.directives(parse_directives(tokens, false)?);
+                    }
                     match tokens.peek() {
-                        Some(Ok(Token::LeftParen)) => {
-                            builder = builder.arguments(parse_arguments(tokens, false)?);
-                            match tokens.peek() {
-                                Some(Ok(Token::LeftCurlyBracket)) => {
-                                    let _ = tokens.next().unwrap();
-                                    builder
-                                        .selection_set(parse_selection_set(tokens)?)
-                                        .build()
-                                        .unwrap()
-                                }
-                                _ => builder.build().unwrap(),
-                            }
-                        }
                         Some(Ok(Token::LeftCurlyBracket)) => {
                             let _ = tokens.next().unwrap();
                             builder
