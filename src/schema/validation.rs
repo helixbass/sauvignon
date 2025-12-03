@@ -60,6 +60,10 @@ impl Schema {
         if !errors.is_empty() {
             return errors.into();
         }
+        let errors = validate_directives_duplicate(request, self);
+        if !errors.is_empty() {
+            return errors.into();
+        }
 
         ValidatedRequest::new().into()
     }
@@ -1319,6 +1323,98 @@ fn directive_place_validation_error(directive: &Directive, request: &Request) ->
         PositionsTracker::current()
             .map(|positions_tracker| {
                 vec![positions_tracker.directive_location(directive, &request.document)]
+            })
+            .unwrap_or_default(),
+    )
+}
+
+fn validate_directives_duplicate(request: &Request, schema: &Schema) -> Vec<ValidationError> {
+    collect_typed(&DirectivesDuplicateCollector::default(), request, schema)
+}
+
+#[derive(Default)]
+struct DirectivesDuplicateCollector {}
+
+impl CollectorTyped<ValidationError, Vec<ValidationError>> for DirectivesDuplicateCollector {
+    fn visit_field(
+        &self,
+        field: &SelectionField,
+        _type_field: TypeOrInterfaceField<'_>,
+        _schema: &Schema,
+        request: &Request,
+    ) -> (Vec<ValidationError>, bool) {
+        (
+            field
+                .directives
+                .iter()
+                .into_group_map_by(|directive| directive.name.clone())
+                .into_iter()
+                .filter(|(_, directives)| directives.len() > 1)
+                .map(|(name, directives)| {
+                    directive_duplicate_validation_error(&name, &directives, request)
+                })
+                .collect(),
+            true,
+        )
+    }
+
+    fn visit_fragment_spread(
+        &self,
+        fragment_spread: &FragmentSpread,
+        _enclosing_type: TypeOrUnionOrInterface<'_>,
+        _schema: &Schema,
+        request: &Request,
+    ) -> Vec<ValidationError> {
+        fragment_spread
+            .directives
+            .iter()
+            .into_group_map_by(|directive| directive.name.clone())
+            .into_iter()
+            .filter(|(_, directives)| directives.len() > 1)
+            .map(|(name, directives)| {
+                directive_duplicate_validation_error(&name, &directives, request)
+            })
+            .collect()
+    }
+
+    fn visit_inline_fragment(
+        &self,
+        inline_fragment: &InlineFragment,
+        _enclosing_type: TypeOrUnionOrInterface<'_>,
+        _schema: &Schema,
+        request: &Request,
+    ) -> (Vec<ValidationError>, bool) {
+        (
+            inline_fragment
+                .directives
+                .iter()
+                .into_group_map_by(|directive| directive.name.clone())
+                .into_iter()
+                .filter(|(_, directives)| directives.len() > 1)
+                .map(|(name, directives)| {
+                    directive_duplicate_validation_error(&name, &directives, request)
+                })
+                .collect(),
+            true,
+        )
+    }
+}
+
+fn directive_duplicate_validation_error(
+    name: &str,
+    directives: &[&Directive],
+    request: &Request,
+) -> ValidationError {
+    ValidationError::new(
+        format!("Directive `@{}` can't be used more than once", name),
+        PositionsTracker::current()
+            .map(|positions_tracker| {
+                directives
+                    .into_iter()
+                    .map(|directive| {
+                        positions_tracker.directive_location(directive, &request.document)
+                    })
+                    .collect()
             })
             .unwrap_or_default(),
     )

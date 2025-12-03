@@ -913,3 +913,38 @@ async fn test_directive_place() {
     )
     .await;
 }
+
+#[tokio::test]
+async fn test_directive_duplicate() {
+    validation_test(
+        indoc!(
+            r#"
+            {
+              actorKatie {
+                name @skip(if: true) @skip(if: true)
+              }
+            }
+        "#
+        ),
+        r#"
+            {
+              "errors": [
+                {
+                  "message": "Directive `@skip` can't be used more than once",
+                  "locations": [
+                    {
+                      "line": 3,
+                      "column": 10
+                    },
+                    {
+                      "line": 3,
+                      "column": 26
+                    }
+                  ]
+                }
+              ]
+            }
+        "#,
+    )
+    .await;
+}
