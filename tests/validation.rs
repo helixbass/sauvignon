@@ -752,3 +752,120 @@ async fn test_null_argument() {
     )
     .await;
 }
+
+#[tokio::test]
+async fn test_directive_exists() {
+    validation_test(
+        indoc!(
+            r#"
+            query Foo @nonexistent {
+              actorKatie {
+                name
+              }
+            }
+        "#
+        ),
+        r#"
+            {
+              "errors": [
+                {
+                  "message": "Non-existent directive: `@nonexistent`",
+                  "locations": [
+                    {
+                      "line": 1,
+                      "column": 11
+                    }
+                  ]
+                }
+              ]
+            }
+        "#,
+    )
+    .await;
+
+    validation_test(
+        indoc!(
+            r#"
+            {
+              actorKatie {
+                ...wheeFragment
+              }
+            }
+
+            fragment wheeFragment on Actor @nonexistent {
+              name
+            }
+        "#
+        ),
+        r#"
+            {
+              "errors": [
+                {
+                  "message": "Non-existent directive: `@nonexistent`",
+                  "locations": [
+                    {
+                      "line": 7,
+                      "column": 32
+                    }
+                  ]
+                }
+              ]
+            }
+        "#,
+    )
+    .await;
+
+    validation_test(
+        indoc!(
+            r#"
+            {
+              actorKatie {
+                name @nonexistent
+                ...wheeFragment @nonexistent
+                ... @nonexistent {
+                  name
+                }
+              }
+            }
+
+            fragment wheeFragment on Actor {
+              name
+            }
+        "#
+        ),
+        r#"
+            {
+              "errors": [
+                {
+                  "message": "Non-existent directive: `@nonexistent`",
+                  "locations": [
+                    {
+                      "line": 3,
+                      "column": 10
+                    }
+                  ]
+                },
+                {
+                  "message": "Non-existent directive: `@nonexistent`",
+                  "locations": [
+                    {
+                      "line": 4,
+                      "column": 21
+                    }
+                  ]
+                },
+                {
+                  "message": "Non-existent directive: `@nonexistent`",
+                  "locations": [
+                    {
+                      "line": 5,
+                      "column": 9
+                    }
+                  ]
+                }
+              ]
+            }
+        "#,
+    )
+    .await;
+}

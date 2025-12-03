@@ -1184,11 +1184,79 @@ impl CollectorTyped<ValidationError, Vec<ValidationError>> for DirectivesExistCo
             true,
         )
     }
+
+    fn visit_fragment_definition(
+        &self,
+        fragment_definition: &FragmentDefinition,
+        _schema: &Schema,
+        request: &Request,
+    ) -> (Vec<ValidationError>, bool) {
+        (
+            fragment_definition
+                .directives
+                .iter()
+                .filter(|directive| directive.name != "skip" && directive.name != "include")
+                .map(|directive| directive_exists_validation_error(directive, request))
+                .collect(),
+            true,
+        )
+    }
+
+    fn visit_field(
+        &self,
+        field: &SelectionField,
+        _type_field: TypeOrInterfaceField<'_>,
+        _schema: &Schema,
+        request: &Request,
+    ) -> (Vec<ValidationError>, bool) {
+        (
+            field
+                .directives
+                .iter()
+                .filter(|directive| directive.name != "skip" && directive.name != "include")
+                .map(|directive| directive_exists_validation_error(directive, request))
+                .collect(),
+            true,
+        )
+    }
+
+    fn visit_fragment_spread(
+        &self,
+        fragment_spread: &FragmentSpread,
+        _enclosing_type: TypeOrUnionOrInterface<'_>,
+        _schema: &Schema,
+        request: &Request,
+    ) -> Vec<ValidationError> {
+        fragment_spread
+            .directives
+            .iter()
+            .filter(|directive| directive.name != "skip" && directive.name != "include")
+            .map(|directive| directive_exists_validation_error(directive, request))
+            .collect()
+    }
+
+    fn visit_inline_fragment(
+        &self,
+        inline_fragment: &InlineFragment,
+        _enclosing_type: TypeOrUnionOrInterface<'_>,
+        _schema: &Schema,
+        request: &Request,
+    ) -> (Vec<ValidationError>, bool) {
+        (
+            inline_fragment
+                .directives
+                .iter()
+                .filter(|directive| directive.name != "skip" && directive.name != "include")
+                .map(|directive| directive_exists_validation_error(directive, request))
+                .collect(),
+            true,
+        )
+    }
 }
 
 fn directive_exists_validation_error(directive: &Directive, request: &Request) -> ValidationError {
     ValidationError::new(
-        format!("Non-existent directive: `{}`", directive.name),
+        format!("Non-existent directive: `@{}`", directive.name),
         PositionsTracker::current()
             .map(|positions_tracker| {
                 vec![positions_tracker.directive_location(directive, &request.document)]

@@ -604,7 +604,7 @@ where
                                     || matches!(token, Token::Name(_))
                                         && matches!(tokens.peek(), Some(Ok(Token::AtSymbol)))
                                 {
-                                    if !matches!(token, Token::Name(_)) {
+                                    if matches!(token, Token::Name(_)) {
                                         let _ = tokens.next().unwrap().unwrap();
                                     }
                                     parse_directives(tokens, false)?
@@ -642,6 +642,7 @@ where
                         builder = builder.arguments(parse_arguments(tokens, false)?);
                     }
                     if matches!(tokens.peek(), Some(Ok(Token::AtSymbol))) {
+                        let _ = tokens.next().unwrap().unwrap();
                         builder = builder.directives(parse_directives(tokens, false)?);
                     }
                     match tokens.peek() {
