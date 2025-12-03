@@ -948,3 +948,93 @@ async fn test_directive_duplicate() {
     )
     .await;
 }
+
+#[tokio::test]
+async fn test_directive_missing_if() {
+    validation_test(
+        indoc!(
+            r#"
+            {
+              actorKatie {
+                name @skip(if: null)
+              }
+            }
+        "#
+        ),
+        r#"
+            {
+              "errors": [
+                {
+                  "message": "Missing required argument `if`",
+                  "locations": [
+                    {
+                      "line": 3,
+                      "column": 10
+                    }
+                  ]
+                }
+              ]
+            }
+        "#,
+    )
+    .await;
+
+    validation_test(
+        indoc!(
+            r#"
+            {
+              actorKatie {
+                name @skip
+              }
+            }
+        "#
+        ),
+        r#"
+            {
+              "errors": [
+                {
+                  "message": "Missing required argument `if`",
+                  "locations": [
+                    {
+                      "line": 3,
+                      "column": 10
+                    }
+                  ]
+                }
+              ]
+            }
+        "#,
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn test_directive_duplicate_argument() {
+    validation_test(
+        indoc!(
+            r#"
+            {
+              actorKatie {
+                name @skip(if: true, if: true)
+              }
+            }
+        "#
+        ),
+        r#"
+            {
+              "errors": [
+                {
+                  "message": "Duplicate argument: `if`",
+                  "locations": [
+                    {
+                      "line": 3,
+                      "column": 10
+                    }
+                  ]
+                }
+              ]
+            }
+        "#,
+    )
+    .await;
+}
