@@ -1038,3 +1038,34 @@ async fn test_directive_duplicate_argument() {
     )
     .await;
 }
+
+#[tokio::test]
+async fn test_directive_unknown_argument() {
+    validation_test(
+        indoc!(
+            r#"
+            {
+              actorKatie {
+                name @skip(whee: true)
+              }
+            }
+        "#
+        ),
+        r#"
+            {
+              "errors": [
+                {
+                  "message": "Non-existent argument: `whee`",
+                  "locations": [
+                    {
+                      "line": 3,
+                      "column": 10
+                    }
+                  ]
+                }
+              ]
+            }
+        "#,
+    )
+    .await;
+}
