@@ -869,3 +869,47 @@ async fn test_directive_exists() {
     )
     .await;
 }
+
+#[tokio::test]
+async fn test_directive_place() {
+    validation_test(
+        indoc!(
+            r#"
+            query Foo @skip(if: true) {
+              actorKatie {
+                ...wheeFragment
+              }
+            }
+
+            fragment wheeFragment on Actor @skip(if: true) {
+              name
+            }
+        "#
+        ),
+        r#"
+            {
+              "errors": [
+                {
+                  "message": "Directive `@skip` can't be used in this position",
+                  "locations": [
+                    {
+                      "line": 1,
+                      "column": 11
+                    }
+                  ]
+                },
+                {
+                  "message": "Directive `@skip` can't be used in this position",
+                  "locations": [
+                    {
+                      "line": 7,
+                      "column": 32
+                    }
+                  ]
+                }
+              ]
+            }
+        "#,
+    )
+    .await;
+}

@@ -677,6 +677,8 @@ where
         Some(Token::Int(int)) => Value::Int(int),
         Some(Token::String(string)) => Value::String(string),
         Some(Token::Name(name)) if name == "null" => Value::Null,
+        Some(Token::Name(name)) if name == "true" => Value::Bool(true),
+        Some(Token::Name(name)) if name == "false" => Value::Bool(false),
         _ => return Err(parse_error("Expected value").into()),
     })
 }
