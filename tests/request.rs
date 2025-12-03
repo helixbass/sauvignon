@@ -395,3 +395,91 @@ async fn test_lex_error() {
     )
     .await;
 }
+
+#[tokio::test]
+async fn test_skip_include() {
+    request_test(
+        r#"
+            query {
+              actorKatie {
+                name @skip(if: true)
+                expression
+              }
+            }
+        "#,
+        r#"
+            {
+              "data": {
+                "actorKatie": {
+                  "expression": "no Serena you can't have the key"
+                }
+              }
+            }
+        "#,
+    )
+    .await;
+
+    request_test(
+        r#"
+            query {
+              actorKatie {
+                name @include(if: false)
+                expression
+              }
+            }
+        "#,
+        r#"
+            {
+              "data": {
+                "actorKatie": {
+                  "expression": "no Serena you can't have the key"
+                }
+              }
+            }
+        "#,
+    )
+    .await;
+
+    request_test(
+        r#"
+            query {
+              actorKatie {
+                name @skip(if: false)
+                expression @include(if: true)
+              }
+            }
+        "#,
+        r#"
+            {
+              "data": {
+                "actorKatie": {
+                  "name": "Katie Cassidy",
+                  "expression": "no Serena you can't have the key"
+                }
+              }
+            }
+        "#,
+    )
+    .await;
+
+    request_test(
+        r#"
+            query {
+              actorKatie {
+                name @include(if: false) @skip(if: false)
+                expression
+              }
+            }
+        "#,
+        r#"
+            {
+              "data": {
+                "actorKatie": {
+                  "expression": "no Serena you can't have the key"
+                }
+              }
+            }
+        "#,
+    )
+    .await;
+}
