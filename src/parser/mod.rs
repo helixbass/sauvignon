@@ -687,11 +687,13 @@ fn parse_directives<TIterator>(
 where
     TIterator: Iterator<Item = LexResult<Token>>,
 {
+    PositionsTracker::emit_start_directives();
     let mut ret = vec![parse_directive(tokens, is_const)?];
     while let Some(Ok(Token::AtSymbol)) = tokens.peek() {
         let _ = tokens.next().unwrap().unwrap();
         ret.push(parse_directive(tokens, is_const)?);
     }
+    PositionsTracker::emit_end_directives();
     Ok(ret)
 }
 
@@ -702,6 +704,7 @@ fn parse_directive<TIterator>(
 where
     TIterator: Iterator<Item = LexResult<Token>>,
 {
+    PositionsTracker::emit_directive();
     Ok(Directive::new(
         match tokens.next().transpose()? {
             Some(Token::Name(name)) => name,
