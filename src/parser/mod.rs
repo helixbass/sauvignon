@@ -1104,4 +1104,17 @@ mod tests {
             Location::new(2, 13),
         );
     }
+
+    #[test]
+    fn test_parse_directive() {
+        parse_error_test(
+            indoc!(
+                r#"
+              query Foo @ 1
+            "#
+            ),
+            "Expected directive name",
+            Location::new(1, 13),
+        );
+    }
 }
