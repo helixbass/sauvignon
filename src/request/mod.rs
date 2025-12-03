@@ -96,6 +96,8 @@ pub struct OperationDefinition {
     #[builder(setter(into), default)]
     pub name: Option<String>,
     pub selection_set: Vec<Selection>,
+    #[builder(default)]
+    pub directives: Vec<Directive>,
 }
 
 #[derive(Debug)]
@@ -183,4 +185,16 @@ pub enum Value {
     Int(i32),
     String(String),
     Null,
+}
+
+#[derive(Debug)]
+pub struct Directive {
+    pub name: String,
+    pub arguments: Option<Vec<Argument>>,
+}
+
+impl Directive {
+    pub fn new(name: String, arguments: Option<Vec<Argument>>) -> Self {
+        Self { name, arguments }
+    }
 }

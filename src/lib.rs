@@ -28,7 +28,7 @@ pub use crate::parser::{lex, parse, LexError, ParseError, ParseOrLexError, Token
 pub use crate::plan::{FieldPlan, QueryPlan};
 pub use crate::positions::{CharsEmitter, Location, PositionsTracker};
 pub use crate::request::{
-    Argument, Document, ExecutableDefinition, Field as SelectionField,
+    Argument, Directive, Document, ExecutableDefinition, Field as SelectionField,
     FieldBuilder as SelectionFieldBuilder, FragmentDefinition, FragmentSpread, InlineFragment,
     OperationDefinition, OperationDefinitionBuilder, Request, Selection, Value,
 };
