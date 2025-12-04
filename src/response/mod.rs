@@ -1,4 +1,5 @@
 use serde::Serialize;
+use squalid::_d;
 
 use crate::{
     ExternalDependencyValues, FieldPlan, IndexMap, Location, ParseOrLexError, ValidationError,
@@ -15,6 +16,24 @@ pub struct Response {
 impl Response {
     pub fn new(data: Option<ResponseValue>, errors: Vec<ResponseError>) -> Self {
         Self { data, errors }
+    }
+}
+
+impl From<ResponseValue> for Response {
+    fn from(value: ResponseValue) -> Self {
+        Self {
+            data: Some(value),
+            errors: _d(),
+        }
+    }
+}
+
+impl From<Vec<ResponseError>> for Response {
+    fn from(value: Vec<ResponseError>) -> Self {
+        Self {
+            data: _d(),
+            errors: value,
+        }
     }
 }
 

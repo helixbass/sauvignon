@@ -106,7 +106,7 @@ impl Schema {
                         let parse_error = illicit::Layer::new()
                             .offer(PositionsTracker::default())
                             .enter(|| parse(document_str.chars()).unwrap_err());
-                        return Response::new(None, vec![parse_error.into()]);
+                        return vec![parse_error.into()].into();
                     }
                 };
                 let validation_request_or_errors = self.validate(&request);
@@ -118,10 +118,11 @@ impl Schema {
                             self.validate(&request).into_errors()
                         });
                     assert!(!validation_errors.is_empty());
-                    return Response::new(
-                        None,
-                        validation_errors.into_iter().map(Into::into).collect(),
-                    );
+                    return validation_errors
+                        .into_iter()
+                        .map(Into::into)
+                        .collect::<Vec<_>>()
+                        .into();
                 }
                 self.cached_validated_documents.write().unwrap().insert(
                     document_str_hash,
@@ -130,8 +131,7 @@ impl Schema {
                 request
             }
         };
-        let response = compute_response(self, &request, db_pool).await;
-        Response::new(Some(response), _d())
+        compute_response(self, &request, db_pool).await.into()
     }
 
     pub fn query_type(&self) -> &Type {
