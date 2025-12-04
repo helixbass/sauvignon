@@ -1,10 +1,11 @@
 use std::collections::HashMap;
 
 use derive_builder::Builder;
+use rkyv::{Archive, Deserialize, Serialize};
 
 use crate::OperationType;
 
-#[derive(Debug)]
+#[derive(Debug, Archive, Serialize, Deserialize)]
 pub struct Request {
     pub document: Document,
 }
@@ -23,7 +24,7 @@ impl Request {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Archive, Serialize, Deserialize)]
 pub struct Document {
     pub definitions: Vec<ExecutableDefinition>,
     pub fragments_by_name: HashMap<String, usize>,
@@ -62,7 +63,7 @@ impl Document {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Archive, Serialize, Deserialize)]
 pub enum ExecutableDefinition {
     Operation(OperationDefinition),
     Fragment(FragmentDefinition),
@@ -89,7 +90,7 @@ impl ExecutableDefinition {
     }
 }
 
-#[derive(Builder, Debug)]
+#[derive(Builder, Debug, Archive, Serialize, Deserialize)]
 #[builder(pattern = "owned")]
 pub struct OperationDefinition {
     pub operation_type: OperationType,
@@ -100,7 +101,7 @@ pub struct OperationDefinition {
     pub directives: Vec<Directive>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Archive, Serialize, Deserialize)]
 pub struct FragmentDefinition {
     pub name: String,
     pub on: String,
@@ -124,21 +125,36 @@ impl FragmentDefinition {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Archive, Serialize, Deserialize)]
 pub enum Selection {
     Field(Field),
     FragmentSpread(FragmentSpread),
     InlineFragment(InlineFragment),
 }
 
-#[derive(Builder, Debug)]
+#[derive(Builder, Debug, Archive, Serialize, Deserialize)]
 #[builder(pattern = "owned")]
+#[rkyv(serialize_bounds(
+    __S: rkyv::ser::Writer,
+    __S: rkyv::ser::Allocator,
+    <__S as rkyv::rancor::Fallible>::Error: rkyv::rancor::Source,
+))]
+#[rkyv(deserialize_bounds(
+    <__D as rkyv::rancor::Fallible>::Error: rkyv::rancor::Source,
+))]
+#[rkyv(bytecheck(
+    bounds(
+        __C: rkyv::validation::ArchiveContext,
+        <__C as rkyv::rancor::Fallible>::Error: rkyv::rancor::Source,
+    )
+))]
 pub struct Field {
     #[builder(setter(into), default)]
     pub alias: Option<String>,
     #[builder(setter(into))]
     pub name: String,
     #[builder(setter(strip_option), default)]
+    #[rkyv(omit_bounds)]
     pub selection_set: Option<Vec<Selection>>,
     #[builder(setter(custom), default)]
     pub arguments: Option<Vec<Argument>>,
@@ -154,7 +170,7 @@ impl FieldBuilder {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Archive, Serialize, Deserialize)]
 pub struct FragmentSpread {
     pub name: String,
     pub directives: Vec<Directive>,
@@ -166,9 +182,24 @@ impl FragmentSpread {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Archive, Serialize, Deserialize)]
+#[rkyv(serialize_bounds(
+    __S: rkyv::ser::Writer,
+    __S: rkyv::ser::Allocator,
+    <__S as rkyv::rancor::Fallible>::Error: rkyv::rancor::Source,
+))]
+#[rkyv(deserialize_bounds(
+    <__D as rkyv::rancor::Fallible>::Error: rkyv::rancor::Source,
+))]
+#[rkyv(bytecheck(
+    bounds(
+        __C: rkyv::validation::ArchiveContext,
+        <__C as rkyv::rancor::Fallible>::Error: rkyv::rancor::Source,
+    )
+))]
 pub struct InlineFragment {
     pub on: Option<String>,
+    #[rkyv(omit_bounds)]
     pub selection_set: Vec<Selection>,
     pub directives: Vec<Directive>,
 }
@@ -187,7 +218,7 @@ impl InlineFragment {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Archive, Serialize, Deserialize)]
 pub struct Argument {
     pub name: String,
     pub value: Value,
@@ -199,7 +230,7 @@ impl Argument {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Archive, Serialize, Deserialize)]
 pub enum Value {
     Int(i32),
     String(String),
@@ -207,7 +238,7 @@ pub enum Value {
     Bool(bool),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Archive, Serialize, Deserialize)]
 pub struct Directive {
     pub name: String,
     pub arguments: Option<Vec<Argument>>,
