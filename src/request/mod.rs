@@ -5,7 +5,7 @@ use rkyv::{Archive, Deserialize, Serialize};
 
 use crate::OperationType;
 
-#[derive(Debug, Archive, Serialize, Deserialize)]
+#[derive(Debug)]
 pub struct Request {
     pub document: Document,
 }

@@ -1,12 +1,14 @@
 use std::collections::{HashMap, HashSet};
 use std::pin::Pin;
+use std::sync::RwLock;
 
+use rkyv::{rancor, util::AlignedVec};
 use sqlx::{Pool, Postgres};
 use squalid::{OptionExt, _d};
 
 use crate::{
-    builtin_types, fields_in_progress_new, parse, CarverOrPopulator, DependencyType,
-    DependencyValue, DummyUnionTypenameField, Error, ExternalDependencyValues, FieldPlan,
+    builtin_types, fields_in_progress_new, get_hash, parse, CarverOrPopulator, DependencyType,
+    DependencyValue, Document, DummyUnionTypenameField, Error, ExternalDependencyValues, FieldPlan,
     FieldsInProgress, Id, InProgress, InProgressRecursing, InProgressRecursingList, IndexMap,
     Interface, InternalDependencyResolver, InternalDependencyValues, OperationType, Populator,
     PositionsTracker, QueryPlan, Request, Response, ResponseValue, ResponseValueOrInProgress,
@@ -25,6 +27,7 @@ pub struct Schema {
     pub interfaces: HashMap<String, Interface>,
     pub interface_all_concrete_types: HashMap<String, HashSet<String>>,
     pub dummy_union_typename_field: DummyUnionTypenameField,
+    pub cached_documents: RwLock<HashMap<u64, AlignedVec>>,
 }
 
 impl Schema {
@@ -79,6 +82,7 @@ impl Schema {
                 .collect(),
             interface_all_concrete_types,
             dummy_union_typename_field: _d(),
+            cached_documents: _d(),
         })
     }
 
@@ -106,6 +110,18 @@ impl Schema {
                 validation_errors.into_iter().map(Into::into).collect(),
             );
         }
+        self.cached_documents.write().unwrap().insert(
+            get_hash(request_str),
+            rkyv::to_bytes::<rancor::Error>(&request.document).unwrap(),
+        );
+        let request = Request::new(
+            unsafe {
+                rkyv::from_bytes_unchecked::<Document, rancor::Error>(
+                    &self.cached_documents.read().unwrap()[&get_hash(request_str)],
+                )
+            }
+            .unwrap(),
+        );
         let response = compute_response(self, &request, db_pool).await;
         Response::new(Some(response), _d())
     }

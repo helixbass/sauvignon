@@ -1,6 +1,7 @@
 mod any_hash_map;
 mod dependencies;
 mod error;
+mod hash;
 mod inscribe;
 mod operation;
 mod parser;
@@ -22,6 +23,7 @@ pub use crate::dependencies::{
     InternalDependencyValues, LiteralValueInternalDependencyResolver,
 };
 pub use crate::error::{Error, Result};
+pub use crate::hash::get_hash;
 pub use crate::inscribe::json_from_response;
 pub use crate::operation::OperationType;
 pub use crate::parser::{lex, parse, LexError, ParseError, ParseOrLexError, Token};
