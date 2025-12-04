@@ -27,7 +27,7 @@ pub struct Schema {
     pub interfaces: HashMap<String, Interface>,
     pub interface_all_concrete_types: HashMap<String, HashSet<String>>,
     pub dummy_union_typename_field: DummyUnionTypenameField,
-    pub cached_documents: RwLock<HashMap<u64, AlignedVec>>,
+    pub cached_validated_documents: RwLock<HashMap<u64, AlignedVec>>,
 }
 
 impl Schema {
@@ -82,22 +82,23 @@ impl Schema {
                 .collect(),
             interface_all_concrete_types,
             dummy_union_typename_field: _d(),
-            cached_documents: _d(),
+            cached_validated_documents: _d(),
         })
     }
 
     pub async fn request(&self, document_str: &str, db_pool: &Pool<Postgres>) -> Response {
         let document_str_hash = get_hash(document_str);
-        let request = match self
-            .cached_documents
+        let cached_validated_document = self
+            .cached_validated_documents
             .read()
             .unwrap()
             .get(&document_str_hash)
-        {
-            Some(cached_validated_document) => Request::new(unsafe {
+            .map(|cached_validated_document| unsafe {
                 rkyv::from_bytes_unchecked::<Document, rancor::Error>(cached_validated_document)
                     .unwrap()
-            }),
+            });
+        let request = match cached_validated_document {
+            Some(cached_validated_document) => Request::new(cached_validated_document),
             None => {
                 let request = match parse(document_str.chars()) {
                     Ok(request) => request,
@@ -122,7 +123,7 @@ impl Schema {
                         validation_errors.into_iter().map(Into::into).collect(),
                     );
                 }
-                self.cached_documents.write().unwrap().insert(
+                self.cached_validated_documents.write().unwrap().insert(
                     document_str_hash,
                     rkyv::to_bytes::<rancor::Error>(&request.document).unwrap(),
                 );
