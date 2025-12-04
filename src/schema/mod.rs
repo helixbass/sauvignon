@@ -86,42 +86,49 @@ impl Schema {
         })
     }
 
-    pub async fn request(&self, request_str: &str, db_pool: &Pool<Postgres>) -> Response {
-        let request = match parse(request_str.chars()) {
-            Ok(request) => request,
-            Err(_) => {
-                let parse_error = illicit::Layer::new()
-                    .offer(PositionsTracker::default())
-                    .enter(|| parse(request_str.chars()).unwrap_err());
-                return Response::new(None, vec![parse_error.into()]);
+    pub async fn request(&self, document_str: &str, db_pool: &Pool<Postgres>) -> Response {
+        let document_str_hash = get_hash(document_str);
+        let request = match self
+            .cached_documents
+            .read()
+            .unwrap()
+            .get(&document_str_hash)
+        {
+            Some(cached_validated_document) => Request::new(unsafe {
+                rkyv::from_bytes_unchecked::<Document, rancor::Error>(cached_validated_document)
+                    .unwrap()
+            }),
+            None => {
+                let request = match parse(document_str.chars()) {
+                    Ok(request) => request,
+                    Err(_) => {
+                        let parse_error = illicit::Layer::new()
+                            .offer(PositionsTracker::default())
+                            .enter(|| parse(document_str.chars()).unwrap_err());
+                        return Response::new(None, vec![parse_error.into()]);
+                    }
+                };
+                let validation_request_or_errors = self.validate(&request);
+                if let ValidationRequestOrErrors::Errors(_) = validation_request_or_errors {
+                    let validation_errors = illicit::Layer::new()
+                        .offer(PositionsTracker::default())
+                        .enter(|| {
+                            let request = parse(document_str.chars()).unwrap();
+                            self.validate(&request).into_errors()
+                        });
+                    assert!(!validation_errors.is_empty());
+                    return Response::new(
+                        None,
+                        validation_errors.into_iter().map(Into::into).collect(),
+                    );
+                }
+                self.cached_documents.write().unwrap().insert(
+                    document_str_hash,
+                    rkyv::to_bytes::<rancor::Error>(&request.document).unwrap(),
+                );
+                request
             }
         };
-        let validation_request_or_errors = self.validate(&request);
-        if let ValidationRequestOrErrors::Errors(_) = validation_request_or_errors {
-            let validation_errors = illicit::Layer::new()
-                .offer(PositionsTracker::default())
-                .enter(|| {
-                    let request = parse(request_str.chars()).unwrap();
-                    self.validate(&request).into_errors()
-                });
-            assert!(!validation_errors.is_empty());
-            return Response::new(
-                None,
-                validation_errors.into_iter().map(Into::into).collect(),
-            );
-        }
-        self.cached_documents.write().unwrap().insert(
-            get_hash(request_str),
-            rkyv::to_bytes::<rancor::Error>(&request.document).unwrap(),
-        );
-        let request = Request::new(
-            unsafe {
-                rkyv::from_bytes_unchecked::<Document, rancor::Error>(
-                    &self.cached_documents.read().unwrap()[&get_hash(request_str)],
-                )
-            }
-            .unwrap(),
-        );
         let response = compute_response(self, &request, db_pool).await;
         Response::new(Some(response), _d())
     }
