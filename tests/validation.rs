@@ -308,3 +308,177 @@ async fn test_selection_fields_exist() {
     )
     .await;
 }
+
+#[tokio::test]
+async fn test_fragment_name_duplicate() {
+    validation_test(
+        indoc!(
+            r#"
+            {
+              actorKatie {
+                ...wheeFragment
+              }
+            }
+
+            fragment wheeFragment on Actor {
+              name
+            }
+
+            fragment wheeFragment on Actor {
+              expression
+            }
+        "#
+        ),
+        r#"
+            {
+              "errors": [
+                {
+                  "message": "Non-unique fragment names: `wheeFragment`",
+                  "locations": [
+                    {
+                      "line": 7,
+                      "column": 1
+                    },
+                    {
+                      "line": 11,
+                      "column": 1
+                    }
+                  ]
+                }
+              ]
+            }
+        "#,
+    )
+    .await;
+
+    validation_test(
+        indoc!(
+            r#"
+            {
+              actorKatie {
+                ...wheeFragment
+              }
+            }
+
+            fragment wheeFragment on Actor {
+              name
+            }
+
+            fragment wheeFragment on Actor {
+              expression
+            }
+
+            fragment whoaFragment on Actor {
+              name
+            }
+
+            fragment wheeFragment on Actor {
+              favoriteActorOrDesigner {
+                __typename
+              }
+            }
+
+            fragment whoaFragment on Actor {
+              expression
+            }
+        "#
+        ),
+        r#"
+            {
+              "errors": [
+                {
+                  "message": "Non-unique fragment names: `wheeFragment`, `whoaFragment`",
+                  "locations": [
+                    {
+                      "line": 7,
+                      "column": 1
+                    },
+                    {
+                      "line": 11,
+                      "column": 1
+                    },
+                    {
+                      "line": 19,
+                      "column": 1
+                    },
+                    {
+                      "line": 15,
+                      "column": 1
+                    },
+                    {
+                      "line": 25,
+                      "column": 1
+                    }
+                  ]
+                }
+              ]
+            }
+        "#,
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn test_fragment_on_scalar_type() {
+    validation_test(
+        indoc!(
+            r#"
+            {
+              actorKatie {
+                ...wheeFragment
+              }
+            }
+
+            fragment wheeFragment on String {
+              name
+            }
+        "#
+        ),
+        r#"
+            {
+              "errors": [
+                {
+                  "message": "Fragment `wheeFragment` can't be of scalar type `String`",
+                  "locations": [
+                    {
+                      "line": 7,
+                      "column": 1
+                    }
+                  ]
+                }
+              ]
+            }
+        "#,
+    )
+    .await;
+
+    validation_test(
+        indoc!(
+            r#"
+            {
+              actorKatie {
+                ... on String {
+                  whee
+                }
+              }
+            }
+        "#
+        ),
+        r#"
+            {
+              "errors": [
+                {
+                  "message": "Inline fragment can't be of scalar type `String`",
+                  "locations": [
+                    {
+                      "line": 3,
+                      "column": 5
+                    }
+                  ]
+                }
+              ]
+            }
+        "#,
+    )
+    .await;
+}

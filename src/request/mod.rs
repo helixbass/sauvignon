@@ -73,11 +73,16 @@ impl ExecutableDefinition {
         }
     }
 
-    pub fn as_fragment_definition(&self) -> &FragmentDefinition {
+    pub fn maybe_as_fragment_definition(&self) -> Option<&FragmentDefinition> {
         match self {
-            Self::Fragment(fragment_definition) => fragment_definition,
-            _ => panic!("expected fragment"),
+            Self::Fragment(fragment_definition) => Some(fragment_definition),
+            _ => None,
         }
+    }
+
+    pub fn as_fragment_definition(&self) -> &FragmentDefinition {
+        self.maybe_as_fragment_definition()
+            .expect("expected fragment")
     }
 }
 
