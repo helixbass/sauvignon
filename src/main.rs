@@ -4,7 +4,7 @@ use sauvignon::{
     json_from_response, ArgumentInternalDependencyResolver, CarverOrPopulator, ColumnGetter,
     ColumnGetterList, DependencyType, DependencyValue, Document, ExecutableDefinition,
     ExternalDependency, FieldResolver, FragmentDefinition, FragmentSpread, Id, IdPopulatorList,
-    InlineFragment, InternalDependency, InternalDependencyResolver,
+    InlineFragment, Interface, InterfaceField, InternalDependency, InternalDependencyResolver,
     LiteralValueInternalDependencyResolver, ObjectType, OperationDefinition, OperationType,
     Request, Schema, Selection, SelectionField, SelectionSet, StringColumnCarver, Type,
     TypeDepluralizer, TypeField, TypeFull, Union, ValuePopulator, ValuesPopulator,
@@ -16,6 +16,15 @@ async fn main() -> anyhow::Result<()> {
         .max_connections(5)
         .connect("postgres://sauvignon:password@localhost/sauvignon")
         .await?;
+
+    let has_name_interface = Interface::new(
+        "HasName".to_owned(),
+        vec![InterfaceField::new(
+            "name".to_owned(),
+            TypeFull::Type("String".to_owned()),
+        )],
+        vec![],
+    );
 
     let actor_type = Type::Object(ObjectType::new(
         "Actor".to_owned(),
@@ -96,6 +105,7 @@ async fn main() -> anyhow::Result<()> {
             ),
         ],
         None,
+        vec!["HasName".to_owned()],
     ));
 
     let designer_type = Type::Object(ObjectType::new(
@@ -117,6 +127,7 @@ async fn main() -> anyhow::Result<()> {
             ),
         )],
         None,
+        vec!["HasName".to_owned()],
     ));
 
     let actor_or_designer = Union::new(
@@ -231,13 +242,46 @@ async fn main() -> anyhow::Result<()> {
                     ),
                 ),
             ),
+            TypeField::new(
+                "bestHasName".to_owned(),
+                TypeFull::Type("HasName".to_owned()),
+                FieldResolver::new(
+                    vec![],
+                    vec![
+                        InternalDependency::new(
+                            "type".to_owned(),
+                            DependencyType::String,
+                            InternalDependencyResolver::LiteralValue(
+                                LiteralValueInternalDependencyResolver(DependencyValue::String(
+                                    "actors".to_owned(),
+                                )),
+                            ),
+                        ),
+                        InternalDependency::new(
+                            "id".to_owned(),
+                            DependencyType::Id,
+                            InternalDependencyResolver::LiteralValue(
+                                LiteralValueInternalDependencyResolver(DependencyValue::Id(
+                                    katie_id,
+                                )),
+                            ),
+                        ),
+                    ],
+                    CarverOrPopulator::UnionOrInterfaceTypePopulator(
+                        Box::new(TypeDepluralizer::new()),
+                        Box::new(ValuePopulator::new("id".to_owned())),
+                    ),
+                ),
+            ),
         ],
         Some(OperationType::Query),
+        vec![],
     ));
 
     let schema = Schema::try_new(
         vec![query_type, actor_type, designer_type],
         vec![actor_or_designer],
+        vec![has_name_interface],
     )?;
 
     let request = Request::new(Document::new(vec![
@@ -466,6 +510,71 @@ async fn main() -> anyhow::Result<()> {
         "favorite actor or designer response: {}",
         pretty_print_json(&json)
     );
+
+    let request = Request::new(Document::new(vec![
+        // query {
+        //   actors {
+        //     favoriteActorOrDesigner {
+        //       ... on HasName {
+        //         name
+        //       }
+        //       ... on Actor {
+        //         expression
+        //       }
+        //     }
+        //   }
+        //   bestHasName {
+        //     name
+        //   }
+        // }
+        ExecutableDefinition::Operation(OperationDefinition::new(
+            OperationType::Query,
+            None,
+            SelectionSet::new(vec![
+                Selection::Field(SelectionField::new(
+                    None,
+                    "actors".to_owned(),
+                    Some(SelectionSet::new(vec![Selection::Field(
+                        SelectionField::new(
+                            None,
+                            "favoriteActorOrDesigner".to_owned(),
+                            Some(SelectionSet::new(vec![
+                                Selection::InlineFragment(InlineFragment::new(
+                                    Some("HasName".to_owned()),
+                                    SelectionSet::new(vec![Selection::Field(SelectionField::new(
+                                        None,
+                                        "name".to_owned(),
+                                        None,
+                                    ))]),
+                                )),
+                                Selection::InlineFragment(InlineFragment::new(
+                                    Some("Actor".to_owned()),
+                                    SelectionSet::new(vec![Selection::Field(SelectionField::new(
+                                        None,
+                                        "expression".to_owned(),
+                                        None,
+                                    ))]),
+                                )),
+                            ])),
+                        ),
+                    )])),
+                )),
+                Selection::Field(SelectionField::new(
+                    None,
+                    "bestHasName".to_owned(),
+                    Some(SelectionSet::new(vec![Selection::Field(
+                        SelectionField::new(None, "name".to_owned(), None),
+                    )])),
+                )),
+            ]),
+        )),
+    ]));
+
+    let response = schema.request(request, &db_pool).await;
+
+    let json = json_from_response(&response);
+
+    println!("interface response: {}", pretty_print_json(&json));
 
     Ok(())
 }

@@ -27,12 +27,14 @@ pub struct Document {
 
 impl Document {
     pub fn new(definitions: Vec<ExecutableDefinition>) -> Self {
-        let fragments_by_name = HashMap::from_iter(definitions.iter().enumerate().filter_map(
-            |(index, definition)| match definition {
+        let fragments_by_name = definitions
+            .iter()
+            .enumerate()
+            .filter_map(|(index, definition)| match definition {
                 ExecutableDefinition::Fragment(fragment) => Some((fragment.name.clone(), index)),
                 _ => None,
-            },
-        ));
+            })
+            .collect();
         Self {
             definitions,
             fragments_by_name,

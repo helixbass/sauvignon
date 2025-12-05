@@ -28,17 +28,22 @@ pub enum ResponseValue {
 
 impl From<FieldsInProgress<'_>> for ResponseValue {
     fn from(fields_in_progress: FieldsInProgress) -> Self {
-        Self::Map(IndexMap::from_iter(fields_in_progress.into_iter().map(
-            |(name, response_value_or_in_progress)| {
-                (
-                    name,
-                    match response_value_or_in_progress {
-                        ResponseValueOrInProgress::ResponseValue(response_value) => response_value,
-                        _ => unreachable!(),
-                    },
-                )
-            },
-        )))
+        Self::Map(
+            fields_in_progress
+                .into_iter()
+                .map(|(name, response_value_or_in_progress)| {
+                    (
+                        name,
+                        match response_value_or_in_progress {
+                            ResponseValueOrInProgress::ResponseValue(response_value) => {
+                                response_value
+                            }
+                            _ => unreachable!(),
+                        },
+                    )
+                })
+                .collect(),
+        )
     }
 }
 
@@ -55,15 +60,18 @@ pub fn fields_in_progress_new<'a>(
     external_dependency_values: &ExternalDependencyValues,
 ) -> FieldsInProgress<'a> {
     // TODO: this looks like a map_values()
-    IndexMap::from_iter(field_plans.into_iter().map(|(field_name, field_plan)| {
-        (
-            field_name.clone(),
-            ResponseValueOrInProgress::InProgress(InProgress::new(
-                field_plan,
-                external_dependency_values.clone(),
-            )),
-        )
-    }))
+    field_plans
+        .into_iter()
+        .map(|(field_name, field_plan)| {
+            (
+                field_name.clone(),
+                ResponseValueOrInProgress::InProgress(InProgress::new(
+                    field_plan,
+                    external_dependency_values.clone(),
+                )),
+            )
+        })
+        .collect()
 }
 
 pub struct ResponseInProgress<'a> {
