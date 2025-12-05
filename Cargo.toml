@@ -13,3 +13,4 @@ squalid = { git = "https://github.com/helixbass/squalid", rev = "04487f1" }
 serde = "1.0.228"
 serde_json = "1.0.145"
 Inflector = "0.11.4"
+derive_builder = "0.20.2"
