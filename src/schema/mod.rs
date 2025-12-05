@@ -6,11 +6,12 @@ use sqlx::{Pool, Postgres};
 use squalid::{OptionExt, _d};
 
 use crate::{
-    builtin_types, fields_in_progress_new, CarverOrPopulator, DependencyType, DependencyValue,
-    Error, ExternalDependencyValues, FieldPlan, FieldsInProgress, Id, InProgress,
+    builtin_types, fields_in_progress_new, parse, CarverOrPopulator, DependencyType,
+    DependencyValue, Error, ExternalDependencyValues, FieldPlan, FieldsInProgress, Id, InProgress,
     InProgressRecursing, InProgressRecursingList, IndexMap, Interface, InternalDependencyResolver,
-    InternalDependencyValues, Populator, QueryPlan, Request, Response, ResponseValue,
-    ResponseValueOrInProgress, Result as SauvignonResult, Type, TypeInterface, Union, Value,
+    InternalDependencyValues, Location, Populator, PositionsTracker, QueryPlan, Request, Response,
+    ResponseValue, ResponseValueOrInProgress, Result as SauvignonResult, Type, TypeInterface,
+    Union, Value,
 };
 
 pub struct Schema {
@@ -76,8 +77,14 @@ impl Schema {
         })
     }
 
-    pub async fn request(&self, request: Request, db_pool: &Pool<Postgres>) -> Response {
-        let (validation_errors, validated_request) = self.validate(&request);
+    pub async fn request(&self, request_str: &str, db_pool: &Pool<Postgres>) -> Response {
+        let (request, validation_errors, validated_request) = illicit::Layer::new()
+            .offer(PositionsTracker::default())
+            .enter(|| {
+                let request = parse(request_str.chars());
+                let (validation_errors, validated_request) = self.validate(&request);
+                (request, validation_errors, validated_request)
+            });
         if !validation_errors.is_empty() {
             return Response::new(
                 None,
@@ -492,25 +499,54 @@ fn validate_operation_name_uniqueness(request: &Request) -> Option<ValidationErr
                 .maybe_as_operation_definition()
                 .and_then(|operation_definition| operation_definition.name.as_ref())
         })
+        // TODO: could make my own eg `.duplicates_all()`
+        // (returning a sub-list of each group of duplicates, not just
+        // one of each duplicate group)
         .duplicates();
 
     duplicates.next().map(|duplicate| {
+        let mut locations: Vec<Location> = _d();
+        add_all_operation_name_locations(&mut locations, duplicate, request);
         let mut message = format!("Non-unique operation names: `{}`", duplicate);
         while let Some(duplicate) = duplicates.next() {
+            add_all_operation_name_locations(&mut locations, duplicate, request);
             message.push_str(&format!(", `{duplicate}`"));
         }
 
-        ValidationError::new(message)
+        ValidationError::new(message, locations)
     })
 }
 
+fn add_all_operation_name_locations(locations: &mut Vec<Location>, name: &str, request: &Request) {
+    let Some(positions_tracker) = PositionsTracker::current() else {
+        return;
+    };
+
+    request
+        .document
+        .definitions
+        .iter()
+        .enumerate()
+        .filter_map(|(index, definition)| {
+            definition
+                .maybe_as_operation_definition()
+                .filter(|operation_definition| operation_definition.name.as_ref().is(name))
+                .map(|_| index)
+        })
+        .for_each(|index| {
+            locations.push(positions_tracker.nth_named_operation_name_location(index));
+        });
+}
+
+#[derive(Debug)]
 pub struct ValidationError {
     pub message: String,
+    pub locations: Vec<Location>,
 }
 
 impl ValidationError {
-    pub fn new(message: String) -> Self {
-        Self { message }
+    pub fn new(message: String, locations: Vec<Location>) -> Self {
+        Self { message, locations }
     }
 }
 

@@ -3,8 +3,9 @@ use std::{iter::Peekable, vec};
 use squalid::_d;
 
 use crate::{
-    Argument, Document, ExecutableDefinition, FragmentDefinition, FragmentSpread, InlineFragment,
-    OperationDefinitionBuilder, OperationType, Request, Selection, SelectionFieldBuilder, Value,
+    Argument, CharsEmitter, Document, ExecutableDefinition, FragmentDefinition, FragmentSpread,
+    InlineFragment, OperationDefinitionBuilder, OperationType, PositionsTracker, Request,
+    Selection, SelectionFieldBuilder, Value,
 };
 
 const UNICODE_BOM: char = '\u{feff}';
@@ -45,12 +46,12 @@ where
     TRequest: IntoIterator<Item = char>,
 {
     Lex {
-        request: request.into_iter().peekable(),
+        request: CharsEmitter::new(request.into_iter().peekable()),
     }
 }
 
 pub struct Lex<TRequest: Iterator<Item = char>> {
-    request: Peekable<TRequest>,
+    request: CharsEmitter<TRequest>,
 }
 
 impl<TRequest> Iterator for Lex<TRequest>
@@ -61,6 +62,7 @@ where
 
     fn next(&mut self) -> Option<Token> {
         loop {
+            PositionsTracker::emit_token_pre_start();
             match self.request.next() {
                 Some(ch) => {
                     let maybe_token = match ch {
@@ -415,6 +417,7 @@ pub fn parse_tokens(tokens: impl IntoIterator<Item = Token>) -> Request {
                                         .unwrap(),
                                 ),
                                 Some(Token::Name(name)) => {
+                                    PositionsTracker::emit_operation_name();
                                     builder = builder.name(name);
                                     match tokens.next() {
                                         Some(Token::LeftCurlyBracket) => {

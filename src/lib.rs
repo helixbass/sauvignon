@@ -5,6 +5,7 @@ mod inscribe;
 mod operation;
 mod parser;
 mod plan;
+mod positions;
 mod request;
 mod resolve;
 mod response;
@@ -25,6 +26,7 @@ pub use crate::inscribe::json_from_response;
 pub use crate::operation::OperationType;
 pub use crate::parser::{lex, parse, Token};
 pub use crate::plan::{FieldPlan, QueryPlan};
+pub use crate::positions::{CharsEmitter, Location, PositionsTracker};
 pub use crate::request::{
     Argument, Document, ExecutableDefinition, Field as SelectionField,
     FieldBuilder as SelectionFieldBuilder, FragmentDefinition, FragmentSpread, InlineFragment,

@@ -1,4 +1,6 @@
-use sauvignon::{json_from_response, parse};
+use indoc::indoc;
+
+use sauvignon::json_from_response;
 
 mod shared;
 
@@ -7,7 +9,6 @@ use shared::{get_db_pool, get_schema, pretty_print_json};
 async fn validation_test(request: &str, expected: &str) {
     let db_pool = get_db_pool().await.unwrap();
     let schema = get_schema(&db_pool).await.unwrap();
-    let request = parse(request.chars());
     let response = schema.request(request, &db_pool).await;
     let json = json_from_response(&response);
     assert_eq!(pretty_print_json(&json), pretty_print_json(expected));
@@ -16,7 +17,8 @@ async fn validation_test(request: &str, expected: &str) {
 #[tokio::test]
 async fn test_operation_name_uniqueness() {
     validation_test(
-        r#"
+        indoc!(
+            r#"
             query Whee {
               actorKatie {
                 name
@@ -28,12 +30,23 @@ async fn test_operation_name_uniqueness() {
                 name
               }
             }
-        "#,
+        "#
+        ),
         r#"
             {
               "errors": [
                 {
-                  "message": "Non-unique operation names: `Whee`"
+                  "message": "Non-unique operation names: `Whee`",
+                  "locations": [
+                    {
+                      "line": 1,
+                      "column": 7
+                    },
+                    {
+                      "line": 7,
+                      "column": 7
+                    }
+                  ]
                 }
               ]
             }
@@ -42,7 +55,8 @@ async fn test_operation_name_uniqueness() {
     .await;
 
     validation_test(
-        r#"
+        indoc!(
+            r#"
             query Whee {
               actorKatie {
                 name
@@ -66,12 +80,31 @@ async fn test_operation_name_uniqueness() {
                 name
               }
             }
-        "#,
+        "#
+        ),
         r#"
             {
               "errors": [
                 {
-                  "message": "Non-unique operation names: `Whee`, `Whoa`"
+                  "message": "Non-unique operation names: `Whee`, `Whoa`",
+                  "locations": [
+                    {
+                      "line": 1,
+                      "column": 7
+                    },
+                    {
+                      "line": 13,
+                      "column": 7
+                    },
+                    {
+                      "line": 7,
+                      "column": 7
+                    },
+                    {
+                      "line": 19,
+                      "column": 7
+                    }
+                  ]
                 }
               ]
             }
