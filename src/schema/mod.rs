@@ -1,12 +1,14 @@
 use std::collections::{HashMap, HashSet};
 use std::pin::Pin;
+use std::sync::RwLock;
 
+use rkyv::{rancor, util::AlignedVec};
 use sqlx::{Pool, Postgres};
 use squalid::{OptionExt, _d};
 
 use crate::{
-    builtin_types, fields_in_progress_new, parse, CarverOrPopulator, DependencyType,
-    DependencyValue, DummyUnionTypenameField, Error, ExternalDependencyValues, FieldPlan,
+    builtin_types, fields_in_progress_new, get_hash, parse, CarverOrPopulator, DependencyType,
+    DependencyValue, Document, DummyUnionTypenameField, Error, ExternalDependencyValues, FieldPlan,
     FieldsInProgress, Id, InProgress, InProgressRecursing, InProgressRecursingList, IndexMap,
     Interface, InternalDependencyResolver, InternalDependencyValues, OperationType, Populator,
     PositionsTracker, QueryPlan, Request, Response, ResponseValue, ResponseValueOrInProgress,
@@ -25,6 +27,7 @@ pub struct Schema {
     pub interfaces: HashMap<String, Interface>,
     pub interface_all_concrete_types: HashMap<String, HashSet<String>>,
     pub dummy_union_typename_field: DummyUnionTypenameField,
+    pub cached_validated_documents: RwLock<HashMap<u64, AlignedVec>>,
 }
 
 impl Schema {
@@ -79,35 +82,56 @@ impl Schema {
                 .collect(),
             interface_all_concrete_types,
             dummy_union_typename_field: _d(),
+            cached_validated_documents: _d(),
         })
     }
 
-    pub async fn request(&self, request_str: &str, db_pool: &Pool<Postgres>) -> Response {
-        let request = match parse(request_str.chars()) {
-            Ok(request) => request,
-            Err(_) => {
-                let parse_error = illicit::Layer::new()
-                    .offer(PositionsTracker::default())
-                    .enter(|| parse(request_str.chars()).unwrap_err());
-                return Response::new(None, vec![parse_error.into()]);
+    pub async fn request(&self, document_str: &str, db_pool: &Pool<Postgres>) -> Response {
+        let document_str_hash = get_hash(document_str);
+        let cached_validated_document = self
+            .cached_validated_documents
+            .read()
+            .unwrap()
+            .get(&document_str_hash)
+            .map(|cached_validated_document| unsafe {
+                rkyv::from_bytes_unchecked::<Document, rancor::Error>(cached_validated_document)
+                    .unwrap()
+            });
+        let request = match cached_validated_document {
+            Some(cached_validated_document) => Request::new(cached_validated_document),
+            None => {
+                let request = match parse(document_str.chars()) {
+                    Ok(request) => request,
+                    Err(_) => {
+                        let parse_error = illicit::Layer::new()
+                            .offer(PositionsTracker::default())
+                            .enter(|| parse(document_str.chars()).unwrap_err());
+                        return vec![parse_error.into()].into();
+                    }
+                };
+                let validation_request_or_errors = self.validate(&request);
+                if let ValidationRequestOrErrors::Errors(_) = validation_request_or_errors {
+                    let validation_errors = illicit::Layer::new()
+                        .offer(PositionsTracker::default())
+                        .enter(|| {
+                            let request = parse(document_str.chars()).unwrap();
+                            self.validate(&request).into_errors()
+                        });
+                    assert!(!validation_errors.is_empty());
+                    return validation_errors
+                        .into_iter()
+                        .map(Into::into)
+                        .collect::<Vec<_>>()
+                        .into();
+                }
+                self.cached_validated_documents.write().unwrap().insert(
+                    document_str_hash,
+                    rkyv::to_bytes::<rancor::Error>(&request.document).unwrap(),
+                );
+                request
             }
         };
-        let validation_request_or_errors = self.validate(&request);
-        if let ValidationRequestOrErrors::Errors(_) = validation_request_or_errors {
-            let validation_errors = illicit::Layer::new()
-                .offer(PositionsTracker::default())
-                .enter(|| {
-                    let request = parse(request_str.chars()).unwrap();
-                    self.validate(&request).into_errors()
-                });
-            assert!(!validation_errors.is_empty());
-            return Response::new(
-                None,
-                validation_errors.into_iter().map(Into::into).collect(),
-            );
-        }
-        let response = compute_response(self, &request, db_pool).await;
-        Response::new(Some(response), _d())
+        compute_response(self, &request, db_pool).await.into()
     }
 
     pub fn query_type(&self) -> &Type {
