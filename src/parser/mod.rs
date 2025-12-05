@@ -3,9 +3,9 @@ use std::{iter::Peekable, vec};
 use squalid::_d;
 
 use crate::{
-    Argument, CharsEmitter, Document, ExecutableDefinition, FragmentDefinition, FragmentSpread,
-    InlineFragment, Location, OperationDefinitionBuilder, OperationType, PositionsTracker, Request,
-    Selection, SelectionFieldBuilder, Value,
+    Argument, CharsEmitter, Directive, Document, ExecutableDefinition, FragmentDefinition,
+    FragmentSpread, InlineFragment, Location, OperationDefinitionBuilder, OperationType,
+    PositionsTracker, Request, Selection, SelectionFieldBuilder, Value,
 };
 
 const UNICODE_BOM: char = '\u{feff}';
@@ -441,9 +441,50 @@ pub fn parse_tokens(tokens: impl IntoIterator<Item = LexResult<Token>>) -> Parse
                                         .build()
                                         .unwrap(),
                                 ),
+                                Some(Token::AtSymbol) => {
+                                    builder =
+                                        builder.directives(parse_directives(&mut tokens, false)?);
+                                    match tokens.next().transpose()? {
+                                        Some(Token::LeftCurlyBracket) => {
+                                            ExecutableDefinition::Operation(
+                                                builder
+                                                    .selection_set(parse_selection_set(
+                                                        &mut tokens,
+                                                    )?)
+                                                    .build()
+                                                    .unwrap(),
+                                            )
+                                        }
+                                        _ => {
+                                            return Err(parse_error("Expected selection set").into())
+                                        }
+                                    }
+                                }
                                 Some(Token::Name(name)) => {
                                     builder = builder.name(name);
                                     match tokens.next().transpose()? {
+                                        Some(Token::AtSymbol) => {
+                                            builder = builder
+                                                .directives(parse_directives(&mut tokens, false)?);
+                                            match tokens.next().transpose()? {
+                                                Some(Token::LeftCurlyBracket) => {
+                                                    ExecutableDefinition::Operation(
+                                                        builder
+                                                            .selection_set(parse_selection_set(
+                                                                &mut tokens,
+                                                            )?)
+                                                            .build()
+                                                            .unwrap(),
+                                                    )
+                                                }
+                                                _ => {
+                                                    return Err(parse_error(
+                                                        "Expected selection set",
+                                                    )
+                                                    .into())
+                                                }
+                                            }
+                                        }
                                         Some(Token::LeftCurlyBracket) => {
                                             ExecutableDefinition::Operation(
                                                 builder
@@ -497,6 +538,13 @@ pub fn parse_tokens(tokens: impl IntoIterator<Item = LexResult<Token>>) -> Parse
                             }
                             _ => return Err(parse_error("Expected fragment `on`").into()),
                         },
+                        match tokens.peek() {
+                            Some(Ok(Token::AtSymbol)) => {
+                                let _ = tokens.next().unwrap().unwrap();
+                                parse_directives(&mut tokens, false)?
+                            }
+                            _ => _d(),
+                        },
                         match tokens.next().transpose()? {
                             Some(Token::LeftCurlyBracket) => parse_selection_set(&mut tokens)?,
                             _ => return Err(parse_error("Expected selection set").into()),
@@ -528,32 +576,54 @@ where
                             Token::Name(name) if name != "on"
                         ) {
                             PositionsTracker::emit_selection_fragment_spread();
-                            Selection::FragmentSpread(FragmentSpread::new(token.into_name()))
-                        } else if matches!(&token, Token::Name(_) | Token::LeftCurlyBracket) {
+                            Selection::FragmentSpread(FragmentSpread::new(
+                                token.into_name(),
+                                match tokens.peek() {
+                                    Some(Ok(Token::AtSymbol)) => {
+                                        let _ = tokens.next().unwrap().unwrap();
+                                        parse_directives(tokens, false)?
+                                    }
+                                    _ => _d(),
+                                },
+                            ))
+                        } else if matches!(
+                            &token,
+                            Token::Name(_) | Token::LeftCurlyBracket | Token::AtSymbol
+                        ) {
                             PositionsTracker::emit_selection_inline_fragment();
-                            match token {
-                                Token::Name(_) => {
-                                    let on = match tokens.next().transpose()? {
+                            Selection::InlineFragment(InlineFragment::new(
+                                if matches!(token, Token::Name(_)) {
+                                    Some(match tokens.next().transpose()? {
                                         Some(Token::Name(on)) => on,
                                         _ => return Err(parse_error("Expected on").into()),
-                                    };
+                                    })
+                                } else {
+                                    None
+                                },
+                                if matches!(token, Token::AtSymbol)
+                                    || matches!(token, Token::Name(_))
+                                        && matches!(tokens.peek(), Some(Ok(Token::AtSymbol)))
+                                {
+                                    if matches!(token, Token::Name(_)) {
+                                        let _ = tokens.next().unwrap().unwrap();
+                                    }
+                                    parse_directives(tokens, false)?
+                                } else {
+                                    _d()
+                                },
+                                if matches!(token, Token::LeftCurlyBracket) {
+                                    parse_selection_set(tokens)?
+                                } else {
                                     match tokens.next().transpose()? {
                                         Some(Token::LeftCurlyBracket) => {
-                                            Selection::InlineFragment(InlineFragment::new(
-                                                Some(on),
-                                                parse_selection_set(tokens)?,
-                                            ))
+                                            parse_selection_set(tokens)?
                                         }
                                         _ => {
                                             return Err(parse_error("Expected selection set").into())
                                         }
                                     }
-                                }
-                                Token::LeftCurlyBracket => Selection::InlineFragment(
-                                    InlineFragment::new(None, parse_selection_set(tokens)?),
-                                ),
-                                _ => unreachable!(),
-                            }
+                                },
+                            ))
                         } else {
                             return Err(parse_error("Expected fragment selection").into());
                         }
@@ -568,48 +638,14 @@ where
                 ret.push(Selection::Field({
                     let mut builder = SelectionFieldBuilder::default();
                     builder = builder.name(name);
+                    if matches!(tokens.peek(), Some(Ok(Token::LeftParen))) {
+                        builder = builder.arguments(parse_arguments(tokens, false)?);
+                    }
+                    if matches!(tokens.peek(), Some(Ok(Token::AtSymbol))) {
+                        let _ = tokens.next().unwrap().unwrap();
+                        builder = builder.directives(parse_directives(tokens, false)?);
+                    }
                     match tokens.peek() {
-                        Some(Ok(Token::LeftParen)) => {
-                            let _ = tokens.next().unwrap();
-                            builder = builder.arguments({
-                                let mut arguments: Vec<Argument> = _d();
-                                loop {
-                                    match tokens.next().transpose()? {
-                                        Some(Token::Name(name)) => {
-                                            PositionsTracker::emit_argument();
-                                            arguments.push(Argument::new(name, {
-                                                if !matches!(
-                                                    tokens.next().transpose()?,
-                                                    Some(Token::Colon)
-                                                ) {
-                                                    return Err(
-                                                        parse_error("Expected colon").into()
-                                                    );
-                                                }
-                                                parse_value(tokens, false)?
-                                            }));
-                                        }
-                                        Some(Token::RightParen) => {
-                                            if arguments.is_empty() {
-                                                return Err(parse_error("Empty arguments").into());
-                                            }
-                                            break arguments;
-                                        }
-                                        _ => return Err(parse_error("Expected argument").into()),
-                                    }
-                                }
-                            });
-                            match tokens.peek() {
-                                Some(Ok(Token::LeftCurlyBracket)) => {
-                                    let _ = tokens.next().unwrap();
-                                    builder
-                                        .selection_set(parse_selection_set(tokens)?)
-                                        .build()
-                                        .unwrap()
-                                }
-                                _ => builder.build().unwrap(),
-                            }
-                        }
                         Some(Ok(Token::LeftCurlyBracket)) => {
                             let _ = tokens.next().unwrap();
                             builder
@@ -643,6 +679,74 @@ where
         Some(Token::Name(name)) if name == "null" => Value::Null,
         _ => return Err(parse_error("Expected value").into()),
     })
+}
+
+fn parse_directives<TIterator>(
+    tokens: &mut Peekable<TIterator>,
+    is_const: bool,
+) -> ParseResult<Vec<Directive>>
+where
+    TIterator: Iterator<Item = LexResult<Token>>,
+{
+    PositionsTracker::emit_start_directives();
+    let mut ret = vec![parse_directive(tokens, is_const)?];
+    while let Some(Ok(Token::AtSymbol)) = tokens.peek() {
+        let _ = tokens.next().unwrap().unwrap();
+        ret.push(parse_directive(tokens, is_const)?);
+    }
+    PositionsTracker::emit_end_directives();
+    Ok(ret)
+}
+
+fn parse_directive<TIterator>(
+    tokens: &mut Peekable<TIterator>,
+    is_const: bool,
+) -> ParseResult<Directive>
+where
+    TIterator: Iterator<Item = LexResult<Token>>,
+{
+    PositionsTracker::emit_directive();
+    Ok(Directive::new(
+        match tokens.next().transpose()? {
+            Some(Token::Name(name)) => name,
+            _ => return Err(parse_error("Expected directive name").into()),
+        },
+        match tokens.peek() {
+            Some(Ok(Token::LeftParen)) => Some(parse_arguments(tokens, is_const)?),
+            _ => _d(),
+        },
+    ))
+}
+
+fn parse_arguments<TIterator>(
+    tokens: &mut Peekable<TIterator>,
+    is_const: bool,
+) -> ParseResult<Vec<Argument>>
+where
+    TIterator: Iterator<Item = LexResult<Token>>,
+{
+    let _ = tokens.next().unwrap().unwrap();
+    let mut ret: Vec<Argument> = _d();
+    loop {
+        match tokens.next().transpose()? {
+            Some(Token::Name(name)) => {
+                PositionsTracker::emit_argument();
+                ret.push(Argument::new(name, {
+                    if !matches!(tokens.next().transpose()?, Some(Token::Colon)) {
+                        return Err(parse_error("Expected colon").into());
+                    }
+                    parse_value(tokens, is_const)?
+                }));
+            }
+            Some(Token::RightParen) => {
+                if ret.is_empty() {
+                    return Err(parse_error("Empty arguments").into());
+                }
+                return Ok(ret);
+            }
+            _ => return Err(parse_error("Expected argument").into()),
+        }
+    }
 }
 
 fn parse_error(message: &str) -> ParseError {
@@ -998,6 +1102,19 @@ mod tests {
             ),
             "Expected value",
             Location::new(2, 13),
+        );
+    }
+
+    #[test]
+    fn test_parse_directive() {
+        parse_error_test(
+            indoc!(
+                r#"
+              query Foo @ 1
+            "#
+            ),
+            "Expected directive name",
+            Location::new(1, 13),
         );
     }
 }

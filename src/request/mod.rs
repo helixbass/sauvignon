@@ -96,6 +96,8 @@ pub struct OperationDefinition {
     #[builder(setter(into), default)]
     pub name: Option<String>,
     pub selection_set: Vec<Selection>,
+    #[builder(default)]
+    pub directives: Vec<Directive>,
 }
 
 #[derive(Debug)]
@@ -103,14 +105,21 @@ pub struct FragmentDefinition {
     pub name: String,
     pub on: String,
     pub selection_set: Vec<Selection>,
+    pub directives: Vec<Directive>,
 }
 
 impl FragmentDefinition {
-    pub fn new(name: String, on: String, selection_set: Vec<Selection>) -> Self {
+    pub fn new(
+        name: String,
+        on: String,
+        directives: Vec<Directive>,
+        selection_set: Vec<Selection>,
+    ) -> Self {
         Self {
             name,
             on,
             selection_set,
+            directives,
         }
     }
 }
@@ -133,6 +142,8 @@ pub struct Field {
     pub selection_set: Option<Vec<Selection>>,
     #[builder(setter(custom), default)]
     pub arguments: Option<Vec<Argument>>,
+    #[builder(default)]
+    pub directives: Vec<Directive>,
 }
 
 impl FieldBuilder {
@@ -146,11 +157,12 @@ impl FieldBuilder {
 #[derive(Debug)]
 pub struct FragmentSpread {
     pub name: String,
+    pub directives: Vec<Directive>,
 }
 
 impl FragmentSpread {
-    pub fn new(name: String) -> Self {
-        Self { name }
+    pub fn new(name: String, directives: Vec<Directive>) -> Self {
+        Self { name, directives }
     }
 }
 
@@ -158,11 +170,20 @@ impl FragmentSpread {
 pub struct InlineFragment {
     pub on: Option<String>,
     pub selection_set: Vec<Selection>,
+    pub directives: Vec<Directive>,
 }
 
 impl InlineFragment {
-    pub fn new(on: Option<String>, selection_set: Vec<Selection>) -> Self {
-        Self { on, selection_set }
+    pub fn new(
+        on: Option<String>,
+        directives: Vec<Directive>,
+        selection_set: Vec<Selection>,
+    ) -> Self {
+        Self {
+            on,
+            selection_set,
+            directives,
+        }
     }
 }
 
@@ -183,4 +204,16 @@ pub enum Value {
     Int(i32),
     String(String),
     Null,
+}
+
+#[derive(Debug)]
+pub struct Directive {
+    pub name: String,
+    pub arguments: Option<Vec<Argument>>,
+}
+
+impl Directive {
+    pub fn new(name: String, arguments: Option<Vec<Argument>>) -> Self {
+        Self { name, arguments }
+    }
 }

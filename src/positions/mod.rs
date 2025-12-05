@@ -38,6 +38,7 @@ pub struct PositionsTracker {
     should_next_char_record_as_token_start: RefCell<bool>,
     document: RefCell<Document>,
     start_of_upcoming_selection_inline_fragment_or_fragment_spread: RefCell<Option<Location>>,
+    is_in_directives: RefCell<bool>,
 }
 
 impl PositionsTracker {
@@ -100,8 +101,7 @@ impl PositionsTracker {
 
     pub fn receive_selection_set(&self) {
         let mut document = self.document.borrow_mut();
-        let currently_active_selection_set = document.find_currently_active_selection_set();
-        match currently_active_selection_set {
+        match document.find_currently_active_selection_set() {
             None => match document.definitions.last_mut().unwrap() {
                 OperationOrFragment::Operation(operation) => {
                     assert_eq!(
@@ -170,32 +170,83 @@ impl PositionsTracker {
             .find_currently_active_selection_set()
             .unwrap()
             .selections
-            .push(Selection::FragmentSpread(
+            .push(Selection::FragmentSpread(FragmentSpread::new(
                 self.start_of_upcoming_selection_inline_fragment_or_fragment_spread
                     .borrow()
                     .clone()
                     .unwrap(),
-            ));
+            )));
         *self
             .start_of_upcoming_selection_inline_fragment_or_fragment_spread
             .borrow_mut() = None;
     }
 
     pub fn receive_argument(&self) {
-        self.document
-            .borrow_mut()
-            .find_currently_active_selection_set()
-            .unwrap()
-            .selections
-            .last_mut()
-            .unwrap()
-            .as_field_mut()
-            .arguments
-            .push(self.last_token());
+        if *self.is_in_directives.borrow() {
+            self.document
+                .borrow_mut()
+                .find_currently_active_directive()
+                .arguments
+                .push(self.last_token());
+        } else {
+            self.document
+                .borrow_mut()
+                .find_currently_active_selection_set()
+                .unwrap()
+                .selections
+                .last_mut()
+                .unwrap()
+                .as_field_mut()
+                .arguments
+                .push(self.last_token());
+        }
     }
 
     pub fn receive_token_pre_start(&self) {
         *self.should_next_char_record_as_token_start.borrow_mut() = true;
+    }
+
+    pub fn receive_start_directives(&self) {
+        *self.is_in_directives.borrow_mut() = true;
+    }
+
+    pub fn receive_end_directives(&self) {
+        *self.is_in_directives.borrow_mut() = false;
+    }
+
+    pub fn receive_directive(&self) {
+        let mut document = self.document.borrow_mut();
+        match document.find_currently_active_selection_set() {
+            None => match document.definitions.last_mut().unwrap() {
+                OperationOrFragment::Operation(operation) => {
+                    operation.directives.push(Directive::new(self.last_token()));
+                }
+                OperationOrFragment::Fragment(fragment) => {
+                    assert_eq!(
+                        fragment.selection_set.status,
+                        SelectionSetStatus::NotYetStarted
+                    );
+                    fragment.directives.push(Directive::new(self.last_token()));
+                }
+            },
+            Some(currently_active_selection_set) => {
+                match currently_active_selection_set
+                    .selections
+                    .last_mut()
+                    .unwrap()
+                {
+                    Selection::Field(field) => {
+                        field.directives.push(Directive::new(self.last_token()))
+                    }
+                    Selection::FragmentSpread(fragment_spread) => fragment_spread
+                        .directives
+                        .push(Directive::new(self.last_token())),
+                    Selection::InlineFragment(inline_fragment) => inline_fragment
+                        .directives
+                        .push(Directive::new(self.last_token())),
+                }
+            }
+        }
     }
 
     pub fn nth_operation_location(&self, index: usize) -> Location {
@@ -371,6 +422,57 @@ impl PositionsTracker {
             .unwrap()
     }
 
+    pub fn directive_location(
+        &self,
+        directive: &crate::request::Directive,
+        document: &crate::Document,
+    ) -> Location {
+        document
+            .definitions
+            .iter()
+            .zip(self.document.borrow().definitions.iter())
+            .find_map(|(definition, definition_positions)| {
+                match (definition, definition_positions) {
+                    (
+                        ExecutableDefinition::Operation(operation_definition),
+                        OperationOrFragment::Operation(operation_positions),
+                    ) => {
+                        if let Some(index) = operation_definition
+                            .directives
+                            .iter()
+                            .position(|directive_current| ptr::eq(directive_current, directive))
+                        {
+                            return Some(operation_positions.directives[index].location);
+                        }
+                        maybe_directive_location_selection_set(
+                            directive,
+                            &operation_definition.selection_set,
+                            &operation_positions.selection_set,
+                        )
+                    }
+                    (
+                        ExecutableDefinition::Fragment(fragment_definition),
+                        OperationOrFragment::Fragment(fragment_positions),
+                    ) => {
+                        if let Some(index) = fragment_definition
+                            .directives
+                            .iter()
+                            .position(|directive_current| ptr::eq(directive_current, directive))
+                        {
+                            return Some(fragment_positions.directives[index].location);
+                        }
+                        maybe_directive_location_selection_set(
+                            directive,
+                            &fragment_definition.selection_set,
+                            &fragment_positions.selection_set,
+                        )
+                    }
+                    _ => unreachable!(),
+                }
+            })
+            .unwrap()
+    }
+
     pub fn current() -> Option<impl Deref<Target = Self> + Debug + 'static> {
         // TODO: per https://github.com/anp/moxie/issues/308 is using illicit
         // ok thread-local-wise vs eg Tokio can move tasks across threads?
@@ -442,6 +544,24 @@ impl PositionsTracker {
             positions_tracker.receive_token_pre_start();
         }
     }
+
+    pub fn emit_start_directives() {
+        if let Some(positions_tracker) = Self::current() {
+            positions_tracker.receive_start_directives();
+        }
+    }
+
+    pub fn emit_end_directives() {
+        if let Some(positions_tracker) = Self::current() {
+            positions_tracker.receive_end_directives();
+        }
+    }
+
+    pub fn emit_directive() {
+        if let Some(positions_tracker) = Self::current() {
+            positions_tracker.receive_directive();
+        }
+    }
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize)]
@@ -477,6 +597,38 @@ impl FindCurrentlyActiveSelectionSet for Document {
 
 trait FindCurrentlyActiveSelectionSet {
     fn find_currently_active_selection_set(&mut self) -> Option<&mut SelectionSet>;
+}
+
+trait FindCurrentlyActiveDirective: FindCurrentlyActiveSelectionSet {
+    fn find_currently_active_directive(&mut self) -> &mut Directive;
+}
+
+impl FindCurrentlyActiveDirective for Document {
+    fn find_currently_active_directive(&mut self) -> &mut Directive {
+        if self.find_currently_active_selection_set().is_some() {
+            return match self
+                .find_currently_active_selection_set()
+                .unwrap()
+                .selections
+                .last_mut()
+                .unwrap()
+            {
+                Selection::Field(field) => field.directives.last_mut().unwrap(),
+                Selection::FragmentSpread(fragment_spread) => {
+                    fragment_spread.directives.last_mut().unwrap()
+                }
+                Selection::InlineFragment(inline_fragment) => {
+                    inline_fragment.directives.last_mut().unwrap()
+                }
+            };
+        }
+        match self.definitions.last_mut().unwrap() {
+            OperationOrFragment::Operation(operation) => operation.directives.last_mut().unwrap(),
+            OperationOrFragment::Fragment(fragment_definition) => {
+                fragment_definition.directives.last_mut().unwrap()
+            }
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -519,6 +671,7 @@ impl FindCurrentlyActiveSelectionSet for OperationOrFragment {
 struct Operation {
     pub location: Location,
     pub selection_set: SelectionSet,
+    pub directives: Vec<Directive>,
 }
 
 impl Operation {
@@ -526,6 +679,7 @@ impl Operation {
         Self {
             location,
             selection_set: _d(),
+            directives: _d(),
         }
     }
 }
@@ -540,6 +694,7 @@ impl FindCurrentlyActiveSelectionSet for Operation {
 struct FragmentDefinition {
     pub location: Location,
     pub selection_set: SelectionSet,
+    pub directives: Vec<Directive>,
 }
 
 impl FragmentDefinition {
@@ -547,6 +702,7 @@ impl FragmentDefinition {
         Self {
             location,
             selection_set: _d(),
+            directives: _d(),
         }
     }
 }
@@ -614,7 +770,7 @@ enum SelectionSetStatus {
 #[derive(Debug)]
 enum Selection {
     Field(Field),
-    FragmentSpread(Location),
+    FragmentSpread(FragmentSpread),
     InlineFragment(InlineFragment),
 }
 
@@ -655,6 +811,7 @@ struct Field {
     pub location: Location,
     pub arguments: Vec<Location>,
     pub selection_set: Option<SelectionSet>,
+    pub directives: Vec<Directive>,
 }
 
 impl Field {
@@ -663,6 +820,7 @@ impl Field {
             location,
             arguments: _d(),
             selection_set: _d(),
+            directives: _d(),
         }
     }
 }
@@ -679,6 +837,7 @@ impl FindCurrentlyActiveSelectionSet for Field {
 struct InlineFragment {
     pub location: Location,
     pub selection_set: SelectionSet,
+    pub directives: Vec<Directive>,
 }
 
 impl InlineFragment {
@@ -686,6 +845,37 @@ impl InlineFragment {
         Self {
             location,
             selection_set: _d(),
+            directives: _d(),
+        }
+    }
+}
+
+#[derive(Debug)]
+struct FragmentSpread {
+    pub location: Location,
+    pub directives: Vec<Directive>,
+}
+
+impl FragmentSpread {
+    pub fn new(location: Location) -> Self {
+        Self {
+            location,
+            directives: _d(),
+        }
+    }
+}
+
+#[derive(Debug)]
+struct Directive {
+    pub location: Location,
+    pub arguments: Vec<Location>,
+}
+
+impl Directive {
+    pub fn new(location: Location) -> Self {
+        Self {
+            location,
+            arguments: _d(),
         }
     }
 }
@@ -855,9 +1045,73 @@ fn maybe_fragment_spread_location_selection_set(
                 ),
                 (
                     crate::Selection::FragmentSpread(fragment_spread_current),
-                    Selection::FragmentSpread(fragment_spread_location),
+                    Selection::FragmentSpread(fragment_spread_positions),
                 ) => ptr::eq(fragment_spread, fragment_spread_current)
-                    .then(|| *fragment_spread_location),
+                    .then_some(fragment_spread_positions.location),
+                _ => unreachable!(),
+            },
+        )
+}
+
+fn maybe_directive_location_selection_set(
+    directive: &crate::request::Directive,
+    selection_set: &[crate::Selection],
+    selection_set_positions: &SelectionSet,
+) -> Option<Location> {
+    selection_set
+        .into_iter()
+        .zip(selection_set_positions.selections.iter())
+        .find_map(
+            |(selection, selection_positions)| match (selection, selection_positions) {
+                (crate::Selection::Field(field_current), Selection::Field(field_positions)) => {
+                    if let Some(index) = field_current
+                        .directives
+                        .iter()
+                        .position(|directive_current| ptr::eq(directive_current, directive))
+                    {
+                        return Some(field_positions.directives[index].location);
+                    }
+                    field_current
+                        .selection_set
+                        .as_ref()
+                        .and_then(|selection_set| {
+                            maybe_directive_location_selection_set(
+                                directive,
+                                selection_set,
+                                field_positions.selection_set.as_ref().unwrap(),
+                            )
+                        })
+                }
+                (
+                    crate::Selection::InlineFragment(inline_fragment_current),
+                    Selection::InlineFragment(inline_fragment_positions),
+                ) => {
+                    if let Some(index) = inline_fragment_current
+                        .directives
+                        .iter()
+                        .position(|directive_current| ptr::eq(directive_current, directive))
+                    {
+                        return Some(inline_fragment_positions.directives[index].location);
+                    }
+                    maybe_directive_location_selection_set(
+                        directive,
+                        &inline_fragment_current.selection_set,
+                        &inline_fragment_positions.selection_set,
+                    )
+                }
+                (
+                    crate::Selection::FragmentSpread(fragment_spread_current),
+                    Selection::FragmentSpread(fragment_spread_positions),
+                ) => {
+                    if let Some(index) = fragment_spread_current
+                        .directives
+                        .iter()
+                        .position(|directive_current| ptr::eq(directive_current, directive))
+                    {
+                        return Some(fragment_spread_positions.directives[index].location);
+                    }
+                    None
+                }
                 _ => unreachable!(),
             },
         )
