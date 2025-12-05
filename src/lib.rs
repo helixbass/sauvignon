@@ -3,6 +3,7 @@ mod dependencies;
 mod error;
 mod inscribe;
 mod operation;
+mod parser;
 mod plan;
 mod request;
 mod resolve;
@@ -22,6 +23,7 @@ pub use crate::dependencies::{
 pub use crate::error::{Error, Result};
 pub use crate::inscribe::json_from_response;
 pub use crate::operation::OperationType;
+pub use crate::parser::{lex, parse, Token};
 pub use crate::plan::{FieldPlan, QueryPlan};
 pub use crate::request::{
     Argument, Document, ExecutableDefinition, Field as SelectionField,

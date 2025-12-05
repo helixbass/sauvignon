@@ -1,15 +1,13 @@
 use sqlx::{postgres::PgPoolOptions, Pool, Postgres};
 
 use sauvignon::{
-    json_from_response, Argument, ArgumentInternalDependencyResolver, CarverOrPopulator,
-    ColumnGetter, ColumnGetterList, DependencyType, DependencyValue, Document,
-    ExecutableDefinition, ExternalDependency, ExternalDependencyValues, FieldResolver,
-    FragmentDefinition, FragmentSpread, Id, InlineFragment, InterfaceBuilder, InterfaceField,
+    json_from_response, parse, ArgumentInternalDependencyResolver, CarverOrPopulator, ColumnGetter,
+    ColumnGetterList, DependencyType, DependencyValue, ExternalDependency,
+    ExternalDependencyValues, FieldResolver, Id, InterfaceBuilder, InterfaceField,
     InternalDependency, InternalDependencyResolver, InternalDependencyValues,
-    LiteralValueInternalDependencyResolver, ObjectTypeBuilder, OperationDefinitionBuilder,
-    OperationType, Param, PopulatorList, Request, Schema, Selection, SelectionFieldBuilder,
-    StringCarver, Type, TypeDepluralizer, TypeFieldBuilder, TypeFull, Union,
-    UnionOrInterfaceTypePopulatorList, Value, ValuePopulator, ValuePopulatorList, ValuesPopulator,
+    LiteralValueInternalDependencyResolver, ObjectTypeBuilder, OperationType, Param, PopulatorList,
+    Schema, StringCarver, Type, TypeDepluralizer, TypeFieldBuilder, TypeFull, Union,
+    UnionOrInterfaceTypePopulatorList, ValuePopulator, ValuePopulatorList, ValuesPopulator,
 };
 
 pub struct ActorsAndDesignersTypePopulator {}
@@ -418,9 +416,10 @@ async fn get_db_pool() -> anyhow::Result<Pool<Postgres>> {
     Ok(db_pool)
 }
 
-async fn request_test(request: Request, expected: &str) {
+async fn request_test(request: &str, expected: &str) {
     let db_pool = get_db_pool().await.unwrap();
     let schema = get_schema(&db_pool).await.unwrap();
+    let request = parse(request.chars());
     let response = schema.request(request, &db_pool).await;
     let json = json_from_response(&response);
     assert_eq!(pretty_print_json(&json), pretty_print_json(expected));
@@ -429,31 +428,13 @@ async fn request_test(request: Request, expected: &str) {
 #[tokio::test]
 async fn test_object_field() {
     request_test(
-        Request::new(Document::new(vec![
-            // query {
-            //   actorKatie {
-            //     name
-            //   }
-            // }
-            ExecutableDefinition::Operation(
-                OperationDefinitionBuilder::default()
-                    .operation_type(OperationType::Query)
-                    .selection_set(vec![Selection::Field(
-                        SelectionFieldBuilder::default()
-                            .name("actorKatie")
-                            .selection_set(vec![Selection::Field(
-                                SelectionFieldBuilder::default()
-                                    .name("name")
-                                    .build()
-                                    .unwrap(),
-                            )])
-                            .build()
-                            .unwrap(),
-                    )])
-                    .build()
-                    .unwrap(),
-            ),
-        ])),
+        r#"
+            query {
+              actorKatie {
+                name
+              }
+            }
+        "#,
         r#"
             {
               "data": {
@@ -472,31 +453,13 @@ async fn test_object_field() {
 #[tokio::test]
 async fn test_list() {
     request_test(
-        Request::new(Document::new(vec![
-            // query {
-            //   actors {
-            //     name
-            //   }
-            // }
-            ExecutableDefinition::Operation(
-                OperationDefinitionBuilder::default()
-                    .operation_type(OperationType::Query)
-                    .selection_set(vec![Selection::Field(
-                        SelectionFieldBuilder::default()
-                            .name("actors")
-                            .selection_set(vec![Selection::Field(
-                                SelectionFieldBuilder::default()
-                                    .name("name")
-                                    .build()
-                                    .unwrap(),
-                            )])
-                            .build()
-                            .unwrap(),
-                    )])
-                    .build()
-                    .unwrap(),
-            ),
-        ])),
+        r#"
+            {
+              actors {
+                name
+              }
+            }
+        "#,
         r#"
             {
               "data": {
@@ -518,42 +481,17 @@ async fn test_list() {
 #[tokio::test]
 async fn test_named_fragment() {
     request_test(
-        Request::new(Document::new(vec![
-            // query {
-            //   actors {
-            //     ...nameFragment
-            //   }
-            // }
-            //
-            // fragment nameFragment on Actor {
-            //   name
-            // }
-            ExecutableDefinition::Operation(
-                OperationDefinitionBuilder::default()
-                    .operation_type(OperationType::Query)
-                    .selection_set(vec![Selection::Field(
-                        SelectionFieldBuilder::default()
-                            .name("actors")
-                            .selection_set(vec![Selection::FragmentSpread(FragmentSpread::new(
-                                "nameFragment".to_owned(),
-                            ))])
-                            .build()
-                            .unwrap(),
-                    )])
-                    .build()
-                    .unwrap(),
-            ),
-            ExecutableDefinition::Fragment(FragmentDefinition::new(
-                "nameFragment".to_owned(),
-                "Actor".to_owned(),
-                vec![Selection::Field(
-                    SelectionFieldBuilder::default()
-                        .name("name")
-                        .build()
-                        .unwrap(),
-                )],
-            )),
-        ])),
+        r#"
+            {
+              actors {
+                ...nameFragment
+              }
+            }
+
+            fragment nameFragment on Actor {
+              name
+            }
+        "#,
         r#"
             {
               "data": {
@@ -575,36 +513,15 @@ async fn test_named_fragment() {
 #[tokio::test]
 async fn test_inline_fragment() {
     request_test(
-        Request::new(Document::new(vec![
-            // query {
-            //   actors {
-            //     ... {
-            //       name
-            //     }
-            //   }
-            // }
-            ExecutableDefinition::Operation(
-                OperationDefinitionBuilder::default()
-                    .operation_type(OperationType::Query)
-                    .selection_set(vec![Selection::Field(
-                        SelectionFieldBuilder::default()
-                            .name("actors")
-                            .selection_set(vec![Selection::InlineFragment(InlineFragment::new(
-                                None,
-                                vec![Selection::Field(
-                                    SelectionFieldBuilder::default()
-                                        .name("name")
-                                        .build()
-                                        .unwrap(),
-                                )],
-                            ))])
-                            .build()
-                            .unwrap(),
-                    )])
-                    .build()
-                    .unwrap(),
-            ),
-        ])),
+        r#"
+            {
+              actors {
+                ... {
+                  name
+                }
+              }
+            }
+        "#,
         r#"
             {
               "data": {
@@ -626,50 +543,18 @@ async fn test_inline_fragment() {
 #[tokio::test]
 async fn test_union() {
     request_test(
-        Request::new(Document::new(vec![
-            // query {
-            //   certainActorOrDesigner {
-            //     ... on Actor {
-            //       expression
-            //     }
-            //     ... on Designer {
-            //       name
-            //     }
-            //   }
-            // }
-            ExecutableDefinition::Operation(
-                OperationDefinitionBuilder::default()
-                    .operation_type(OperationType::Query)
-                    .selection_set(vec![Selection::Field(
-                        SelectionFieldBuilder::default()
-                            .name("certainActorOrDesigner")
-                            .selection_set(vec![
-                                Selection::InlineFragment(InlineFragment::new(
-                                    Some("Actor".to_owned()),
-                                    vec![Selection::Field(
-                                        SelectionFieldBuilder::default()
-                                            .name("expression")
-                                            .build()
-                                            .unwrap(),
-                                    )],
-                                )),
-                                Selection::InlineFragment(InlineFragment::new(
-                                    Some("Designer".to_owned()),
-                                    vec![Selection::Field(
-                                        SelectionFieldBuilder::default()
-                                            .name("name")
-                                            .build()
-                                            .unwrap(),
-                                    )],
-                                )),
-                            ])
-                            .build()
-                            .unwrap(),
-                    )])
-                    .build()
-                    .unwrap(),
-            ),
-        ])),
+        r#"
+            {
+              certainActorOrDesigner {
+                ... on Actor {
+                  expression
+                }
+                ... on Designer {
+                  name
+                }
+              }
+            }
+        "#,
         r#"
             {
               "data": {
@@ -686,74 +571,22 @@ async fn test_union() {
 #[tokio::test]
 async fn test_union_field() {
     request_test(
-        Request::new(Document::new(vec![
-            // query {
-            //   actors {
-            //     name
-            //     expression
-            //     favoriteActorOrDesigner {
-            //       ... on Actor {
-            //         expression
-            //       }
-            //       ... on Designer {
-            //         name
-            //       }
-            //     }
-            //   }
-            // }
-            ExecutableDefinition::Operation(
-                OperationDefinitionBuilder::default()
-                    .operation_type(OperationType::Query)
-                    .selection_set(vec![Selection::Field(
-                        SelectionFieldBuilder::default()
-                            .name("actors")
-                            .selection_set(vec![
-                                Selection::Field(
-                                    SelectionFieldBuilder::default()
-                                        .name("name")
-                                        .build()
-                                        .unwrap(),
-                                ),
-                                Selection::Field(
-                                    SelectionFieldBuilder::default()
-                                        .name("expression")
-                                        .build()
-                                        .unwrap(),
-                                ),
-                                Selection::Field(
-                                    SelectionFieldBuilder::default()
-                                        .name("favoriteActorOrDesigner")
-                                        .selection_set(vec![
-                                            Selection::InlineFragment(InlineFragment::new(
-                                                Some("Actor".to_owned()),
-                                                vec![Selection::Field(
-                                                    SelectionFieldBuilder::default()
-                                                        .name("expression")
-                                                        .build()
-                                                        .unwrap(),
-                                                )],
-                                            )),
-                                            Selection::InlineFragment(InlineFragment::new(
-                                                Some("Designer".to_owned()),
-                                                vec![Selection::Field(
-                                                    SelectionFieldBuilder::default()
-                                                        .name("name")
-                                                        .build()
-                                                        .unwrap(),
-                                                )],
-                                            )),
-                                        ])
-                                        .build()
-                                        .unwrap(),
-                                ),
-                            ])
-                            .build()
-                            .unwrap(),
-                    )])
-                    .build()
-                    .unwrap(),
-            ),
-        ])),
+        r#"
+            {
+              actors {
+                name
+                expression
+                favoriteActorOrDesigner {
+                  ... on Actor {
+                    expression
+                  }
+                  ... on Designer {
+                    name
+                  }
+                }
+              }
+            }
+        "#,
         r#"
             {
               "data": {
@@ -783,75 +616,23 @@ async fn test_union_field() {
 #[tokio::test]
 async fn test_interface() {
     request_test(
-        Request::new(Document::new(vec![
-            // query {
-            //   actors {
-            //     favoriteActorOrDesigner {
-            //       ... on HasName {
-            //         name
-            //       }
-            //       ... on Actor {
-            //         expression
-            //       }
-            //     }
-            //   }
-            //   bestHasName {
-            //     name
-            //   }
-            // }
-            ExecutableDefinition::Operation(
-                OperationDefinitionBuilder::default()
-                    .operation_type(OperationType::Query)
-                    .selection_set(vec![
-                        Selection::Field(
-                            SelectionFieldBuilder::default()
-                                .name("actors")
-                                .selection_set(vec![Selection::Field(
-                                    SelectionFieldBuilder::default()
-                                        .name("favoriteActorOrDesigner")
-                                        .selection_set(vec![
-                                            Selection::InlineFragment(InlineFragment::new(
-                                                Some("HasName".to_owned()),
-                                                vec![Selection::Field(
-                                                    SelectionFieldBuilder::default()
-                                                        .name("name")
-                                                        .build()
-                                                        .unwrap(),
-                                                )],
-                                            )),
-                                            Selection::InlineFragment(InlineFragment::new(
-                                                Some("Actor".to_owned()),
-                                                vec![Selection::Field(
-                                                    SelectionFieldBuilder::default()
-                                                        .name("expression")
-                                                        .build()
-                                                        .unwrap(),
-                                                )],
-                                            )),
-                                        ])
-                                        .build()
-                                        .unwrap(),
-                                )])
-                                .build()
-                                .unwrap(),
-                        ),
-                        Selection::Field(
-                            SelectionFieldBuilder::default()
-                                .name("bestHasName")
-                                .selection_set(vec![Selection::Field(
-                                    SelectionFieldBuilder::default()
-                                        .name("name")
-                                        .build()
-                                        .unwrap(),
-                                )])
-                                .build()
-                                .unwrap(),
-                        ),
-                    ])
-                    .build()
-                    .unwrap(),
-            ),
-        ])),
+        r#"
+            {
+              actors {
+                favoriteActorOrDesigner {
+                  ... on HasName {
+                    name
+                  }
+                  ... on Actor {
+                    expression
+                  }
+                }
+              }
+              bestHasName {
+                name
+              }
+            }
+        "#,
         r#"
             {
               "data": {
@@ -881,68 +662,20 @@ async fn test_interface() {
 #[tokio::test]
 async fn test_list_union_and_typename() {
     request_test(
-        Request::new(Document::new(vec![
-            // query {
-            //   actorsAndDesigners {
-            //     ... on Actor {
-            //       __typename
-            //       expression
-            //     }
-            //     ... on Designer {
-            //       __typename
-            //       name
-            //     }
-            //   }
-            // }
-            ExecutableDefinition::Operation(
-                OperationDefinitionBuilder::default()
-                    .operation_type(OperationType::Query)
-                    .selection_set(vec![Selection::Field(
-                        SelectionFieldBuilder::default()
-                            .name("actorsAndDesigners")
-                            .selection_set(vec![
-                                Selection::InlineFragment(InlineFragment::new(
-                                    Some("Actor".to_owned()),
-                                    vec![
-                                        Selection::Field(
-                                            SelectionFieldBuilder::default()
-                                                .name("__typename")
-                                                .build()
-                                                .unwrap(),
-                                        ),
-                                        Selection::Field(
-                                            SelectionFieldBuilder::default()
-                                                .name("expression")
-                                                .build()
-                                                .unwrap(),
-                                        ),
-                                    ],
-                                )),
-                                Selection::InlineFragment(InlineFragment::new(
-                                    Some("Designer".to_owned()),
-                                    vec![
-                                        Selection::Field(
-                                            SelectionFieldBuilder::default()
-                                                .name("__typename")
-                                                .build()
-                                                .unwrap(),
-                                        ),
-                                        Selection::Field(
-                                            SelectionFieldBuilder::default()
-                                                .name("name")
-                                                .build()
-                                                .unwrap(),
-                                        ),
-                                    ],
-                                )),
-                            ])
-                            .build()
-                            .unwrap(),
-                    )])
-                    .build()
-                    .unwrap(),
-            ),
-        ])),
+        r#"
+            {
+              actorsAndDesigners {
+                ... on Actor {
+                  __typename
+                  expression
+                }
+                ... on Designer {
+                  __typename
+                  name
+                }
+              }
+            }
+        "#,
         r#"
             {
               "data": {
@@ -974,52 +707,16 @@ async fn test_list_union_and_typename() {
 #[tokio::test]
 async fn test_introspection_type_interfaces() {
     request_test(
-        Request::new(Document::new(vec![
-            // query {
-            //   __type(name: "Actor") {
-            //     name
-            //     interfaces {
-            //       name
-            //     }
-            //   }
-            // }
-            ExecutableDefinition::Operation(
-                OperationDefinitionBuilder::default()
-                    .operation_type(OperationType::Query)
-                    .selection_set(vec![Selection::Field(
-                        SelectionFieldBuilder::default()
-                            .name("__type")
-                            .selection_set(vec![
-                                Selection::Field(
-                                    SelectionFieldBuilder::default()
-                                        .name("name")
-                                        .build()
-                                        .unwrap(),
-                                ),
-                                Selection::Field(
-                                    SelectionFieldBuilder::default()
-                                        .name("interfaces")
-                                        .selection_set(vec![Selection::Field(
-                                            SelectionFieldBuilder::default()
-                                                .name("name")
-                                                .build()
-                                                .unwrap(),
-                                        )])
-                                        .build()
-                                        .unwrap(),
-                                ),
-                            ])
-                            .arguments([Argument::new(
-                                "name".to_owned(),
-                                Value::String("Actor".to_owned()),
-                            )])
-                            .build()
-                            .unwrap(),
-                    )])
-                    .build()
-                    .unwrap(),
-            ),
-        ])),
+        r#"
+            {
+              __type(name: "Actor") {
+                name
+                interfaces {
+                  name
+                }
+              }
+            }
+        "#,
         r#"
             {
               "data": {
@@ -1041,32 +738,13 @@ async fn test_introspection_type_interfaces() {
 #[tokio::test]
 async fn test_argument() {
     request_test(
-        Request::new(Document::new(vec![
-            // query {
-            //   actor(id: 1) {
-            //     name
-            //   }
-            // }
-            ExecutableDefinition::Operation(
-                OperationDefinitionBuilder::default()
-                    .operation_type(OperationType::Query)
-                    .selection_set(vec![Selection::Field(
-                        SelectionFieldBuilder::default()
-                            .name("actor")
-                            .selection_set(vec![Selection::Field(
-                                SelectionFieldBuilder::default()
-                                    .name("name")
-                                    .build()
-                                    .unwrap(),
-                            )])
-                            .arguments([Argument::new("id".to_owned(), Value::Int(1))])
-                            .build()
-                            .unwrap(),
-                    )])
-                    .build()
-                    .unwrap(),
-            ),
-        ])),
+        r#"
+            {
+              actor(id: 1) {
+                name
+              }
+            }
+        "#,
         r#"
             {
               "data": {

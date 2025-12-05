@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use derive_builder::Builder;
+use squalid::OptionExt;
 
 use crate::{
     ArgumentInternalDependencyResolver, CarverOrPopulator, DependencyType, DependencyValue,
@@ -96,7 +97,7 @@ impl ObjectTypeBuilder {
     fn default_introspection_fields(&self) -> Option<HashMap<String, Field>> {
         self.is_top_level_type
             .flatten()
-            .filter(|is_top_level_type| matches!(is_top_level_type, OperationType::Query))
+            .if_is(OperationType::Query)
             .map(|_| {
                 [("__type".to_owned(), Field::new_introspection_type())]
                     .into_iter()
@@ -107,7 +108,7 @@ impl ObjectTypeBuilder {
 
 impl ObjectType {
     pub fn is_query_type(&self) -> bool {
-        matches!(self.is_top_level_type, Some(OperationType::Query))
+        self.is_top_level_type.is(OperationType::Query)
     }
 
     pub fn field(&self, name: &str) -> &Field {
