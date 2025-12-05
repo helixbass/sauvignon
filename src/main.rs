@@ -3,10 +3,10 @@ use sqlx::postgres::PgPoolOptions;
 use sauvignon::{
     json_from_response, ArgumentInternalDependencyResolver, CarverOrPopulator, ColumnGetter,
     ColumnGetterList, DependencyType, DependencyValue, Document, ExecutableDefinition,
-    ExternalDependency, FieldResolver, IdPopulator, InternalDependency, InternalDependencyResolver,
-    LiteralValueInternalDependencyResolver, ObjectType, OperationDefinition, OperationType,
-    Request, Schema, Selection, SelectionField, SelectionSet, StringColumnCarver, Type, TypeField,
-    TypeFull,
+    ExternalDependency, FieldResolver, Id, IdPopulator, IdPopulatorList, InternalDependency,
+    InternalDependencyResolver, LiteralValueInternalDependencyResolver, ObjectType,
+    OperationDefinition, OperationType, Request, Schema, Selection, SelectionField, SelectionSet,
+    StringColumnCarver, Type, TypeField, TypeFull,
 };
 
 #[tokio::main]
@@ -45,7 +45,7 @@ async fn main() -> anyhow::Result<()> {
         None,
     ));
 
-    let (katie_id,): (i32,) = sqlx::query_as("SELECT id FROM actors WHERE name = 'Katie Cassidy'")
+    let (katie_id,): (Id,) = sqlx::query_as("SELECT id FROM actors WHERE name = 'Katie Cassidy'")
         .fetch_one(&db_pool)
         .await
         .unwrap();
@@ -93,7 +93,7 @@ async fn main() -> anyhow::Result<()> {
                             "id".to_owned(),
                         )),
                     )],
-                    CarverOrPopulator::Populator(Box::new(IdPopulator::new())),
+                    CarverOrPopulator::PopulatorList(Box::new(IdPopulatorList::new())),
                 ),
             ),
             TypeField::new(
@@ -145,7 +145,37 @@ async fn main() -> anyhow::Result<()> {
 
     let json = json_from_response(&response);
 
-    println!("Response: {json}");
+    println!("actorKatie response: {}", pretty_print_json(&json));
+
+    let request = Request::new(Document::new(vec![
+        // query {
+        //   actors {
+        //     name
+        //   }
+        // }
+        ExecutableDefinition::Operation(OperationDefinition::new(
+            OperationType::Query,
+            None,
+            SelectionSet::new(vec![Selection::Field(SelectionField::new(
+                None,
+                "actors".to_owned(),
+                Some(SelectionSet::new(vec![Selection::Field(
+                    SelectionField::new(None, "name".to_owned(), None),
+                )])),
+            ))]),
+        )),
+    ]));
+
+    let response = schema.request(request, &db_pool).await;
+
+    let json = json_from_response(&response);
+
+    println!("actors response: {}", pretty_print_json(&json));
 
     Ok(())
+}
+
+fn pretty_print_json(json: &str) -> String {
+    let parsed: serde_json::Value = serde_json::from_str(json).unwrap();
+    serde_json::to_string_pretty(&parsed).unwrap()
 }

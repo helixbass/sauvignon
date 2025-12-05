@@ -60,15 +60,15 @@ impl Carver for StringColumnCarver {
 pub enum CarverOrPopulator {
     Carver(Box<dyn Carver>),
     Populator(Box<dyn Populator>),
+    PopulatorList(Box<dyn PopulatorList>),
 }
 
 pub trait Populator {
     fn populate(
         &self,
-        into: &mut ExternalDependencyValues,
         external_dependencies: &ExternalDependencyValues,
         internal_dependencies: &InternalDependencyValues,
-    );
+    ) -> ExternalDependencyValues;
 }
 
 pub struct IdPopulator {}
@@ -82,14 +82,51 @@ impl IdPopulator {
 impl Populator for IdPopulator {
     fn populate(
         &self,
-        into: &mut ExternalDependencyValues,
         _external_dependencies: &ExternalDependencyValues,
         internal_dependencies: &InternalDependencyValues,
-    ) {
-        into.insert(
+    ) -> ExternalDependencyValues {
+        let mut ret = ExternalDependencyValues::default();
+        ret.insert(
             "id".to_owned(),
             internal_dependencies.get("id").unwrap().clone(),
         )
         .unwrap();
+        ret
+    }
+}
+
+pub trait PopulatorList {
+    fn populate(
+        &self,
+        external_dependencies: &ExternalDependencyValues,
+        internal_dependencies: &InternalDependencyValues,
+    ) -> Vec<ExternalDependencyValues>;
+}
+
+pub struct IdPopulatorList {}
+
+impl IdPopulatorList {
+    pub fn new() -> Self {
+        Self {}
+    }
+}
+
+impl PopulatorList for IdPopulatorList {
+    fn populate(
+        &self,
+        _external_dependencies: &ExternalDependencyValues,
+        internal_dependencies: &InternalDependencyValues,
+    ) -> Vec<ExternalDependencyValues> {
+        internal_dependencies
+            .get("ids")
+            .unwrap()
+            .as_list()
+            .into_iter()
+            .map(|id| {
+                let mut ret = ExternalDependencyValues::default();
+                ret.insert("id".to_owned(), id.clone()).unwrap();
+                ret
+            })
+            .collect()
     }
 }

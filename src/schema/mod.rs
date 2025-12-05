@@ -5,9 +5,10 @@ use sqlx::{Pool, Postgres};
 
 use crate::{
     builtin_types, fields_in_progress_new, CarverOrPopulator, DependencyValue, Error,
-    ExternalDependencyValues, FieldPlan, FieldsInProgress, InProgress, InProgressRecursing,
-    IndexMap, InternalDependencyResolver, InternalDependencyValues, QueryPlan, Request, Response,
-    ResponseValue, ResponseValueOrInProgress, Result as SauvignonResult, Type, TypeInterface,
+    ExternalDependencyValues, FieldPlan, FieldsInProgress, Id, InProgress, InProgressRecursing,
+    InProgressRecursingList, IndexMap, InternalDependencyResolver, InternalDependencyValues,
+    QueryPlan, Request, Response, ResponseValue, ResponseValueOrInProgress,
+    Result as SauvignonResult, Type, TypeInterface,
 };
 
 pub struct Schema {
@@ -102,9 +103,7 @@ fn progress_fields<'a>(
                         .await;
                         match &field_plan.field_type.resolver.carver_or_populator {
                             CarverOrPopulator::Populator(populator) => {
-                                let mut populated = ExternalDependencyValues::default();
-                                populator.populate(
-                                    &mut populated,
+                                let populated = populator.populate(
                                     &external_dependency_values,
                                     &internal_dependency_values,
                                 );
@@ -114,6 +113,28 @@ fn progress_fields<'a>(
                                 );
                                 ResponseValueOrInProgress::InProgressRecursing(
                                     InProgressRecursing::new(
+                                        field_plan,
+                                        populated,
+                                        fields_in_progress,
+                                    ),
+                                )
+                            }
+                            CarverOrPopulator::PopulatorList(populator) => {
+                                let populated = populator.populate(
+                                    &external_dependency_values,
+                                    &internal_dependency_values,
+                                );
+                                let fields_in_progress = populated
+                                    .iter()
+                                    .map(|populated| {
+                                        fields_in_progress_new(
+                                            field_plan.selection_set.as_ref().unwrap(),
+                                            &populated,
+                                        )
+                                    })
+                                    .collect();
+                                ResponseValueOrInProgress::InProgressRecursingList(
+                                    InProgressRecursingList::new(
                                         field_plan,
                                         populated,
                                         fields_in_progress,
@@ -144,6 +165,35 @@ fn progress_fields<'a>(
                                 populated,
                                 selection: fields_in_progress,
                             })
+                        }
+                    }
+                    ResponseValueOrInProgress::InProgressRecursingList(
+                        InProgressRecursingList {
+                            field_plan,
+                            populated,
+                            selections,
+                        },
+                    ) => {
+                        let mut progressed = vec![];
+                        let mut are_all_done = true;
+                        for selection in selections {
+                            let (is_done, fields_in_progress) =
+                                progress_fields(selection, db_pool).await;
+                            if !is_done {
+                                are_all_done = false;
+                            }
+                            progressed.push(fields_in_progress);
+                        }
+                        if are_all_done {
+                            ResponseValueOrInProgress::ResponseValue(progressed.into())
+                        } else {
+                            ResponseValueOrInProgress::InProgressRecursingList(
+                                InProgressRecursingList {
+                                    field_plan,
+                                    populated,
+                                    selections: progressed,
+                                },
+                            )
                         }
                     }
                 },
@@ -182,6 +232,22 @@ async fn populate_internal_dependencies(
                     DependencyValue::String(column_value)
                 }
                 InternalDependencyResolver::LiteralValue(literal_value) => literal_value.0.clone(),
+                InternalDependencyResolver::ColumnGetterList(column_getter_list) => {
+                    // TODO: same as above, sql injection?
+                    let query = format!(
+                        "SELECT {} FROM {}",
+                        column_getter_list.column_name, column_getter_list.table_name
+                    );
+                    let rows = sqlx::query_as::<_, (Id,)>(&query)
+                        .fetch_all(db_pool)
+                        .await
+                        .unwrap();
+                    DependencyValue::List(
+                        rows.into_iter()
+                            .map(|(column_value,)| DependencyValue::Id(column_value))
+                            .collect(),
+                    )
+                }
                 _ => unimplemented!(),
             },
         )

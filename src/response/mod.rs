@@ -42,6 +42,12 @@ impl From<FieldsInProgress<'_>> for ResponseValue {
     }
 }
 
+impl From<Vec<FieldsInProgress<'_>>> for ResponseValue {
+    fn from(fields_in_progress: Vec<FieldsInProgress>) -> Self {
+        Self::List(fields_in_progress.into_iter().map(Into::into).collect())
+    }
+}
+
 pub type FieldsInProgress<'a> = IndexMap<String, ResponseValueOrInProgress<'a>>;
 
 pub fn fields_in_progress_new<'a>(
@@ -73,6 +79,7 @@ pub enum ResponseValueOrInProgress<'a> {
     ResponseValue(ResponseValue),
     InProgress(InProgress<'a>),
     InProgressRecursing(InProgressRecursing<'a>),
+    InProgressRecursingList(InProgressRecursingList<'a>),
 }
 
 pub struct InProgress<'a> {
@@ -108,6 +115,26 @@ impl<'a> InProgressRecursing<'a> {
             field_plan,
             populated,
             selection,
+        }
+    }
+}
+
+pub struct InProgressRecursingList<'a> {
+    pub field_plan: &'a FieldPlan<'a>,
+    pub populated: Vec<ExternalDependencyValues>,
+    pub selections: Vec<FieldsInProgress<'a>>,
+}
+
+impl<'a> InProgressRecursingList<'a> {
+    pub fn new(
+        field_plan: &'a FieldPlan<'a>,
+        populated: Vec<ExternalDependencyValues>,
+        selections: Vec<FieldsInProgress<'a>>,
+    ) -> Self {
+        Self {
+            field_plan,
+            populated,
+            selections,
         }
     }
 }
