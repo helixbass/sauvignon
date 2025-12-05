@@ -3,8 +3,8 @@ use std::collections::{HashMap, HashSet};
 use squalid::{OptionExt, _d};
 
 use crate::{
-    fields_in_progress_new, request, types, Argument, IndexMap, OperationType, Request,
-    ResponseInProgress, Schema, Selection,
+    fields_in_progress_new, request, types, Argument, Directive, IndexMap, OperationType, Request,
+    ResponseInProgress, Schema, Selection, Value,
 };
 
 pub struct QueryPlan<'a> {
@@ -76,51 +76,81 @@ fn create_field_plans<'a>(
     schema: &'a Schema,
     request: &'a Request,
 ) -> HashMap<String, IndexMap<String, FieldPlan<'a>>> {
-    merge_hash_maps(selection_set.iter().map(|selection| {
-        match selection {
-            Selection::Field(field) => all_current_concrete_type_names
-                .iter()
-                .map(|concrete_type_name| {
-                    let concrete_type = schema.type_(concrete_type_name);
-                    (
-                        concrete_type_name.clone(),
-                        [(
-                            field.name.clone(),
-                            FieldPlan::new(
-                                field,
-                                concrete_type.as_object().field(&field.name),
-                                schema,
-                                request,
-                            ),
-                        )]
-                        .into_iter()
-                        .collect(),
-                    )
-                })
-                .collect(),
-            Selection::FragmentSpread(fragment_spread) => {
-                let fragment = request.fragment(&fragment_spread.name);
+    merge_hash_maps(
+        selection_set
+            .iter()
+            .filter(|selection| !match selection {
+                Selection::Field(field) => should_skip(&field.directives),
+                Selection::InlineFragment(inline_fragment) => {
+                    should_skip(&inline_fragment.directives)
+                }
+                Selection::FragmentSpread(fragment_spread) => {
+                    should_skip(&fragment_spread.directives)
+                }
+            })
+            .map(|selection| match selection {
+                Selection::Field(field) => all_current_concrete_type_names
+                    .iter()
+                    .map(|concrete_type_name| {
+                        let concrete_type = schema.type_(concrete_type_name);
+                        (
+                            concrete_type_name.clone(),
+                            [(
+                                field.name.clone(),
+                                FieldPlan::new(
+                                    field,
+                                    concrete_type.as_object().field(&field.name),
+                                    schema,
+                                    request,
+                                ),
+                            )]
+                            .into_iter()
+                            .collect(),
+                        )
+                    })
+                    .collect(),
+                Selection::FragmentSpread(fragment_spread) => {
+                    let fragment = request.fragment(&fragment_spread.name);
 
-                get_overlapping_fragment_types(
+                    get_overlapping_fragment_types(
+                        &all_current_concrete_type_names,
+                        &fragment.selection_set,
+                        &schema
+                            .all_concrete_type_names_for_type_or_union_or_interface(&fragment.on),
+                        schema,
+                        request,
+                    )
+                }
+                Selection::InlineFragment(inline_fragment) => get_overlapping_fragment_types(
                     &all_current_concrete_type_names,
-                    &fragment.selection_set,
-                    &schema.all_concrete_type_names_for_type_or_union_or_interface(&fragment.on),
+                    &inline_fragment.selection_set,
+                    &match inline_fragment.on.as_ref() {
+                        Some(on) => {
+                            schema.all_concrete_type_names_for_type_or_union_or_interface(on)
+                        }
+                        None => all_current_concrete_type_names.clone(),
+                    },
                     schema,
                     request,
-                )
-            }
-            Selection::InlineFragment(inline_fragment) => get_overlapping_fragment_types(
-                &all_current_concrete_type_names,
-                &inline_fragment.selection_set,
-                &match inline_fragment.on.as_ref() {
-                    Some(on) => schema.all_concrete_type_names_for_type_or_union_or_interface(on),
-                    None => all_current_concrete_type_names.clone(),
-                },
-                schema,
-                request,
-            ),
-        }
-    }))
+                ),
+            }),
+    )
+}
+
+fn should_skip(directives: &[Directive]) -> bool {
+    if directives.into_iter().any(|directive| {
+        directive.name == "skip"
+            && directive.arguments.as_ref().unwrap()[0].value == Value::Bool(true)
+    }) {
+        return true;
+    }
+    if directives.into_iter().any(|directive| {
+        directive.name == "include"
+            && directive.arguments.as_ref().unwrap()[0].value == Value::Bool(false)
+    }) {
+        return true;
+    }
+    false
 }
 
 fn get_overlapping_fragment_types<'a>(

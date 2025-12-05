@@ -199,7 +199,7 @@ impl Argument {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Value {
     Int(i32),
     String(String),

@@ -25,6 +25,18 @@ impl Schema {
         if !errors.is_empty() {
             return errors.into();
         }
+        let errors = validate_directives_exist(request, self);
+        if !errors.is_empty() {
+            return errors.into();
+        }
+        let errors = validate_directives_place(request, self);
+        if !errors.is_empty() {
+            return errors.into();
+        }
+        let errors = validate_directives_duplicate(request, self);
+        if !errors.is_empty() {
+            return errors.into();
+        }
         let errors = validate_no_duplicate_arguments(request, self);
         if !errors.is_empty() {
             return errors.into();
@@ -49,18 +61,6 @@ impl Schema {
             return errors.into();
         }
         let errors = validate_fragment_spreads_relevant_type(request, self);
-        if !errors.is_empty() {
-            return errors.into();
-        }
-        let errors = validate_directives_exist(request, self);
-        if !errors.is_empty() {
-            return errors.into();
-        }
-        let errors = validate_directives_place(request, self);
-        if !errors.is_empty() {
-            return errors.into();
-        }
-        let errors = validate_directives_duplicate(request, self);
         if !errors.is_empty() {
             return errors.into();
         }
@@ -838,39 +838,109 @@ impl CollectorTyped<ValidationError, Vec<ValidationError>> for ArgumentNamesExis
         request: &Request,
     ) -> (Vec<ValidationError>, bool) {
         (
-            {
-                let params = type_field.params();
-                field
-                    .arguments
-                    .as_ref()
-                    .map(|arguments| {
-                        arguments
-                            .into_iter()
-                            .enumerate()
-                            .unique_by(|(_, argument)| &argument.name)
-                            .filter(|(_, argument)| !params.contains_key(&argument.name))
-                            .map(|(index, argument)| {
-                                ValidationError::new(
-                                    format!("Non-existent argument: `{}`", argument.name),
-                                    PositionsTracker::current()
-                                        .map(|positions_tracker| {
+            argument_names_exist_directives_errors(&field.directives, request)
+                .into_iter()
+                .chain({
+                    let params = type_field.params();
+                    field
+                        .arguments
+                        .as_ref()
+                        .map(|arguments| {
+                            arguments
+                                .into_iter()
+                                .enumerate()
+                                .unique_by(|(_, argument)| &argument.name)
+                                .filter(|(_, argument)| !params.contains_key(&argument.name))
+                                .map(|(index, argument)| {
+                                    argument_names_exist_validation_error(
+                                        &argument.name,
+                                        PositionsTracker::current().map(|positions_tracker| {
                                             positions_tracker.field_nth_argument_location(
                                                 field,
                                                 index,
                                                 &request.document,
                                             )
-                                        })
-                                        .into_iter()
-                                        .collect(),
-                                )
-                            })
-                            .collect()
-                    })
-                    .unwrap_or_default()
-            },
+                                        }),
+                                    )
+                                })
+                                .collect::<Vec<_>>()
+                        })
+                        .unwrap_or_default()
+                        .into_iter()
+                })
+                .collect(),
             true,
         )
     }
+
+    fn visit_fragment_spread(
+        &self,
+        fragment_spread: &FragmentSpread,
+        _enclosing_type: TypeOrUnionOrInterface<'_>,
+        _schema: &Schema,
+        request: &Request,
+    ) -> Vec<ValidationError> {
+        argument_names_exist_directives_errors(&fragment_spread.directives, request)
+    }
+
+    fn visit_inline_fragment(
+        &self,
+        inline_fragment: &InlineFragment,
+        _enclosing_type: TypeOrUnionOrInterface<'_>,
+        _schema: &Schema,
+        request: &Request,
+    ) -> (Vec<ValidationError>, bool) {
+        (
+            argument_names_exist_directives_errors(&inline_fragment.directives, request),
+            true,
+        )
+    }
+}
+
+fn argument_names_exist_directives_errors(
+    directives: &[Directive],
+    request: &Request,
+) -> Vec<ValidationError> {
+    directives
+        .iter()
+        .flat_map(|directive| argument_names_exist_directive_errors(directive, request))
+        .collect()
+}
+
+fn argument_names_exist_directive_errors(
+    directive: &Directive,
+    request: &Request,
+) -> Vec<ValidationError> {
+    directive
+        .arguments
+        .as_ref()
+        .map(|arguments| {
+            arguments
+                .into_iter()
+                .enumerate()
+                .unique_by(|(_, argument)| &argument.name)
+                .filter(|(_, argument)| argument.name != "if")
+                .map(|(_, argument)| {
+                    argument_names_exist_validation_error(
+                        &argument.name,
+                        PositionsTracker::current().map(|positions_tracker| {
+                            positions_tracker.directive_location(directive, &request.document)
+                        }),
+                    )
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn argument_names_exist_validation_error(
+    name: &str,
+    location: Option<Location>,
+) -> ValidationError {
+    ValidationError::new(
+        format!("Non-existent argument: `{name}`"),
+        location.into_iter().collect(),
+    )
 }
 
 fn validate_no_duplicate_arguments(request: &Request, schema: &Schema) -> Vec<ValidationError> {
@@ -889,43 +959,115 @@ impl CollectorTyped<ValidationError, Vec<ValidationError>> for NoDuplicateArgume
         request: &Request,
     ) -> (Vec<ValidationError>, bool) {
         (
-            {
-                field
-                    .arguments
-                    .as_ref()
-                    .map(|arguments| {
-                        arguments
-                            .into_iter()
-                            .enumerate()
-                            .into_group_map_by(|(_, argument)| argument.name.clone())
-                            .into_iter()
-                            .filter(|(_, arguments)| arguments.len() > 1)
-                            .map(|(name, arguments)| {
-                                ValidationError::new(
-                                    format!("Duplicate argument: `{name}`"),
-                                    PositionsTracker::current()
-                                        .map(|positions_tracker| {
-                                            arguments
-                                                .into_iter()
-                                                .map(|(index, _)| {
-                                                    positions_tracker.field_nth_argument_location(
-                                                        field,
-                                                        index,
-                                                        &request.document,
-                                                    )
-                                                })
-                                                .collect()
-                                        })
-                                        .unwrap_or_default(),
-                                )
-                            })
-                            .collect()
-                    })
-                    .unwrap_or_default()
-            },
+            no_duplicate_arguments_directives_errors(&field.directives, request)
+                .into_iter()
+                .chain(
+                    field
+                        .arguments
+                        .as_ref()
+                        .map(|arguments| {
+                            arguments
+                                .into_iter()
+                                .enumerate()
+                                .into_group_map_by(|(_, argument)| argument.name.clone())
+                                .into_iter()
+                                .filter(|(_, arguments)| arguments.len() > 1)
+                                .map(|(name, arguments)| {
+                                    duplicate_argument_validation_error(
+                                        &name,
+                                        PositionsTracker::current()
+                                            .map(|positions_tracker| {
+                                                arguments
+                                                    .into_iter()
+                                                    .map(|(index, _)| {
+                                                        positions_tracker
+                                                            .field_nth_argument_location(
+                                                                field,
+                                                                index,
+                                                                &request.document,
+                                                            )
+                                                    })
+                                                    .collect()
+                                            })
+                                            .unwrap_or_default(),
+                                    )
+                                })
+                                .collect::<Vec<_>>()
+                        })
+                        .unwrap_or_default()
+                        .into_iter(),
+                )
+                .collect(),
             true,
         )
     }
+
+    fn visit_fragment_spread(
+        &self,
+        fragment_spread: &FragmentSpread,
+        _enclosing_type: TypeOrUnionOrInterface<'_>,
+        _schema: &Schema,
+        request: &Request,
+    ) -> Vec<ValidationError> {
+        no_duplicate_arguments_directives_errors(&fragment_spread.directives, request)
+    }
+
+    fn visit_inline_fragment(
+        &self,
+        inline_fragment: &InlineFragment,
+        _enclosing_type: TypeOrUnionOrInterface<'_>,
+        _schema: &Schema,
+        request: &Request,
+    ) -> (Vec<ValidationError>, bool) {
+        (
+            no_duplicate_arguments_directives_errors(&inline_fragment.directives, request),
+            true,
+        )
+    }
+}
+
+fn no_duplicate_arguments_directives_errors(
+    directives: &[Directive],
+    request: &Request,
+) -> Vec<ValidationError> {
+    directives
+        .iter()
+        .flat_map(|directive| no_duplicate_arguments_directive_errors(directive, request))
+        .collect()
+}
+
+fn no_duplicate_arguments_directive_errors(
+    directive: &Directive,
+    request: &Request,
+) -> Vec<ValidationError> {
+    directive
+        .arguments
+        .as_ref()
+        .map(|arguments| {
+            arguments
+                .into_iter()
+                .enumerate()
+                .into_group_map_by(|(_, argument)| argument.name.clone())
+                .into_iter()
+                .filter(|(_, arguments)| arguments.len() > 1)
+                .map(|(name, _)| {
+                    duplicate_argument_validation_error(
+                        &name,
+                        PositionsTracker::current()
+                            .map(|positions_tracker| {
+                                positions_tracker.directive_location(directive, &request.document)
+                            })
+                            .into_iter()
+                            .collect(),
+                    )
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn duplicate_argument_validation_error(name: &str, locations: Vec<Location>) -> ValidationError {
+    ValidationError::new(format!("Duplicate argument: `{name}`"), locations)
 }
 
 fn validate_required_arguments(request: &Request, schema: &Schema) -> Vec<ValidationError> {
@@ -945,33 +1087,107 @@ impl CollectorTyped<ValidationError, Vec<ValidationError>> for RequiredArgumentC
     ) -> (Vec<ValidationError>, bool) {
         (
             {
-                type_field
-                    .params()
-                    .into_iter()
-                    .filter(|(_, param)| matches!(param.type_, TypeFull::NonNull(_)))
-                    .filter(|(name, _)| {
-                        !field.arguments.as_ref().is_some_and(|arguments| {
-                            arguments.into_iter().any(|argument| {
-                                argument.name == **name && !matches!(argument.value, Value::Null)
-                            })
-                        })
-                    })
-                    .map(|(name, _)| {
-                        ValidationError::new(
-                            format!("Missing required argument `{}`", name),
-                            PositionsTracker::current()
-                                .map(|positions_tracker| {
-                                    positions_tracker.field_location(field, &request.document)
-                                })
-                                .into_iter()
-                                .collect(),
+                field
+                    .directives
+                    .iter()
+                    .filter(doesnt_have_if_argument)
+                    .map(|directive| {
+                        required_argument_validation_error(
+                            "if",
+                            PositionsTracker::current().map(|positions_tracker| {
+                                positions_tracker.directive_location(directive, &request.document)
+                            }),
                         )
                     })
+                    .chain(
+                        type_field
+                            .params()
+                            .into_iter()
+                            .filter(|(_, param)| matches!(param.type_, TypeFull::NonNull(_)))
+                            .filter(|(name, _)| {
+                                !field.arguments.as_ref().is_some_and(|arguments| {
+                                    arguments.into_iter().any(|argument| {
+                                        argument.name == **name
+                                            && !matches!(argument.value, Value::Null)
+                                    })
+                                })
+                            })
+                            .map(|(name, _)| {
+                                required_argument_validation_error(
+                                    name,
+                                    PositionsTracker::current().map(|positions_tracker| {
+                                        positions_tracker.field_location(field, &request.document)
+                                    }),
+                                )
+                            }),
+                    )
                     .collect()
             },
             true,
         )
     }
+
+    fn visit_fragment_spread(
+        &self,
+        fragment_spread: &FragmentSpread,
+        _enclosing_type: TypeOrUnionOrInterface<'_>,
+        _schema: &Schema,
+        request: &Request,
+    ) -> Vec<ValidationError> {
+        fragment_spread
+            .directives
+            .iter()
+            .filter(doesnt_have_if_argument)
+            .map(|directive| {
+                required_argument_validation_error(
+                    "if",
+                    PositionsTracker::current().map(|positions_tracker| {
+                        positions_tracker.directive_location(directive, &request.document)
+                    }),
+                )
+            })
+            .collect()
+    }
+
+    fn visit_inline_fragment(
+        &self,
+        inline_fragment: &InlineFragment,
+        _enclosing_type: TypeOrUnionOrInterface<'_>,
+        _schema: &Schema,
+        request: &Request,
+    ) -> (Vec<ValidationError>, bool) {
+        (
+            inline_fragment
+                .directives
+                .iter()
+                .filter(doesnt_have_if_argument)
+                .map(|directive| {
+                    required_argument_validation_error(
+                        "if",
+                        PositionsTracker::current().map(|positions_tracker| {
+                            positions_tracker.directive_location(directive, &request.document)
+                        }),
+                    )
+                })
+                .collect(),
+            true,
+        )
+    }
+}
+
+fn doesnt_have_if_argument(directive: &&Directive) -> bool {
+    !directive.arguments.as_ref().is_some_and(|arguments| {
+        arguments
+            .into_iter()
+            .any(|argument| argument.name == "if" && !matches!(argument.value, Value::Null))
+    })
+}
+
+fn required_argument_validation_error(name: &str, location: Option<Location>) -> ValidationError {
+    ValidationError::new(
+        format!("Missing required argument `{}`", name),
+        location.into_iter().collect(),
+    )
 }
 
 fn validate_fragment_name_uniqueness(request: &Request) -> Option<ValidationError> {
