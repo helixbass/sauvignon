@@ -9,7 +9,7 @@ thiserror = "2.0.17"
 tokio = { version = "1", features = ["full"] }
 sqlx = { version = "0.8", features = [ "runtime-tokio", "tls-native-tls", "postgres" ] }
 anyhow = "1.0.100"
-squalid = { git = "https://github.com/helixbass/squalid", rev = "caa8b4d" }
+squalid = { git = "https://github.com/helixbass/squalid", rev = "7b90df8" }
 serde = "1.0.228"
 serde_json = "1.0.145"
 Inflector = "0.11.4"

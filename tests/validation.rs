@@ -40,11 +40,11 @@ async fn test_operation_name_uniqueness() {
                   "locations": [
                     {
                       "line": 1,
-                      "column": 7
+                      "column": 1
                     },
                     {
                       "line": 7,
-                      "column": 7
+                      "column": 1
                     }
                   ]
                 }
@@ -90,19 +90,19 @@ async fn test_operation_name_uniqueness() {
                   "locations": [
                     {
                       "line": 1,
-                      "column": 7
+                      "column": 1
                     },
                     {
                       "line": 13,
-                      "column": 7
+                      "column": 1
                     },
                     {
                       "line": 7,
-                      "column": 7
+                      "column": 1
                     },
                     {
                       "line": 19,
-                      "column": 7
+                      "column": 1
                     }
                   ]
                 }
@@ -138,3 +138,152 @@ async fn test_operation_name_uniqueness() {
     )
     .await;
 }
+
+#[tokio::test]
+async fn test_lone_anonymous_operation() {
+    validation_test(
+        indoc!(
+            r#"
+            query Named {
+              actorKatie {
+                name
+              }
+            }
+
+            {
+              actors {
+                name
+              }
+            }
+        "#
+        ),
+        r#"
+            {
+              "errors": [
+                {
+                  "message": "Anonymous operation must be only operation",
+                  "locations": [
+                    {
+                      "line": 7,
+                      "column": 1
+                    }
+                  ]
+                }
+              ]
+            }
+        "#,
+    )
+    .await;
+
+    validation_test(
+        indoc!(
+            r#"
+            query {
+              actorKatie {
+                name
+              }
+            }
+
+            {
+              actors {
+                name
+              }
+            }
+        "#
+        ),
+        r#"
+            {
+              "errors": [
+                {
+                  "message": "Anonymous operation must be only operation",
+                  "locations": [
+                    {
+                      "line": 1,
+                      "column": 1
+                    }
+                  ]
+                }
+              ]
+            }
+        "#,
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn test_type_names_exist() {
+    validation_test(
+        indoc!(
+            r#"
+            query {
+              actorKatie {
+                ... on NonExistent {
+                  name
+                }
+              }
+            }
+
+            fragment greatFragment on SomethingNonExistent {
+              expression
+            }
+        "#
+        ),
+        r#"
+            {
+              "errors": [
+                {
+                  "message": "Unknown type name: `NonExistent`",
+                  "locations": [
+                    {
+                      "line": 3,
+                      "column": 5
+                    }
+                  ]
+                },
+                {
+                  "message": "Unknown type name: `SomethingNonExistent`",
+                  "locations": [
+                    {
+                      "line": 9,
+                      "column": 1
+                    }
+                  ]
+                }
+              ]
+            }
+        "#,
+    )
+    .await;
+}
+
+// TODO: uncomment this once implemented
+// #[tokio::test]
+// async fn test_selection_fields_exist() {
+//     validation_test(
+//         indoc!(
+//             r#"
+//             {
+//               actorKatie {
+//                 namez
+//               }
+//             }
+//         "#
+//         ),
+//         r#"
+//             {
+//               "errors": [
+//                 {
+//                   "message": "Field doesn't exist on type `Actor`: `namez`",
+//                   "locations": [
+//                     {
+//                       "line": 3,
+//                       "column": 5
+//                     }
+//                   ]
+//                 }
+//               ]
+//             }
+//         "#,
+//     )
+//     .await;
+// }

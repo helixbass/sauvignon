@@ -7,11 +7,11 @@ use squalid::{OptionExt, _d};
 
 use crate::{
     builtin_types, fields_in_progress_new, parse, CarverOrPopulator, DependencyType,
-    DependencyValue, Error, ExternalDependencyValues, FieldPlan, FieldsInProgress, Id, InProgress,
-    InProgressRecursing, InProgressRecursingList, IndexMap, Interface, InternalDependencyResolver,
-    InternalDependencyValues, Location, Populator, PositionsTracker, QueryPlan, Request, Response,
-    ResponseValue, ResponseValueOrInProgress, Result as SauvignonResult, Type, TypeInterface,
-    Union, Value,
+    DependencyValue, Error, ExecutableDefinition, ExternalDependencyValues, FieldPlan,
+    FieldsInProgress, Id, InProgress, InProgressRecursing, InProgressRecursingList, IndexMap,
+    Interface, InternalDependencyResolver, InternalDependencyValues, Location, Populator,
+    PositionsTracker, QueryPlan, Request, Response, ResponseValue, ResponseValueOrInProgress,
+    Result as SauvignonResult, Selection, Type, TypeInterface, Union, Value,
 };
 
 pub struct Schema {
@@ -79,14 +79,13 @@ impl Schema {
 
     pub async fn request(&self, request_str: &str, db_pool: &Pool<Postgres>) -> Response {
         let request = parse(request_str.chars());
-        let (validation_errors, validated_request) = self.validate(&request);
-        if !validation_errors.is_empty() {
+        let validation_request_or_errors = self.validate(&request);
+        if let ValidationRequestOrErrors::Errors(_) = validation_request_or_errors {
             let validation_errors = illicit::Layer::new()
                 .offer(PositionsTracker::default())
                 .enter(|| {
                     let request = parse(request_str.chars());
-                    let (validation_errors, _) = self.validate(&request);
-                    validation_errors
+                    self.validate(&request).into_errors()
                 });
             assert!(!validation_errors.is_empty());
             return Response::new(
@@ -112,17 +111,25 @@ impl Schema {
         self.maybe_type(name).unwrap()
     }
 
-    pub fn type_or_union_or_interface<'a>(&'a self, name: &str) -> TypeOrUnionOrInterface<'a> {
+    pub fn maybe_type_or_union_or_interface<'a>(
+        &'a self,
+        name: &str,
+    ) -> Option<TypeOrUnionOrInterface<'a>> {
         if let Some(type_) = self.maybe_type(name) {
-            return TypeOrUnionOrInterface::Type(type_);
+            return Some(TypeOrUnionOrInterface::Type(type_));
         }
         if let Some(union) = self.unions.get(name) {
-            return TypeOrUnionOrInterface::Union(union);
+            return Some(TypeOrUnionOrInterface::Union(union));
         }
         if let Some(interface) = self.interfaces.get(name) {
-            return TypeOrUnionOrInterface::Interface(interface);
+            return Some(TypeOrUnionOrInterface::Interface(interface));
         }
-        panic!("Unknown type/union/interface: {name}");
+        None
+    }
+
+    pub fn type_or_union_or_interface<'a>(&'a self, name: &str) -> TypeOrUnionOrInterface<'a> {
+        self.maybe_type_or_union_or_interface(name)
+            .expect_else(|| format!("Unknown type/union/interface: {name}"))
     }
 
     pub fn all_concrete_type_names(
@@ -145,12 +152,22 @@ impl Schema {
         self.all_concrete_type_names(&self.type_or_union_or_interface(name))
     }
 
-    pub fn validate(&self, request: &Request) -> (Vec<ValidationError>, ValidatedRequest) {
-        let mut errors: Vec<ValidationError> = _d();
+    pub fn validate(&self, request: &Request) -> ValidationRequestOrErrors {
+        if let Some(error) = validate_operation_name_uniqueness(request) {
+            return vec![error].into();
+        }
+        if let Some(error) = validate_lone_anonymous_operation(request) {
+            return vec![error].into();
+        }
+        let errors = validate_type_names_exist(request, self);
+        if !errors.is_empty() {
+            return errors.into();
+        }
+        // TODO: finish these
+        // validate_selection_fields_exist(request, self).append_to(&mut errors);
+        // validate_argument_names_exist(request, self).append_to(&mut errors);
 
-        validate_operation_name_uniqueness(request).push_if(&mut errors);
-
-        return (errors, ValidatedRequest::new());
+        ValidatedRequest::new().into()
     }
 }
 
@@ -529,16 +546,231 @@ fn add_all_operation_name_locations(locations: &mut Vec<Location>, name: &str, r
         .document
         .definitions
         .iter()
+        .filter_map(|definition| definition.maybe_as_operation_definition())
         .enumerate()
-        .filter_map(|(index, definition)| {
-            definition
-                .maybe_as_operation_definition()
-                .filter(|operation_definition| operation_definition.name.as_ref().is(name))
+        .filter_map(|(index, operation_definition)| {
+            operation_definition
+                .name
+                .as_ref()
+                .if_is(name)
                 .map(|_| index)
         })
         .for_each(|index| {
-            locations.push(positions_tracker.nth_named_operation_name_location(index));
+            locations.push(positions_tracker.nth_operation_location(index));
         });
+}
+
+fn validate_lone_anonymous_operation(request: &Request) -> Option<ValidationError> {
+    if !request
+        .document
+        .definitions
+        .iter()
+        .filter(|definition| definition.maybe_as_operation_definition().is_some())
+        .nth(1)
+        .is_some()
+    {
+        return None;
+    }
+
+    if !request
+        .document
+        .definitions
+        .iter()
+        .filter(|definition| {
+            definition
+                .maybe_as_operation_definition()
+                .is_some_and(|operation_definition| operation_definition.name.is_none())
+        })
+        .next()
+        .is_some()
+    {
+        return None;
+    }
+
+    Some(ValidationError::new(
+        "Anonymous operation must be only operation".to_owned(),
+        PositionsTracker::current()
+            .map(|positions_tracker| {
+                vec![positions_tracker.nth_operation_location(
+                    request
+                        .document
+                        .definitions
+                        .iter()
+                        .filter_map(|definition| definition.maybe_as_operation_definition())
+                        .enumerate()
+                        .find_map(|(index, operation_definition)| {
+                            match operation_definition.name.as_ref() {
+                                None => Some(index),
+                                Some(_) => None,
+                            }
+                        })
+                        .unwrap(),
+                )]
+            })
+            .unwrap_or_default(),
+    ))
+}
+
+fn validate_type_names_exist(request: &Request, schema: &Schema) -> Vec<ValidationError> {
+    let mut ret: Vec<ValidationError> = _d();
+
+    request
+        .document
+        .definitions
+        .iter()
+        .for_each(|definition| match definition {
+            ExecutableDefinition::Operation(operation) => {
+                validate_type_names_exist_selection_set(
+                    &operation.selection_set,
+                    schema,
+                    request,
+                    &mut ret,
+                );
+            }
+            ExecutableDefinition::Fragment(fragment) => {
+                if schema
+                    .maybe_type_or_union_or_interface(&fragment.on)
+                    .is_none()
+                {
+                    ret.push(type_names_exist_validation_error(
+                        &fragment.on,
+                        PositionsTracker::current().map(|positions_tracker| {
+                            positions_tracker
+                                .fragment_definition_location(fragment, &request.document)
+                        }),
+                    ));
+                }
+                validate_type_names_exist_selection_set(
+                    &fragment.selection_set,
+                    schema,
+                    request,
+                    &mut ret,
+                );
+            }
+        });
+
+    ret
+}
+
+fn validate_type_names_exist_selection_set(
+    selection_set: &[Selection],
+    schema: &Schema,
+    request: &Request,
+    ret: &mut Vec<ValidationError>,
+) {
+    selection_set
+        .into_iter()
+        .for_each(|selection| match selection {
+            Selection::Field(field) => {
+                if let Some(selection_set) = field.selection_set.as_ref() {
+                    validate_type_names_exist_selection_set(selection_set, schema, request, ret);
+                }
+            }
+            Selection::InlineFragment(inline_fragment) => {
+                if let Some(on) = inline_fragment.on.as_ref() {
+                    if schema.maybe_type_or_union_or_interface(on).is_none() {
+                        ret.push(type_names_exist_validation_error(
+                            on,
+                            PositionsTracker::current().map(|positions_tracker| {
+                                positions_tracker
+                                    .inline_fragment_location(inline_fragment, &request.document)
+                            }),
+                        ));
+                    }
+                }
+            }
+            _ => {}
+        });
+}
+
+fn type_names_exist_validation_error(
+    type_name: &str,
+    location: Option<Location>,
+) -> ValidationError {
+    ValidationError::new(
+        format!("Unknown type name: `{type_name}`"),
+        match location {
+            Some(location) => vec![location],
+            None => _d(),
+        },
+    )
+}
+
+fn validate_selection_fields_exist(request: &Request, schema: &Schema) -> Vec<ValidationError> {
+    let mut ret: Vec<ValidationError> = _d();
+
+    request
+        .document
+        .definitions
+        .iter()
+        .for_each(|definition| match definition {
+            ExecutableDefinition::Operation(operation_definition) => {
+                validate_selection_fields_exist_selection_set(
+                    &operation_definition.selection_set,
+                    schema,
+                    &mut ret,
+                );
+            }
+            ExecutableDefinition::Fragment(fragment_definition) => {
+                validate_selection_fields_exist_selection_set(
+                    &fragment_definition.selection_set,
+                    schema,
+                    &mut ret,
+                );
+            }
+        });
+
+    ret
+}
+
+fn validate_selection_fields_exist_selection_set(
+    selection_set: &[Selection],
+    schema: &Schema,
+    ret: &mut Vec<ValidationError>,
+) {
+    unimplemented!()
+}
+
+fn validate_argument_names_exist(request: &Request, schema: &Schema) -> Vec<ValidationError> {
+    let mut ret: Vec<ValidationError> = _d();
+
+    request
+        .document
+        .definitions
+        .iter()
+        .for_each(|definition| match definition {
+            ExecutableDefinition::Operation(operation_definition) => {
+                validate_argument_names_exist_selection_set(
+                    &operation_definition.selection_set,
+                    schema,
+                    &mut ret,
+                );
+            }
+            ExecutableDefinition::Fragment(fragment_definition) => {
+                validate_argument_names_exist_selection_set(
+                    &fragment_definition.selection_set,
+                    schema,
+                    &mut ret,
+                );
+            }
+        });
+
+    ret
+}
+
+fn validate_argument_names_exist_selection_set(
+    selection_set: &[Selection],
+    schema: &Schema,
+    ret: &mut Vec<ValidationError>,
+) {
+    unimplemented!();
+    selection_set
+        .into_iter()
+        .for_each(|selection| match selection {
+            Selection::Field(field) => {}
+            Selection::InlineFragment(inline_fragment) => {}
+            _ => {}
+        })
 }
 
 #[derive(Debug)]
@@ -558,5 +790,31 @@ pub struct ValidatedRequest {}
 impl ValidatedRequest {
     pub fn new() -> Self {
         Self {}
+    }
+}
+
+pub enum ValidationRequestOrErrors {
+    Request(ValidatedRequest),
+    Errors(Vec<ValidationError>),
+}
+
+impl ValidationRequestOrErrors {
+    pub fn into_errors(self) -> Vec<ValidationError> {
+        match self {
+            Self::Errors(errors) => errors,
+            _ => panic!("Expected errors"),
+        }
+    }
+}
+
+impl From<ValidatedRequest> for ValidationRequestOrErrors {
+    fn from(value: ValidatedRequest) -> Self {
+        Self::Request(value)
+    }
+}
+
+impl From<Vec<ValidationError>> for ValidationRequestOrErrors {
+    fn from(value: Vec<ValidationError>) -> Self {
+        Self::Errors(value)
     }
 }

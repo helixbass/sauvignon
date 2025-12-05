@@ -405,6 +405,7 @@ pub fn parse_tokens(tokens: impl IntoIterator<Item = Token>) -> Request {
                             )
                         ) =>
                 {
+                    PositionsTracker::emit_operation();
                     definitions.push({
                         let mut builder = OperationDefinitionBuilder::default();
                         builder = builder.operation_type(OperationType::Query);
@@ -417,7 +418,6 @@ pub fn parse_tokens(tokens: impl IntoIterator<Item = Token>) -> Request {
                                         .unwrap(),
                                 ),
                                 Some(Token::Name(name)) => {
-                                    PositionsTracker::emit_operation_name();
                                     builder = builder.name(name);
                                     match tokens.next() {
                                         Some(Token::LeftCurlyBracket) => {
@@ -443,6 +443,7 @@ pub fn parse_tokens(tokens: impl IntoIterator<Item = Token>) -> Request {
                     });
                 }
                 Some(Token::Name(name)) if name == "fragment" => {
+                    PositionsTracker::emit_fragment_definition();
                     definitions.push(ExecutableDefinition::Fragment(FragmentDefinition::new(
                         match tokens.next() {
                             Some(Token::Name(name)) => {
@@ -477,45 +478,55 @@ fn parse_selection_set<TIterator>(tokens: &mut Peekable<TIterator>) -> Vec<Selec
 where
     TIterator: Iterator<Item = Token>,
 {
+    PositionsTracker::emit_selection_set();
     let mut ret: Vec<Selection> = _d();
 
     loop {
         match tokens.next() {
-            Some(Token::DotDotDot) => ret.push(match tokens.next() {
-                Some(token) => {
-                    if matches!(
-                        &token,
-                        Token::Name(name) if name != "on"
-                    ) {
-                        Selection::FragmentSpread(FragmentSpread::new(token.into_name()))
-                    } else if matches!(&token, Token::Name(_) | Token::LeftCurlyBracket) {
-                        match token {
-                            Token::Name(_) => {
-                                let on = match tokens.next() {
-                                    Some(Token::Name(on)) => on,
-                                    _ => panic!("Expected on"),
-                                };
-                                match tokens.next() {
-                                    Some(Token::LeftCurlyBracket) => Selection::InlineFragment(
-                                        InlineFragment::new(Some(on), parse_selection_set(tokens)),
-                                    ),
-                                    _ => panic!("Expected selection set"),
+            Some(Token::DotDotDot) => {
+                PositionsTracker::emit_selection_inline_fragment_or_fragment_spread();
+                ret.push(match tokens.next() {
+                    Some(token) => {
+                        if matches!(
+                            &token,
+                            Token::Name(name) if name != "on"
+                        ) {
+                            PositionsTracker::emit_selection_fragment_spread();
+                            Selection::FragmentSpread(FragmentSpread::new(token.into_name()))
+                        } else if matches!(&token, Token::Name(_) | Token::LeftCurlyBracket) {
+                            PositionsTracker::emit_selection_inline_fragment();
+                            match token {
+                                Token::Name(_) => {
+                                    let on = match tokens.next() {
+                                        Some(Token::Name(on)) => on,
+                                        _ => panic!("Expected on"),
+                                    };
+                                    match tokens.next() {
+                                        Some(Token::LeftCurlyBracket) => {
+                                            Selection::InlineFragment(InlineFragment::new(
+                                                Some(on),
+                                                parse_selection_set(tokens),
+                                            ))
+                                        }
+                                        _ => panic!("Expected selection set"),
+                                    }
                                 }
+                                Token::LeftCurlyBracket => Selection::InlineFragment(
+                                    InlineFragment::new(None, parse_selection_set(tokens)),
+                                ),
+                                _ => unreachable!(),
                             }
-                            Token::LeftCurlyBracket => Selection::InlineFragment(
-                                InlineFragment::new(None, parse_selection_set(tokens)),
-                            ),
-                            _ => unreachable!(),
+                        } else {
+                            panic!("Expected fragment selection");
                         }
-                    } else {
+                    }
+                    _ => {
                         panic!("Expected fragment selection");
                     }
-                }
-                _ => {
-                    panic!("Expected fragment selection");
-                }
-            }),
+                });
+            }
             Some(Token::Name(name)) => {
+                PositionsTracker::emit_selection_field();
                 ret.push(Selection::Field({
                     let mut builder = SelectionFieldBuilder::default();
                     builder = builder.name(name);
@@ -567,6 +578,7 @@ where
                 }));
             }
             Some(Token::RightCurlyBracket) => {
+                PositionsTracker::emit_end_selection_set();
                 if ret.is_empty() {
                     panic!("Empty selection");
                 }
