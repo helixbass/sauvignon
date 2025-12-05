@@ -1,4 +1,5 @@
-use sauvignon::json_from_response;
+use sauvignon::{json_from_response, Schema};
+use sqlx::{Pool, Postgres};
 use tracing_chrome::ChromeLayerBuilder;
 use tracing_subscriber::prelude::*;
 
@@ -7,10 +8,8 @@ mod shared;
 
 use shared::{get_db_pool, get_schema, pretty_print_json};
 
-async fn request_test(request: &str, expected: &str) {
-    let db_pool = get_db_pool().await.unwrap();
-    let schema = get_schema(&db_pool).await.unwrap();
-    let response = schema.request(request, &db_pool).await;
+async fn run_request(request: &str, expected: &str, schema: &Schema, db_pool: &Pool<Postgres>) {
+    let response = schema.request(request, db_pool).await;
     let json = json_from_response(&response);
     assert_eq!(pretty_print_json(&json), pretty_print_json(expected));
 }
@@ -20,43 +19,50 @@ async fn main() {
     let (chrome_layer, _guard) = ChromeLayerBuilder::new().build();
     tracing_subscriber::registry().with(chrome_layer).init();
 
-    request_test(
-        r#"
-            query {
-              actorKatie {
-                name
-              }
-            }
-        "#,
-        r#"
-            {
-              "data": {
-                "actorKatie": {
-                  "name": "Katie Cassidy"
-                }
-              }
-            }
-        "#,
-    )
-    .await;
+    let db_pool = get_db_pool().await.unwrap();
+    let schema = get_schema(&db_pool).await.unwrap();
 
-    request_test(
+    run_request(
         r#"
-            query {
-              actorKatie {
-                name
+            {
+              actorsAndDesigners {
+                ... on Actor {
+                  __typename
+                  expression
+                }
+                ... on Designer {
+                  __typename
+                  name
+                }
               }
             }
         "#,
         r#"
             {
               "data": {
-                "actorKatie": {
-                  "name": "Katie Cassidy"
-                }
+                "actorsAndDesigners": [
+                  {
+                    "__typename": "Actor",
+                    "expression": "no Serena you can't have the key"
+                  },
+                  {
+                    "__typename": "Actor",
+                    "expression": "Dan where did you go I don't like you"
+                  },
+                  {
+                    "__typename": "Designer",
+                    "name": "Proenza Schouler"
+                  },
+                  {
+                    "__typename": "Designer",
+                    "name": "Ralph Lauren"
+                  }
+                ]
               }
             }
         "#,
+        &schema,
+        &db_pool,
     )
     .await;
 }
