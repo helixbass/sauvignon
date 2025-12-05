@@ -1,5 +1,6 @@
 use serde::Serialize;
 use squalid::_d;
+use tracing::instrument;
 
 use crate::{
     ExternalDependencyValues, FieldPlan, IndexMap, Location, ParseOrLexError, ValidationError,
@@ -79,6 +80,7 @@ impl From<Vec<FieldsInProgress<'_>>> for ResponseValue {
 
 pub type FieldsInProgress<'a> = IndexMap<String, ResponseValueOrInProgress<'a>>;
 
+#[instrument(level = "trace", skip(field_plans, external_dependency_values))]
 pub fn fields_in_progress_new<'a>(
     field_plans: &'a IndexMap<String, FieldPlan<'a>>,
     external_dependency_values: &ExternalDependencyValues,

@@ -5,6 +5,7 @@ use std::sync::RwLock;
 use rkyv::{rancor, util::AlignedVec};
 use sqlx::{Pool, Postgres};
 use squalid::{OptionExt, _d};
+use tracing::{instrument, trace, trace_span, Instrument};
 
 use crate::{
     builtin_types, fields_in_progress_new, get_hash, parse, CarverOrPopulator, DependencyType,
@@ -31,6 +32,7 @@ pub struct Schema {
 }
 
 impl Schema {
+    #[instrument(level = "trace", skip(types, unions, interfaces))]
     pub fn try_new(
         types: Vec<Type>,
         unions: Vec<Union>,
@@ -86,6 +88,7 @@ impl Schema {
         })
     }
 
+    #[instrument(level = "debug", skip(self, db_pool))]
     pub async fn request(&self, document_str: &str, db_pool: &Pool<Postgres>) -> Response {
         let document_str_hash = get_hash(document_str);
         let cached_validated_document = self
@@ -97,12 +100,17 @@ impl Schema {
                 rkyv::from_bytes_unchecked::<Document, rancor::Error>(cached_validated_document)
                     .unwrap()
             });
+        trace!(
+            succeeded = cached_validated_document.is_some(),
+            "Tried to get cached validated document",
+        );
         let request = match cached_validated_document {
             Some(cached_validated_document) => Request::new(cached_validated_document),
             None => {
                 let request = match parse(document_str.chars()) {
                     Ok(request) => request,
                     Err(_) => {
+                        let _ = trace_span!("re-parsing with position tracking").entered();
                         let parse_error = illicit::Layer::new()
                             .offer(PositionsTracker::default())
                             .enter(|| parse(document_str.chars()).unwrap_err());
@@ -111,6 +119,7 @@ impl Schema {
                 };
                 let validation_request_or_errors = self.validate(&request);
                 if let ValidationRequestOrErrors::Errors(_) = validation_request_or_errors {
+                    let _ = trace_span!("re-validating with position tracking").entered();
                     let validation_errors = illicit::Layer::new()
                         .offer(PositionsTracker::default())
                         .enter(|| {
@@ -128,6 +137,7 @@ impl Schema {
                     document_str_hash,
                     rkyv::to_bytes::<rancor::Error>(&request.document).unwrap(),
                 );
+                trace!("cached validated document");
                 request
             }
         };
@@ -197,6 +207,7 @@ impl Schema {
     }
 }
 
+#[instrument(level = "debug", skip(schema, request, db_pool))]
 async fn compute_response(
     schema: &Schema,
     request: &Request,
@@ -215,6 +226,7 @@ async fn compute_response(
     }
 }
 
+#[instrument(level = "debug", skip(fields_in_progress, db_pool, schema))]
 fn progress_fields<'a>(
     fields_in_progress: FieldsInProgress<'a>,
     db_pool: &'a Pool<Postgres>,
@@ -392,6 +404,10 @@ fn progress_fields<'a>(
     })
 }
 
+#[instrument(
+    level = "trace",
+    skip(field_plan, external_dependency_values, db_pool, schema)
+)]
 async fn populate_internal_dependencies(
     field_plan: &FieldPlan<'_>,
     external_dependency_values: &ExternalDependencyValues,
@@ -418,6 +434,7 @@ async fn populate_internal_dependencies(
                             let (column_value,): (Id,) = sqlx::query_as(&query)
                                 .bind(row_id)
                                 .fetch_one(db_pool)
+                                .instrument(trace_span!("fetch ID column"))
                                 .await
                                 .unwrap();
                             DependencyValue::Id(column_value)
@@ -431,6 +448,7 @@ async fn populate_internal_dependencies(
                             let (column_value,): (String,) = sqlx::query_as(&query)
                                 .bind(row_id)
                                 .fetch_one(db_pool)
+                                .instrument(trace_span!("fetch string column"))
                                 .await
                                 .unwrap();
                             DependencyValue::String(column_value)
@@ -447,6 +465,7 @@ async fn populate_internal_dependencies(
                     );
                     let rows = sqlx::query_as::<_, (Id,)>(&query)
                         .fetch_all(db_pool)
+                        .instrument(trace_span!("fetch column list"))
                         .await
                         .unwrap();
                     DependencyValue::List(
@@ -456,6 +475,7 @@ async fn populate_internal_dependencies(
                     )
                 }
                 InternalDependencyResolver::IntrospectionTypeInterfaces => {
+                    let _ = trace_span!("resolve introspection type interfaces").entered();
                     let type_name = match external_dependency_values.get("name").unwrap() {
                         DependencyValue::String(name) => name,
                         _ => unreachable!(),
@@ -510,6 +530,15 @@ async fn populate_internal_dependencies(
     ret
 }
 
+#[instrument(
+    level = "trace",
+    skip(
+        external_dependency_values,
+        internal_dependency_values,
+        populator,
+        field_plan
+    )
+)]
 fn to_recursing_after_populating<'a>(
     external_dependency_values: &ExternalDependencyValues,
     internal_dependency_values: &InternalDependencyValues,

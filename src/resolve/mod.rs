@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use inflector::Inflector;
+use tracing::instrument;
 
 use crate::{
     ExternalDependency, ExternalDependencyValues, InternalDependency, InternalDependencyValues,
@@ -46,6 +47,10 @@ impl StringCarver {
 }
 
 impl Carver for StringCarver {
+    #[instrument(
+        level = "trace",
+        skip(self, external_dependencies, internal_dependencies)
+    )]
     fn carve(
         &self,
         external_dependencies: &ExternalDependencyValues,
@@ -92,6 +97,10 @@ impl ValuePopulator {
 }
 
 impl Populator for ValuePopulator {
+    #[instrument(
+        level = "trace",
+        skip(self, _external_dependencies, internal_dependencies)
+    )]
     fn populate(
         &self,
         _external_dependencies: &ExternalDependencyValues,
@@ -120,6 +129,10 @@ impl ValuesPopulator {
 }
 
 impl Populator for ValuesPopulator {
+    #[instrument(
+        level = "trace",
+        skip(self, _external_dependencies, internal_dependencies)
+    )]
     fn populate(
         &self,
         _external_dependencies: &ExternalDependencyValues,
@@ -159,6 +172,10 @@ impl ValuePopulatorList {
 }
 
 impl PopulatorList for ValuePopulatorList {
+    #[instrument(
+        level = "trace",
+        skip(self, _external_dependencies, internal_dependencies)
+    )]
     fn populate(
         &self,
         _external_dependencies: &ExternalDependencyValues,
@@ -195,6 +212,10 @@ impl TypeDepluralizer {
 }
 
 impl UnionOrInterfaceTypePopulator for TypeDepluralizer {
+    #[instrument(
+        level = "trace",
+        skip(self, _external_dependencies, internal_dependencies)
+    )]
     fn populate(
         &self,
         _external_dependencies: &ExternalDependencyValues,

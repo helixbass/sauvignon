@@ -408,7 +408,7 @@ where
     })
 }
 
-#[instrument(level = "trace", skip(request))]
+#[instrument(level = "debug", skip(request))]
 pub fn parse(request: impl IntoIterator<Item = char>) -> ParseResult<Request> {
     parse_tokens(lex(request))
 }

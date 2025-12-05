@@ -2,6 +2,7 @@ use std::{cell::RefCell, fmt::Debug, iter::Peekable, ops::Deref, ptr};
 
 use serde::Serialize;
 use squalid::{EverythingExt, _d};
+use tracing::instrument;
 
 use crate::ExecutableDefinition;
 
@@ -42,6 +43,7 @@ pub struct PositionsTracker {
 }
 
 impl PositionsTracker {
+    #[instrument(level = "trace")]
     pub fn receive_char(&self, ch: char) {
         if *self.just_saw_carriage_return.borrow() {
             if ch != '\n' {
@@ -81,6 +83,7 @@ impl PositionsTracker {
         self.maybe_last_token().unwrap()
     }
 
+    #[instrument(level = "trace")]
     pub fn receive_operation(&self) {
         self.document
             .borrow_mut()
@@ -90,6 +93,7 @@ impl PositionsTracker {
             )));
     }
 
+    #[instrument(level = "trace")]
     pub fn receive_fragment_definition(&self) {
         self.document
             .borrow_mut()
@@ -99,6 +103,7 @@ impl PositionsTracker {
             )));
     }
 
+    #[instrument(level = "trace")]
     pub fn receive_selection_set(&self) {
         let mut document = self.document.borrow_mut();
         match document.find_currently_active_selection_set() {
@@ -124,6 +129,7 @@ impl PositionsTracker {
         }
     }
 
+    #[instrument(level = "trace")]
     pub fn receive_end_selection_set(&self) {
         self.document
             .borrow_mut()
@@ -132,6 +138,7 @@ impl PositionsTracker {
             .close();
     }
 
+    #[instrument(level = "trace")]
     pub fn receive_selection_field(&self) {
         self.document
             .borrow_mut()
@@ -141,12 +148,14 @@ impl PositionsTracker {
             .push(Selection::Field(Field::new(self.last_token())));
     }
 
+    #[instrument(level = "trace")]
     pub fn receive_selection_inline_fragment_or_fragment_spread(&self) {
         *self
             .start_of_upcoming_selection_inline_fragment_or_fragment_spread
             .borrow_mut() = Some(self.last_token());
     }
 
+    #[instrument(level = "trace")]
     pub fn receive_selection_inline_fragment(&self) {
         self.document
             .borrow_mut()
@@ -164,6 +173,7 @@ impl PositionsTracker {
             .borrow_mut() = None;
     }
 
+    #[instrument(level = "trace")]
     pub fn receive_selection_fragment_spread(&self) {
         self.document
             .borrow_mut()
@@ -181,6 +191,7 @@ impl PositionsTracker {
             .borrow_mut() = None;
     }
 
+    #[instrument(level = "trace")]
     pub fn receive_argument(&self) {
         if *self.is_in_directives.borrow() {
             self.document
@@ -202,18 +213,22 @@ impl PositionsTracker {
         }
     }
 
+    #[instrument(level = "trace")]
     pub fn receive_token_pre_start(&self) {
         *self.should_next_char_record_as_token_start.borrow_mut() = true;
     }
 
+    #[instrument(level = "trace")]
     pub fn receive_start_directives(&self) {
         *self.is_in_directives.borrow_mut() = true;
     }
 
+    #[instrument(level = "trace")]
     pub fn receive_end_directives(&self) {
         *self.is_in_directives.borrow_mut() = false;
     }
 
+    #[instrument(level = "trace")]
     pub fn receive_directive(&self) {
         let mut document = self.document.borrow_mut();
         match document.find_currently_active_selection_set() {
@@ -249,6 +264,7 @@ impl PositionsTracker {
         }
     }
 
+    #[instrument(level = "trace")]
     pub fn nth_operation_location(&self, index: usize) -> Location {
         self.document
             .borrow()
@@ -260,6 +276,7 @@ impl PositionsTracker {
             .location
     }
 
+    #[instrument(level = "trace")]
     pub fn nth_fragment_location(&self, index: usize) -> Location {
         self.document
             .borrow()
@@ -271,6 +288,7 @@ impl PositionsTracker {
             .location
     }
 
+    #[instrument(level = "trace", skip(fragment, document))]
     pub fn fragment_definition_location(
         &self,
         fragment: &crate::FragmentDefinition,
@@ -287,6 +305,7 @@ impl PositionsTracker {
             .location
     }
 
+    #[instrument(level = "trace", skip(inline_fragment, document))]
     pub fn inline_fragment_location(
         &self,
         inline_fragment: &crate::InlineFragment,
@@ -320,6 +339,7 @@ impl PositionsTracker {
             .unwrap()
     }
 
+    #[instrument(level = "trace", skip(field, document))]
     pub fn field_location(
         &self,
         field: &crate::request::Field,
@@ -353,6 +373,7 @@ impl PositionsTracker {
             .unwrap()
     }
 
+    #[instrument(level = "trace", skip(field, document))]
     pub fn field_nth_argument_location(
         &self,
         field: &crate::request::Field,
@@ -389,6 +410,7 @@ impl PositionsTracker {
             .unwrap()
     }
 
+    #[instrument(level = "trace", skip(fragment_spread, document))]
     pub fn fragment_spread_location(
         &self,
         fragment_spread: &crate::request::FragmentSpread,
@@ -422,6 +444,7 @@ impl PositionsTracker {
             .unwrap()
     }
 
+    #[instrument(level = "trace", skip(directive, document))]
     pub fn directive_location(
         &self,
         directive: &crate::request::Directive,
@@ -473,90 +496,105 @@ impl PositionsTracker {
             .unwrap()
     }
 
+    #[instrument(level = "trace")]
     pub fn current() -> Option<impl Deref<Target = Self> + Debug + 'static> {
         // TODO: per https://github.com/anp/moxie/issues/308 is using illicit
         // ok thread-local-wise vs eg Tokio can move tasks across threads?
         illicit::get::<Self>().ok()
     }
 
+    #[instrument(level = "trace")]
     pub fn emit_char(ch: char) {
         if let Some(positions_tracker) = Self::current() {
             positions_tracker.receive_char(ch);
         }
     }
 
+    #[instrument(level = "trace")]
     pub fn emit_operation() {
         if let Some(positions_tracker) = Self::current() {
             positions_tracker.receive_operation();
         }
     }
 
+    #[instrument(level = "trace")]
     pub fn emit_fragment_definition() {
         if let Some(positions_tracker) = Self::current() {
             positions_tracker.receive_fragment_definition();
         }
     }
 
+    #[instrument(level = "trace")]
     pub fn emit_selection_set() {
         if let Some(positions_tracker) = Self::current() {
             positions_tracker.receive_selection_set();
         }
     }
 
+    #[instrument(level = "trace")]
     pub fn emit_end_selection_set() {
         if let Some(positions_tracker) = Self::current() {
             positions_tracker.receive_end_selection_set();
         }
     }
 
+    #[instrument(level = "trace")]
     pub fn emit_selection_field() {
         if let Some(positions_tracker) = Self::current() {
             positions_tracker.receive_selection_field();
         }
     }
 
+    #[instrument(level = "trace")]
     pub fn emit_selection_inline_fragment_or_fragment_spread() {
         if let Some(positions_tracker) = Self::current() {
             positions_tracker.receive_selection_inline_fragment_or_fragment_spread();
         }
     }
 
+    #[instrument(level = "trace")]
     pub fn emit_selection_inline_fragment() {
         if let Some(positions_tracker) = Self::current() {
             positions_tracker.receive_selection_inline_fragment();
         }
     }
 
+    #[instrument(level = "trace")]
     pub fn emit_selection_fragment_spread() {
         if let Some(positions_tracker) = Self::current() {
             positions_tracker.receive_selection_fragment_spread();
         }
     }
 
+    #[instrument(level = "trace")]
     pub fn emit_argument() {
         if let Some(positions_tracker) = Self::current() {
             positions_tracker.receive_argument();
         }
     }
 
+    #[instrument(level = "trace")]
     pub fn emit_token_pre_start() {
         if let Some(positions_tracker) = Self::current() {
             positions_tracker.receive_token_pre_start();
         }
     }
 
+    #[instrument(level = "trace")]
     pub fn emit_start_directives() {
         if let Some(positions_tracker) = Self::current() {
             positions_tracker.receive_start_directives();
         }
     }
 
+    #[instrument(level = "trace")]
     pub fn emit_end_directives() {
         if let Some(positions_tracker) = Self::current() {
             positions_tracker.receive_end_directives();
         }
     }
 
+    #[instrument(level = "trace")]
     pub fn emit_directive() {
         if let Some(positions_tracker) = Self::current() {
             positions_tracker.receive_directive();
