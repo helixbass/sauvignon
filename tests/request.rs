@@ -349,3 +349,49 @@ async fn test_argument() {
     )
     .await;
 }
+
+#[tokio::test]
+async fn test_parse_error() {
+    request_test(
+        r#"query abc 1"#,
+        r#"
+            {
+              "errors": [
+                {
+                  "message": "Expected selection set",
+                  "locations": [
+                    {
+                      "line": 1,
+                      "column": 11
+                    }
+                  ]
+                }
+              ]
+            }
+        "#,
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn test_lex_error() {
+    request_test(
+        r#""abc"#,
+        r#"
+            {
+              "errors": [
+                {
+                  "message": "expected closing double-quote",
+                  "locations": [
+                    {
+                      "line": 1,
+                      "column": 4
+                    }
+                  ]
+                }
+              ]
+            }
+        "#,
+    )
+    .await;
+}

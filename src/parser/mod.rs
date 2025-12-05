@@ -59,7 +59,10 @@ pub struct Lex<TRequest: Iterator<Item = char>> {
 impl<TRequest: Iterator<Item = char>> Lex<TRequest> {
     fn error(&mut self, message: &str) -> LexError {
         self.has_errored = true;
-        LexError::new(message.to_owned())
+        LexError::new(
+            message.to_owned(),
+            PositionsTracker::current().map(|positions_tracker| positions_tracker.last_char()),
+        )
     }
 }
 
@@ -642,7 +645,14 @@ where
 }
 
 fn parse_error(message: &str) -> ParseError {
-    ParseError::new(message.to_owned())
+    ParseError::new(
+        message.to_owned(),
+        PositionsTracker::current().map(|positions_tracker| {
+            positions_tracker
+                .maybe_last_token()
+                .unwrap_or_else(|| positions_tracker.last_char())
+        }),
+    )
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -652,11 +662,8 @@ pub struct LexError {
 }
 
 impl LexError {
-    pub fn new(message: String) -> Self {
-        Self {
-            message,
-            location: _d(),
-        }
+    pub fn new(message: String, location: Option<Location>) -> Self {
+        Self { message, location }
     }
 }
 
@@ -689,11 +696,8 @@ pub struct ParseError {
 }
 
 impl ParseError {
-    pub fn new(message: String) -> Self {
-        Self {
-            message,
-            location: _d(),
-        }
+    pub fn new(message: String, location: Option<Location>) -> Self {
+        Self { message, location }
     }
 }
 
@@ -716,6 +720,8 @@ type ParseResult<TValue> = Result<TValue, ParseOrLexError>;
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    use indoc::indoc;
 
     fn lex_test(request: &str, expected_tokens: impl IntoIterator<Item = Token>) {
         assert_eq!(
@@ -757,169 +763,240 @@ mod tests {
         lex_test("...a", [Token::DotDotDot, Token::Name("a".to_owned())]);
     }
 
-    fn lex_error_test(request: &str, expected_error_message: &str) {
+    fn lex_error_test(request: &str, expected_error_message: &str, location: Location) {
         assert_eq!(
-            parse(request.chars()).unwrap_err(),
-            ParseOrLexError::Lex(LexError::new(expected_error_message.to_owned())),
+            illicit::Layer::new()
+                .offer(PositionsTracker::default())
+                .enter(|| parse(request.chars()).unwrap_err()),
+            ParseOrLexError::Lex(LexError::new(
+                expected_error_message.to_owned(),
+                Some(location)
+            )),
         );
     }
 
     #[test]
     fn test_lex_unterminated_string() {
-        lex_error_test(r#""abc"#, "expected closing double-quote");
+        lex_error_test(
+            r#""abc"#,
+            "expected closing double-quote",
+            Location::new(1, 4),
+        );
     }
 
     #[test]
     fn test_lex_unicode_escape_non_hex_digit() {
-        lex_error_test(r#""\u123z""#, "Unexpected hex digit");
+        lex_error_test(r#""\u123z""#, "Unexpected hex digit", Location::new(1, 7));
     }
 
     #[test]
     fn test_lex_leading_zero() {
-        lex_error_test(r#"01"#, "Can't have leading zero");
-        lex_error_test(r#"01.1"#, "Can't have leading zero");
+        lex_error_test(r#"01"#, "Can't have leading zero", Location::new(1, 2));
+        lex_error_test(r#"01.1"#, "Can't have leading zero", Location::new(1, 2));
     }
 
     #[test]
     fn test_lex_fractional_part() {
-        lex_error_test(r#"1.e1"#, "expected fractional part digits");
+        lex_error_test(
+            r#"1.e1"#,
+            "expected fractional part digits",
+            Location::new(1, 2),
+        );
     }
 
     #[test]
     fn test_lex_exponent_digits() {
-        lex_error_test(r#"1.0e name"#, "Expected exponent digits");
-        lex_error_test(r#"1e name"#, "Expected exponent digits");
+        lex_error_test(
+            r#"1.0e name"#,
+            "Expected exponent digits",
+            Location::new(1, 4),
+        );
+        lex_error_test(
+            r#"1e name"#,
+            "Expected exponent digits",
+            Location::new(1, 2),
+        );
     }
 
-    fn parse_error_test(request: &str, expected_error_message: &str) {
+    fn parse_error_test(request: &str, expected_error_message: &str, location: Location) {
         assert_eq!(
-            parse(request.chars()).unwrap_err(),
-            ParseOrLexError::Parse(ParseError::new(expected_error_message.to_owned())),
+            illicit::Layer::new()
+                .offer(PositionsTracker::default())
+                .enter(|| parse(request.chars()).unwrap_err()),
+            ParseOrLexError::Parse(ParseError::new(
+                expected_error_message.to_owned(),
+                Some(location)
+            )),
         );
     }
 
     #[test]
     fn test_parse_query_selection_set() {
-        parse_error_test(r#"query abc 1"#, "Expected selection set");
-        parse_error_test(r#"query 1"#, "Expected query");
+        parse_error_test(
+            r#"query abc 1"#,
+            "Expected selection set",
+            Location::new(1, 11),
+        );
+        parse_error_test(r#"query 1"#, "Expected query", Location::new(1, 7));
     }
 
     #[test]
     fn test_parse_fragment_definition_name() {
-        parse_error_test(r#"fragment on"#, "Saw `on` instead of fragment name");
-        parse_error_test(r#"fragment 1"#, "Expected fragment name");
+        parse_error_test(
+            r#"fragment on"#,
+            "Saw `on` instead of fragment name",
+            Location::new(1, 10),
+        );
+        parse_error_test(
+            r#"fragment 1"#,
+            "Expected fragment name",
+            Location::new(1, 10),
+        );
         parse_error_test(
             r#"fragment fooFragment on 1"#,
             "Expected fragment `on` name",
+            Location::new(1, 25),
         );
-        parse_error_test(r#"fragment fooFragment { name }"#, "Expected fragment `on`");
+        parse_error_test(
+            r#"fragment fooFragment { name }"#,
+            "Expected fragment `on`",
+            Location::new(1, 22),
+        );
         parse_error_test(
             r#"fragment fooFragment on Actor 1"#,
             "Expected selection set",
+            Location::new(1, 31),
         );
     }
 
     #[test]
     fn test_parse_definition() {
         parse_error_test(
-            r#"
+            indoc!(
+                r#"
               {
                 name
               }
 
               1
-            "#,
+            "#
+            ),
             "Expected definition",
+            Location::new(5, 1),
         );
     }
 
     #[test]
     fn test_parse_inline_fragment_on() {
         parse_error_test(
-            r#"
+            indoc!(
+                r#"
               {
                 ... on {
                   name
                 }
               }
-            "#,
+            "#
+            ),
             "Expected on",
+            Location::new(2, 10),
         );
         parse_error_test(
-            r#"
+            indoc!(
+                r#"
               {
                 ... on Actor 1
               }
-            "#,
+            "#
+            ),
             "Expected selection set",
+            Location::new(2, 16),
         );
         parse_error_test(
-            r#"
+            indoc!(
+                r#"
               {
                 ...1
               }
-            "#,
+            "#
+            ),
             "Expected fragment selection",
+            Location::new(2, 6),
         );
     }
 
     #[test]
     fn test_parse_argument() {
         parse_error_test(
-            r#"
+            indoc!(
+                r#"
               {
                 actor(id 1) {
                   name
                 }
               }
-            "#,
+            "#
+            ),
             "Expected colon",
+            Location::new(2, 12),
         );
         parse_error_test(
-            r#"
+            indoc!(
+                r#"
               {
                 actor() {
                   name
                 }
               }
-            "#,
+            "#
+            ),
             "Empty arguments",
+            Location::new(2, 9),
         );
         parse_error_test(
-            r#"
+            indoc!(
+                r#"
               {
                 actor(1) {
                   name
                 }
               }
-            "#,
+            "#
+            ),
             "Expected argument",
+            Location::new(2, 9),
         );
     }
 
     #[test]
     fn test_parse_selection_set() {
         parse_error_test(
-            r#"
+            indoc!(
+                r#"
               {
                 actorKatie { }
               }
-            "#,
+            "#
+            ),
             "Empty selection",
+            Location::new(2, 16),
         );
     }
 
     #[test]
     fn test_parse_value() {
         parse_error_test(
-            r#"
+            indoc!(
+                r#"
               {
                 actor(id: !) {
                   name
                 }
               }
-            "#,
+            "#
+            ),
             "Expected value",
+            Location::new(2, 13),
         );
     }
 }

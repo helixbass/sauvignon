@@ -68,8 +68,16 @@ impl PositionsTracker {
         *self.last_char.borrow_mut() = Some(new_last_char);
     }
 
+    pub fn last_char(&self) -> Location {
+        self.last_char.borrow().clone().unwrap()
+    }
+
+    pub fn maybe_last_token(&self) -> Option<Location> {
+        self.last_token_start.borrow().clone()
+    }
+
     fn last_token(&self) -> Location {
-        self.last_token_start.borrow().clone().unwrap()
+        self.maybe_last_token().unwrap()
     }
 
     pub fn receive_operation(&self) {
