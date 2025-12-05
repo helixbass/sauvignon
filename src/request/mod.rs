@@ -66,6 +66,13 @@ pub enum ExecutableDefinition {
 }
 
 impl ExecutableDefinition {
+    pub fn maybe_as_operation_definition(&self) -> Option<&OperationDefinition> {
+        match self {
+            Self::Operation(operation_definition) => Some(operation_definition),
+            _ => None,
+        }
+    }
+
     pub fn as_fragment_definition(&self) -> &FragmentDefinition {
         match self {
             Self::Fragment(fragment_definition) => fragment_definition,

@@ -1,7 +1,9 @@
 use std::collections::{HashMap, HashSet};
 use std::pin::Pin;
 
+use itertools::Itertools;
 use sqlx::{Pool, Postgres};
+use squalid::{OptionExt, _d};
 
 use crate::{
     builtin_types, fields_in_progress_new, CarverOrPopulator, DependencyType, DependencyValue,
@@ -75,8 +77,15 @@ impl Schema {
     }
 
     pub async fn request(&self, request: Request, db_pool: &Pool<Postgres>) -> Response {
+        let (validation_errors, validated_request) = self.validate(&request);
+        if !validation_errors.is_empty() {
+            return Response::new(
+                None,
+                validation_errors.into_iter().map(Into::into).collect(),
+            );
+        }
         let response = compute_response(self, &request, db_pool).await;
-        Response { data: response }
+        Response::new(Some(response), _d())
     }
 
     pub fn query_type(&self) -> &Type {
@@ -124,6 +133,14 @@ impl Schema {
         name: &str,
     ) -> HashSet<String> {
         self.all_concrete_type_names(&self.type_or_union_or_interface(name))
+    }
+
+    pub fn validate(&self, request: &Request) -> (Vec<ValidationError>, ValidatedRequest) {
+        let mut errors: Vec<ValidationError> = _d();
+
+        validate_operation_name_uniqueness(request).push_if(&mut errors);
+
+        return (errors, ValidatedRequest::new());
     }
 }
 
@@ -463,4 +480,44 @@ pub enum TypeOrUnionOrInterface<'a> {
     Type(&'a Type),
     Union(&'a Union),
     Interface(&'a Interface),
+}
+
+fn validate_operation_name_uniqueness(request: &Request) -> Option<ValidationError> {
+    let mut duplicates = request
+        .document
+        .definitions
+        .iter()
+        .filter_map(|definition| {
+            definition
+                .maybe_as_operation_definition()
+                .and_then(|operation_definition| operation_definition.name.as_ref())
+        })
+        .duplicates();
+
+    duplicates.next().map(|duplicate| {
+        let mut message = format!("Non-unique operation names: `{}`", duplicate);
+        while let Some(duplicate) = duplicates.next() {
+            message.push_str(&format!(", `{duplicate}`"));
+        }
+
+        ValidationError::new(message)
+    })
+}
+
+pub struct ValidationError {
+    pub message: String,
+}
+
+impl ValidationError {
+    pub fn new(message: String) -> Self {
+        Self { message }
+    }
+}
+
+pub struct ValidatedRequest {}
+
+impl ValidatedRequest {
+    pub fn new() -> Self {
+        Self {}
+    }
 }
