@@ -37,7 +37,7 @@ pub struct FieldPlan<'a> {
     pub name: String,
     pub field_type: &'a types::Field,
     pub selection_set_by_type: Option<HashMap<String, IndexMap<String, FieldPlan<'a>>>>,
-    pub arguments: &'a Option<IndexMap<String, Argument>>,
+    pub arguments: Option<IndexMap<String, Argument>>,
 }
 
 impl<'a> FieldPlan<'a> {
@@ -60,7 +60,12 @@ impl<'a> FieldPlan<'a> {
                     request,
                 )
             }),
-            arguments: &request_field.arguments,
+            arguments: request_field.arguments.as_ref().map(|arguments| {
+                arguments
+                    .into_iter()
+                    .map(|argument| (argument.name.clone(), argument.clone()))
+                    .collect()
+            }),
         }
     }
 }

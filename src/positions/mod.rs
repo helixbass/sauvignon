@@ -162,7 +162,12 @@ impl PositionsTracker {
             .find_currently_active_selection_set()
             .unwrap()
             .selections
-            .push(Selection::FragmentSpread);
+            .push(Selection::FragmentSpread(
+                self.start_of_upcoming_selection_inline_fragment_or_fragment_spread
+                    .borrow()
+                    .clone()
+                    .unwrap(),
+            ));
         *self
             .start_of_upcoming_selection_inline_fragment_or_fragment_spread
             .borrow_mut() = None;
@@ -316,6 +321,39 @@ impl PositionsTracker {
                     ) => maybe_field_nth_argument_location_selection_set(
                         field,
                         index,
+                        &fragment_definition.selection_set,
+                        &fragment_positions.selection_set,
+                    ),
+                    _ => unreachable!(),
+                }
+            })
+            .unwrap()
+    }
+
+    pub fn fragment_spread_location(
+        &self,
+        fragment_spread: &crate::request::FragmentSpread,
+        document: &crate::Document,
+    ) -> Location {
+        document
+            .definitions
+            .iter()
+            .zip(self.document.borrow().definitions.iter())
+            .find_map(|(definition, definition_positions)| {
+                match (definition, definition_positions) {
+                    (
+                        ExecutableDefinition::Operation(operation_definition),
+                        OperationOrFragment::Operation(operation_positions),
+                    ) => maybe_fragment_spread_location_selection_set(
+                        fragment_spread,
+                        &operation_definition.selection_set,
+                        &operation_positions.selection_set,
+                    ),
+                    (
+                        ExecutableDefinition::Fragment(fragment_definition),
+                        OperationOrFragment::Fragment(fragment_positions),
+                    ) => maybe_fragment_spread_location_selection_set(
+                        fragment_spread,
                         &fragment_definition.selection_set,
                         &fragment_positions.selection_set,
                     ),
@@ -568,7 +606,7 @@ enum SelectionSetStatus {
 #[derive(Debug)]
 enum Selection {
     Field(Field),
-    FragmentSpread,
+    FragmentSpread(Location),
     InlineFragment(InlineFragment),
 }
 
@@ -599,7 +637,7 @@ impl FindCurrentlyActiveSelectionSet for Selection {
             Self::InlineFragment(inline_fragment) => {
                 inline_fragment.find_currently_active_selection_set()
             }
-            Self::FragmentSpread => None,
+            Self::FragmentSpread(_) => None,
         }
     }
 }
@@ -695,7 +733,7 @@ fn maybe_inline_fragment_location_selection_set(
                         &inline_fragment_positions.selection_set,
                     )
                 }
-                (crate::Selection::FragmentSpread(_), Selection::FragmentSpread) => None,
+                (crate::Selection::FragmentSpread(_), Selection::FragmentSpread(_)) => None,
                 _ => unreachable!(),
             },
         )
@@ -734,7 +772,7 @@ fn maybe_field_location_selection_set(
                     &inline_fragment_current.selection_set,
                     &inline_fragment_positions.selection_set,
                 ),
-                (crate::Selection::FragmentSpread(_), Selection::FragmentSpread) => None,
+                (crate::Selection::FragmentSpread(_), Selection::FragmentSpread(_)) => None,
                 _ => unreachable!(),
             },
         )
@@ -774,7 +812,44 @@ fn maybe_field_nth_argument_location_selection_set(
                     &inline_fragment_current.selection_set,
                     &inline_fragment_positions.selection_set,
                 ),
-                (crate::Selection::FragmentSpread(_), Selection::FragmentSpread) => None,
+                (crate::Selection::FragmentSpread(_), Selection::FragmentSpread(_)) => None,
+                _ => unreachable!(),
+            },
+        )
+}
+
+fn maybe_fragment_spread_location_selection_set(
+    fragment_spread: &crate::request::FragmentSpread,
+    selection_set: &[crate::Selection],
+    selection_set_positions: &SelectionSet,
+) -> Option<Location> {
+    selection_set
+        .into_iter()
+        .zip(selection_set_positions.selections.iter())
+        .find_map(
+            |(selection, selection_positions)| match (selection, selection_positions) {
+                (crate::Selection::Field(field), Selection::Field(field_positions)) => {
+                    field.selection_set.as_ref().and_then(|selection_set| {
+                        maybe_fragment_spread_location_selection_set(
+                            fragment_spread,
+                            selection_set,
+                            field_positions.selection_set.as_ref().unwrap(),
+                        )
+                    })
+                }
+                (
+                    crate::Selection::InlineFragment(inline_fragment_current),
+                    Selection::InlineFragment(inline_fragment_positions),
+                ) => maybe_fragment_spread_location_selection_set(
+                    fragment_spread,
+                    &inline_fragment_current.selection_set,
+                    &inline_fragment_positions.selection_set,
+                ),
+                (
+                    crate::Selection::FragmentSpread(fragment_spread_current),
+                    Selection::FragmentSpread(fragment_spread_location),
+                ) => ptr::eq(fragment_spread, fragment_spread_current)
+                    .then(|| *fragment_spread_location),
                 _ => unreachable!(),
             },
         )

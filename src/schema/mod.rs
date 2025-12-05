@@ -503,3 +503,13 @@ pub enum TypeOrUnionOrInterface<'a> {
     Union(&'a Union),
     Interface(&'a Interface),
 }
+
+impl<'a> TypeOrUnionOrInterface<'a> {
+    pub fn name(&self) -> &str {
+        match self {
+            Self::Type(type_) => type_.name(),
+            Self::Union(union) => &union.name,
+            Self::Interface(interface) => &interface.name,
+        }
+    }
+}

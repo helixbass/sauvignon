@@ -25,6 +25,10 @@ impl Schema {
         if !errors.is_empty() {
             return errors.into();
         }
+        let errors = validate_no_duplicate_arguments(request, self);
+        if !errors.is_empty() {
+            return errors.into();
+        }
         let errors = validate_argument_names_exist(request, self);
         if !errors.is_empty() {
             return errors.into();
@@ -33,6 +37,14 @@ impl Schema {
             return vec![error].into();
         }
         let errors = validate_unused_fragments(request, self);
+        if !errors.is_empty() {
+            return errors.into();
+        }
+        let errors = validate_fragment_spreads_exist(request, self);
+        if !errors.is_empty() {
+            return errors.into();
+        }
+        let errors = validate_fragment_spreads_relevant_type(request, self);
         if !errors.is_empty() {
             return errors.into();
         }
@@ -794,6 +806,10 @@ fn no_selection_on_object_type_validation_error(
     )
 }
 
+fn validate_argument_names_exist(request: &Request, schema: &Schema) -> Vec<ValidationError> {
+    collect_typed(&ArgumentNamesExistCollector::default(), request, schema)
+}
+
 #[derive(Default)]
 struct ArgumentNamesExistCollector {}
 
@@ -813,12 +829,13 @@ impl CollectorTyped<ValidationError, Vec<ValidationError>> for ArgumentNamesExis
                     .as_ref()
                     .map(|arguments| {
                         arguments
-                            .keys()
+                            .into_iter()
                             .enumerate()
-                            .filter(|(_index, key)| !params.contains_key(&**key))
-                            .map(|(index, key)| {
+                            .unique_by(|(_, argument)| &argument.name)
+                            .filter(|(_, argument)| !params.contains_key(&argument.name))
+                            .map(|(index, argument)| {
                                 ValidationError::new(
-                                    format!("Non-existent argument: `{key}`"),
+                                    format!("Non-existent argument: `{}`", argument.name),
                                     PositionsTracker::current()
                                         .map(|positions_tracker| {
                                             positions_tracker.field_nth_argument_location(
@@ -840,8 +857,59 @@ impl CollectorTyped<ValidationError, Vec<ValidationError>> for ArgumentNamesExis
     }
 }
 
-fn validate_argument_names_exist(request: &Request, schema: &Schema) -> Vec<ValidationError> {
-    collect_typed(&ArgumentNamesExistCollector::default(), request, schema)
+fn validate_no_duplicate_arguments(request: &Request, schema: &Schema) -> Vec<ValidationError> {
+    collect_typed(&NoDuplicateArgumentsCollector::default(), request, schema)
+}
+
+#[derive(Default)]
+struct NoDuplicateArgumentsCollector {}
+
+impl CollectorTyped<ValidationError, Vec<ValidationError>> for NoDuplicateArgumentsCollector {
+    fn visit_field(
+        &self,
+        field: &SelectionField,
+        _type_field: TypeOrInterfaceField<'_>,
+        _schema: &Schema,
+        request: &Request,
+    ) -> (Vec<ValidationError>, bool) {
+        (
+            {
+                field
+                    .arguments
+                    .as_ref()
+                    .map(|arguments| {
+                        arguments
+                            .into_iter()
+                            .enumerate()
+                            .into_group_map_by(|(_, argument)| argument.name.clone())
+                            .into_iter()
+                            .filter(|(_, arguments)| arguments.len() > 1)
+                            .map(|(name, arguments)| {
+                                ValidationError::new(
+                                    format!("Duplicate argument: `{name}`"),
+                                    PositionsTracker::current()
+                                        .map(|positions_tracker| {
+                                            arguments
+                                                .into_iter()
+                                                .map(|(index, _)| {
+                                                    positions_tracker.field_nth_argument_location(
+                                                        field,
+                                                        index,
+                                                        &request.document,
+                                                    )
+                                                })
+                                                .collect()
+                                        })
+                                        .unwrap_or_default(),
+                                )
+                            })
+                            .collect()
+                    })
+                    .unwrap_or_default()
+            },
+            true,
+        )
+    }
 }
 
 fn validate_fragment_name_uniqueness(request: &Request) -> Option<ValidationError> {
@@ -932,6 +1000,109 @@ impl Collector<String, HashSet<String>> for FragmentNamesUsedCollector {
         _request: &Request,
     ) -> HashSet<String> {
         [fragment_spread.name.clone()].into()
+    }
+}
+
+fn validate_fragment_spreads_exist(request: &Request, schema: &Schema) -> Vec<ValidationError> {
+    collect_typed(&FragmentSpreadsExistCollector::default(), request, schema)
+}
+
+#[derive(Default)]
+struct FragmentSpreadsExistCollector {}
+
+impl CollectorTyped<ValidationError, Vec<ValidationError>> for FragmentSpreadsExistCollector {
+    fn visit_fragment_spread(
+        &self,
+        fragment_spread: &FragmentSpread,
+        _enclosing_type: TypeOrUnionOrInterface<'_>,
+        _schema: &Schema,
+        request: &Request,
+    ) -> Vec<ValidationError> {
+        (!request.document.definitions.iter().any(|definition| {
+            matches!(
+                definition,
+                ExecutableDefinition::Fragment(fragment_definition) if fragment_definition.name == fragment_spread.name
+            )
+        })).then(|| {
+            vec![
+                ValidationError::new(
+                    format!("Non-existent fragment: `{}`", fragment_spread.name),
+                    PositionsTracker::current()
+                        .map(|positions_tracker| {
+                            positions_tracker.fragment_spread_location(
+                                fragment_spread,
+                                &request.document,
+                            )
+                        })
+                        .into_iter()
+                        .collect(),
+                )
+            ]
+        }).unwrap_or_default()
+    }
+}
+
+fn validate_fragment_spreads_relevant_type(
+    request: &Request,
+    schema: &Schema,
+) -> Vec<ValidationError> {
+    collect_typed(
+        &FragmentSpreadsRelevantTypeCollector::default(),
+        request,
+        schema,
+    )
+}
+
+#[derive(Default)]
+struct FragmentSpreadsRelevantTypeCollector {}
+
+impl CollectorTyped<ValidationError, Vec<ValidationError>>
+    for FragmentSpreadsRelevantTypeCollector
+{
+    fn visit_fragment_spread(
+        &self,
+        fragment_spread: &FragmentSpread,
+        enclosing_type: TypeOrUnionOrInterface<'_>,
+        schema: &Schema,
+        request: &Request,
+    ) -> Vec<ValidationError> {
+        let fragment_definition = request
+            .document
+            .definitions
+            .iter()
+            .find_map(|definition| {
+                definition
+                    .maybe_as_fragment_definition()
+                    .filter(|fragment_definition| fragment_definition.name == fragment_spread.name)
+            })
+            .unwrap();
+
+        schema
+            .all_concrete_type_names(&enclosing_type)
+            .intersection(
+                &schema.all_concrete_type_names_for_type_or_union_or_interface(
+                    &fragment_definition.on,
+                ),
+            )
+            .next()
+            .is_none()
+            .then(|| {
+                vec![ValidationError::new(
+                    format!(
+                        "Fragment `{}` has no overlap with parent type `{}`",
+                        fragment_spread.name,
+                        enclosing_type.name()
+                    ),
+                    PositionsTracker::current()
+                        .map(|positions_tracker| {
+                            positions_tracker
+                                .fragment_spread_location(fragment_spread, &request.document)
+                        })
+                        .into_iter()
+                        .collect(),
+                )]
+            })
+            .unwrap_or_default()
     }
 }
 
