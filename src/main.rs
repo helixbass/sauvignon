@@ -4,7 +4,7 @@ use sauvignon::{
     json_from_response, ArgumentInternalDependencyResolver, CarverOrPopulator, ColumnGetter,
     ColumnGetterList, DependencyType, DependencyValue, Document, ExecutableDefinition,
     ExternalDependency, FieldResolver, FragmentDefinition, FragmentSpread, Id, IdPopulator,
-    IdPopulatorList, InternalDependency, InternalDependencyResolver,
+    IdPopulatorList, InlineFragment, InternalDependency, InternalDependencyResolver,
     LiteralValueInternalDependencyResolver, ObjectType, OperationDefinition, OperationType,
     Request, Schema, Selection, SelectionField, SelectionSet, StringColumnCarver, Type, TypeField,
     TypeFull,
@@ -210,6 +210,40 @@ async fn main() -> anyhow::Result<()> {
     let json = json_from_response(&response);
 
     println!("nameFragment response: {}", pretty_print_json(&json));
+
+    let request = Request::new(Document::new(vec![
+        // query {
+        //   actors {
+        //     ... {
+        //       name
+        //     }
+        //   }
+        // }
+        ExecutableDefinition::Operation(OperationDefinition::new(
+            OperationType::Query,
+            None,
+            SelectionSet::new(vec![Selection::Field(SelectionField::new(
+                None,
+                "actors".to_owned(),
+                Some(SelectionSet::new(vec![Selection::InlineFragment(
+                    InlineFragment::new(
+                        None,
+                        SelectionSet::new(vec![Selection::Field(SelectionField::new(
+                            None,
+                            "name".to_owned(),
+                            None,
+                        ))]),
+                    ),
+                )])),
+            ))]),
+        )),
+    ]));
+
+    let response = schema.request(request, &db_pool).await;
+
+    let json = json_from_response(&response);
+
+    println!("inline fragment response: {}", pretty_print_json(&json));
 
     Ok(())
 }

@@ -80,7 +80,9 @@ fn create_field_plans<'a>(
                 schema,
                 request,
             ),
-            _ => panic!(),
+            Selection::InlineFragment(inline_fragment) => {
+                create_field_plans(&inline_fragment.selection_set, type_, schema, request)
+            }
         })
         .collect()
 }
