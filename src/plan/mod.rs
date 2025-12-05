@@ -1,6 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use squalid::{OptionExt, _d};
+use tracing::instrument;
 
 use crate::{
     fields_in_progress_new, request, types, Argument, Directive, IndexMap, OperationType, Request,
@@ -12,6 +13,7 @@ pub struct QueryPlan<'a> {
 }
 
 impl<'a> QueryPlan<'a> {
+    #[instrument(level = "trace", skip(request, schema))]
     pub fn new(request: &'a Request, schema: &'a Schema) -> Self {
         let chosen_operation = request.chosen_operation();
         assert_eq!(chosen_operation.operation_type, OperationType::Query);
@@ -41,6 +43,7 @@ pub struct FieldPlan<'a> {
 }
 
 impl<'a> FieldPlan<'a> {
+    #[instrument(level = "trace", skip(request_field, field_type, schema, request))]
     pub fn new(
         request_field: &'a request::Field,
         field_type: &'a types::Field,
@@ -70,6 +73,7 @@ impl<'a> FieldPlan<'a> {
     }
 }
 
+#[instrument(level = "trace", skip(selection_set, schema, request))]
 fn create_field_plans<'a>(
     selection_set: &'a [Selection],
     all_current_concrete_type_names: &HashSet<String>,
@@ -153,6 +157,7 @@ fn should_skip(directives: &[Directive]) -> bool {
     false
 }
 
+#[instrument(level = "trace", skip(fragment_selection_set, schema, request))]
 fn get_overlapping_fragment_types<'a>(
     all_current_concrete_type_names: &HashSet<String>,
     fragment_selection_set: &'a [Selection],

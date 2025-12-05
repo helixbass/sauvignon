@@ -1,6 +1,7 @@
 use std::{iter::Peekable, vec};
 
 use squalid::_d;
+use tracing::{instrument, trace_span};
 
 use crate::{
     Argument, CharsEmitter, Directive, Document, ExecutableDefinition, FragmentDefinition,
@@ -78,6 +79,7 @@ where
         }
 
         loop {
+            let _ = trace_span!("Lexing token").entered();
             PositionsTracker::emit_token_pre_start();
             match self.request.next() {
                 Some(ch) => {
@@ -406,6 +408,7 @@ where
     })
 }
 
+#[instrument(level = "debug", skip(request))]
 pub fn parse(request: impl IntoIterator<Item = char>) -> ParseResult<Request> {
     parse_tokens(lex(request))
 }
@@ -426,6 +429,7 @@ pub fn parse_tokens(tokens: impl IntoIterator<Item = LexResult<Token>>) -> Parse
                             )
                         ) =>
                 {
+                    let _ = trace_span!("parse operation definition").entered();
                     PositionsTracker::emit_operation();
                     definitions.push({
                         let mut builder = OperationDefinitionBuilder::default();
@@ -512,6 +516,7 @@ pub fn parse_tokens(tokens: impl IntoIterator<Item = LexResult<Token>>) -> Parse
                     });
                 }
                 Some(Token::Name(name)) if name == "fragment" => {
+                    let _ = trace_span!("parse fragment definition").entered();
                     PositionsTracker::emit_fragment_definition();
                     definitions.push(ExecutableDefinition::Fragment(FragmentDefinition::new(
                         match tokens.next().transpose()? {
@@ -558,6 +563,7 @@ pub fn parse_tokens(tokens: impl IntoIterator<Item = LexResult<Token>>) -> Parse
     })))
 }
 
+#[instrument(level = "trace", skip(tokens))]
 fn parse_selection_set<TIterator>(tokens: &mut Peekable<TIterator>) -> ParseResult<Vec<Selection>>
 where
     TIterator: Iterator<Item = LexResult<Token>>,
@@ -575,6 +581,7 @@ where
                             &token,
                             Token::Name(name) if name != "on"
                         ) {
+                            let _ = trace_span!("parse fragment spread").entered();
                             PositionsTracker::emit_selection_fragment_spread();
                             Selection::FragmentSpread(FragmentSpread::new(
                                 token.into_name(),
@@ -590,6 +597,7 @@ where
                             &token,
                             Token::Name(_) | Token::LeftCurlyBracket | Token::AtSymbol
                         ) {
+                            let _ = trace_span!("parse inline fragment").entered();
                             PositionsTracker::emit_selection_inline_fragment();
                             Selection::InlineFragment(InlineFragment::new(
                                 if matches!(token, Token::Name(_)) {
@@ -634,6 +642,7 @@ where
                 });
             }
             Some(Token::Name(name)) => {
+                let _ = trace_span!("parse field").entered();
                 PositionsTracker::emit_selection_field();
                 ret.push(Selection::Field({
                     let mut builder = SelectionFieldBuilder::default();
@@ -669,6 +678,7 @@ where
     }
 }
 
+#[instrument(level = "trace", skip(tokens))]
 fn parse_value<TIterator>(tokens: &mut Peekable<TIterator>, is_const: bool) -> ParseResult<Value>
 where
     TIterator: Iterator<Item = LexResult<Token>>,
@@ -683,6 +693,7 @@ where
     })
 }
 
+#[instrument(level = "trace", skip(tokens))]
 fn parse_directives<TIterator>(
     tokens: &mut Peekable<TIterator>,
     is_const: bool,
@@ -700,6 +711,7 @@ where
     Ok(ret)
 }
 
+#[instrument(level = "trace", skip(tokens))]
 fn parse_directive<TIterator>(
     tokens: &mut Peekable<TIterator>,
     is_const: bool,
@@ -720,6 +732,7 @@ where
     ))
 }
 
+#[instrument(level = "trace", skip(tokens))]
 fn parse_arguments<TIterator>(
     tokens: &mut Peekable<TIterator>,
     is_const: bool,
@@ -732,6 +745,7 @@ where
     loop {
         match tokens.next().transpose()? {
             Some(Token::Name(name)) => {
+                let _ = trace_span!("parse argument").entered();
                 PositionsTracker::emit_argument();
                 ret.push(Argument::new(name, {
                     if !matches!(tokens.next().transpose()?, Some(Token::Colon)) {
