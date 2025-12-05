@@ -1,4 +1,4 @@
-use sqlx::postgres::PgPoolOptions;
+use sqlx::{postgres::PgPoolOptions, Pool, Postgres};
 
 use sauvignon::{
     json_from_response, ArgumentInternalDependencyResolver, CarverOrPopulator, ColumnGetter,
@@ -84,13 +84,7 @@ impl PopulatorList for ActorsAndDesignersPopulator {
     }
 }
 
-#[tokio::main]
-async fn main() -> anyhow::Result<()> {
-    let db_pool = PgPoolOptions::new()
-        .max_connections(5)
-        .connect("postgres://sauvignon:password@localhost/sauvignon")
-        .await?;
-
+async fn get_schema(db_pool: &Pool<Postgres>) -> anyhow::Result<Schema> {
     let has_name_interface = Interface::new(
         "HasName".to_owned(),
         vec![InterfaceField::new(
@@ -208,12 +202,12 @@ async fn main() -> anyhow::Result<()> {
     );
 
     let (katie_id,): (Id,) = sqlx::query_as("SELECT id FROM actors WHERE name = 'Katie Cassidy'")
-        .fetch_one(&db_pool)
+        .fetch_one(db_pool)
         .await
         .unwrap();
     let (proenza_schouler_id,): (Id,) =
         sqlx::query_as("SELECT id FROM designers WHERE name = 'Proenza Schouler'")
-            .fetch_one(&db_pool)
+            .fetch_one(db_pool)
             .await
             .unwrap();
 
@@ -379,275 +373,290 @@ async fn main() -> anyhow::Result<()> {
         vec![],
     ));
 
-    let schema = Schema::try_new(
+    Ok(Schema::try_new(
         vec![query_type, actor_type, designer_type],
         vec![actor_or_designer],
         vec![has_name_interface],
-    )?;
+    )?)
+}
 
-    let request = Request::new(Document::new(vec![
-        // query {
-        //   actorKatie {
-        //     name
-        //   }
-        // }
-        ExecutableDefinition::Operation(OperationDefinition::new(
-            OperationType::Query,
-            None,
-            SelectionSet::new(vec![Selection::Field(SelectionField::new(
-                None,
-                "actorKatie".to_owned(),
-                Some(SelectionSet::new(vec![Selection::Field(
-                    SelectionField::new(None, "name".to_owned(), None),
-                )])),
-            ))]),
-        )),
-    ]));
+async fn get_db_pool() -> anyhow::Result<Pool<Postgres>> {
+    let db_pool = PgPoolOptions::new()
+        .max_connections(5)
+        .connect("postgres://sauvignon:password@localhost/sauvignon")
+        .await?;
 
+    Ok(db_pool)
+}
+
+async fn request_test(request: Request, expected: &str) {
+    let db_pool = get_db_pool().await.unwrap();
+    let schema = get_schema(&db_pool).await.unwrap();
     let response = schema.request(request, &db_pool).await;
-
     let json = json_from_response(&response);
+    assert_eq!(pretty_print_json(&json), pretty_print_json(expected));
+}
 
-    println!("actorKatie response: {}", pretty_print_json(&json));
-
-    let request = Request::new(Document::new(vec![
-        // query {
-        //   actors {
-        //     name
-        //   }
-        // }
-        ExecutableDefinition::Operation(OperationDefinition::new(
-            OperationType::Query,
-            None,
-            SelectionSet::new(vec![Selection::Field(SelectionField::new(
+#[tokio::test]
+async fn test_object_field() {
+    request_test(
+        Request::new(Document::new(vec![
+            // query {
+            //   actorKatie {
+            //     name
+            //   }
+            // }
+            ExecutableDefinition::Operation(OperationDefinition::new(
+                OperationType::Query,
                 None,
-                "actors".to_owned(),
-                Some(SelectionSet::new(vec![Selection::Field(
-                    SelectionField::new(None, "name".to_owned(), None),
-                )])),
-            ))]),
-        )),
-    ]));
+                SelectionSet::new(vec![Selection::Field(SelectionField::new(
+                    None,
+                    "actorKatie".to_owned(),
+                    Some(SelectionSet::new(vec![Selection::Field(
+                        SelectionField::new(None, "name".to_owned(), None),
+                    )])),
+                ))]),
+            )),
+        ])),
+        r#"
+            {
+              "data": {
+                "actorKatie": {
+                  "name": "Katie Cassidy"
+                }
+              }
+            }
+        "#,
+    )
+    .await;
+}
 
-    let response = schema.request(request, &db_pool).await;
-
-    let json = json_from_response(&response);
-
-    println!("actors response: {}", pretty_print_json(&json));
-
-    let request = Request::new(Document::new(vec![
-        // query {
-        //   actors {
-        //     ...nameFragment
-        //   }
-        // }
-        //
-        // fragment nameFragment on Actor {
-        //   name
-        // }
-        ExecutableDefinition::Operation(OperationDefinition::new(
-            OperationType::Query,
-            None,
-            SelectionSet::new(vec![Selection::Field(SelectionField::new(
+// TODO: is order guaranteed in the DB results?
+// could add eg an explicit order by ID to the ID's getter?
+#[tokio::test]
+async fn test_list() {
+    request_test(
+        Request::new(Document::new(vec![
+            // query {
+            //   actors {
+            //     name
+            //   }
+            // }
+            ExecutableDefinition::Operation(OperationDefinition::new(
+                OperationType::Query,
                 None,
-                "actors".to_owned(),
-                Some(SelectionSet::new(vec![Selection::FragmentSpread(
-                    FragmentSpread::new("nameFragment".to_owned()),
-                )])),
-            ))]),
-        )),
-        ExecutableDefinition::Fragment(FragmentDefinition::new(
-            "nameFragment".to_owned(),
-            "Actor".to_owned(),
-            SelectionSet::new(vec![Selection::Field(SelectionField::new(
-                None,
-                "name".to_owned(),
-                None,
-            ))]),
-        )),
-    ]));
-
-    let response = schema.request(request, &db_pool).await;
-
-    let json = json_from_response(&response);
-
-    println!("nameFragment response: {}", pretty_print_json(&json));
-
-    let request = Request::new(Document::new(vec![
-        // query {
-        //   actors {
-        //     ... {
-        //       name
-        //     }
-        //   }
-        // }
-        ExecutableDefinition::Operation(OperationDefinition::new(
-            OperationType::Query,
-            None,
-            SelectionSet::new(vec![Selection::Field(SelectionField::new(
-                None,
-                "actors".to_owned(),
-                Some(SelectionSet::new(vec![Selection::InlineFragment(
-                    InlineFragment::new(
-                        None,
-                        SelectionSet::new(vec![Selection::Field(SelectionField::new(
-                            None,
-                            "name".to_owned(),
-                            None,
-                        ))]),
-                    ),
-                )])),
-            ))]),
-        )),
-    ]));
-
-    let response = schema.request(request, &db_pool).await;
-
-    let json = json_from_response(&response);
-
-    println!("inline fragment response: {}", pretty_print_json(&json));
-
-    let request = Request::new(Document::new(vec![
-        // query {
-        //   certainActorOrDesigner {
-        //     ... on Actor {
-        //       expression
-        //     }
-        //     ... on Designer {
-        //       name
-        //     }
-        //   }
-        // }
-        ExecutableDefinition::Operation(OperationDefinition::new(
-            OperationType::Query,
-            None,
-            SelectionSet::new(vec![Selection::Field(SelectionField::new(
-                None,
-                "certainActorOrDesigner".to_owned(),
-                Some(SelectionSet::new(vec![
-                    Selection::InlineFragment(InlineFragment::new(
-                        Some("Actor".to_owned()),
-                        SelectionSet::new(vec![Selection::Field(SelectionField::new(
-                            None,
-                            "expression".to_owned(),
-                            None,
-                        ))]),
-                    )),
-                    Selection::InlineFragment(InlineFragment::new(
-                        Some("Designer".to_owned()),
-                        SelectionSet::new(vec![Selection::Field(SelectionField::new(
-                            None,
-                            "name".to_owned(),
-                            None,
-                        ))]),
-                    )),
-                ])),
-            ))]),
-        )),
-    ]));
-
-    let response = schema.request(request, &db_pool).await;
-
-    let json = json_from_response(&response);
-
-    println!("union response: {}", pretty_print_json(&json));
-
-    let request = Request::new(Document::new(vec![
-        // query {
-        //   actors {
-        //     name
-        //     expression
-        //     favoriteActorOrDesigner {
-        //       ... on Actor {
-        //         expression
-        //       }
-        //       ... on Designer {
-        //         name
-        //       }
-        //     }
-        //   }
-        // }
-        ExecutableDefinition::Operation(OperationDefinition::new(
-            OperationType::Query,
-            None,
-            SelectionSet::new(vec![Selection::Field(SelectionField::new(
-                None,
-                "actors".to_owned(),
-                Some(SelectionSet::new(vec![
-                    Selection::Field(SelectionField::new(None, "name".to_owned(), None)),
-                    Selection::Field(SelectionField::new(None, "expression".to_owned(), None)),
-                    Selection::Field(SelectionField::new(
-                        None,
-                        "favoriteActorOrDesigner".to_owned(),
-                        Some(SelectionSet::new(vec![
-                            Selection::InlineFragment(InlineFragment::new(
-                                Some("Actor".to_owned()),
-                                SelectionSet::new(vec![Selection::Field(SelectionField::new(
-                                    None,
-                                    "expression".to_owned(),
-                                    None,
-                                ))]),
-                            )),
-                            Selection::InlineFragment(InlineFragment::new(
-                                Some("Designer".to_owned()),
-                                SelectionSet::new(vec![Selection::Field(SelectionField::new(
-                                    None,
-                                    "name".to_owned(),
-                                    None,
-                                ))]),
-                            )),
-                        ])),
-                    )),
-                ])),
-            ))]),
-        )),
-    ]));
-
-    let response = schema.request(request, &db_pool).await;
-
-    let json = json_from_response(&response);
-
-    println!(
-        "favorite actor or designer response: {}",
-        pretty_print_json(&json)
-    );
-
-    let request = Request::new(Document::new(vec![
-        // query {
-        //   actors {
-        //     favoriteActorOrDesigner {
-        //       ... on HasName {
-        //         name
-        //       }
-        //       ... on Actor {
-        //         expression
-        //       }
-        //     }
-        //   }
-        //   bestHasName {
-        //     name
-        //   }
-        // }
-        ExecutableDefinition::Operation(OperationDefinition::new(
-            OperationType::Query,
-            None,
-            SelectionSet::new(vec![
-                Selection::Field(SelectionField::new(
+                SelectionSet::new(vec![Selection::Field(SelectionField::new(
                     None,
                     "actors".to_owned(),
                     Some(SelectionSet::new(vec![Selection::Field(
-                        SelectionField::new(
+                        SelectionField::new(None, "name".to_owned(), None),
+                    )])),
+                ))]),
+            )),
+        ])),
+        r#"
+            {
+              "data": {
+                "actors": [
+                  {
+                    "name": "Katie Cassidy"
+                  },
+                  {
+                    "name": "Jessica Szohr"
+                  }
+                ]
+              }
+            }
+        "#,
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn test_named_fragment() {
+    request_test(
+        Request::new(Document::new(vec![
+            // query {
+            //   actors {
+            //     ...nameFragment
+            //   }
+            // }
+            //
+            // fragment nameFragment on Actor {
+            //   name
+            // }
+            ExecutableDefinition::Operation(OperationDefinition::new(
+                OperationType::Query,
+                None,
+                SelectionSet::new(vec![Selection::Field(SelectionField::new(
+                    None,
+                    "actors".to_owned(),
+                    Some(SelectionSet::new(vec![Selection::FragmentSpread(
+                        FragmentSpread::new("nameFragment".to_owned()),
+                    )])),
+                ))]),
+            )),
+            ExecutableDefinition::Fragment(FragmentDefinition::new(
+                "nameFragment".to_owned(),
+                "Actor".to_owned(),
+                SelectionSet::new(vec![Selection::Field(SelectionField::new(
+                    None,
+                    "name".to_owned(),
+                    None,
+                ))]),
+            )),
+        ])),
+        r#"
+            {
+              "data": {
+                "actors": [
+                  {
+                    "name": "Katie Cassidy"
+                  },
+                  {
+                    "name": "Jessica Szohr"
+                  }
+                ]
+              }
+            }
+        "#,
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn test_inline_fragment() {
+    request_test(
+        Request::new(Document::new(vec![
+            // query {
+            //   actors {
+            //     ... {
+            //       name
+            //     }
+            //   }
+            // }
+            ExecutableDefinition::Operation(OperationDefinition::new(
+                OperationType::Query,
+                None,
+                SelectionSet::new(vec![Selection::Field(SelectionField::new(
+                    None,
+                    "actors".to_owned(),
+                    Some(SelectionSet::new(vec![Selection::InlineFragment(
+                        InlineFragment::new(
+                            None,
+                            SelectionSet::new(vec![Selection::Field(SelectionField::new(
+                                None,
+                                "name".to_owned(),
+                                None,
+                            ))]),
+                        ),
+                    )])),
+                ))]),
+            )),
+        ])),
+        r#"
+            {
+              "data": {
+                "actors": [
+                  {
+                    "name": "Katie Cassidy"
+                  },
+                  {
+                    "name": "Jessica Szohr"
+                  }
+                ]
+              }
+            }
+        "#,
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn test_union() {
+    request_test(
+        Request::new(Document::new(vec![
+            // query {
+            //   certainActorOrDesigner {
+            //     ... on Actor {
+            //       expression
+            //     }
+            //     ... on Designer {
+            //       name
+            //     }
+            //   }
+            // }
+            ExecutableDefinition::Operation(OperationDefinition::new(
+                OperationType::Query,
+                None,
+                SelectionSet::new(vec![Selection::Field(SelectionField::new(
+                    None,
+                    "certainActorOrDesigner".to_owned(),
+                    Some(SelectionSet::new(vec![
+                        Selection::InlineFragment(InlineFragment::new(
+                            Some("Actor".to_owned()),
+                            SelectionSet::new(vec![Selection::Field(SelectionField::new(
+                                None,
+                                "expression".to_owned(),
+                                None,
+                            ))]),
+                        )),
+                        Selection::InlineFragment(InlineFragment::new(
+                            Some("Designer".to_owned()),
+                            SelectionSet::new(vec![Selection::Field(SelectionField::new(
+                                None,
+                                "name".to_owned(),
+                                None,
+                            ))]),
+                        )),
+                    ])),
+                ))]),
+            )),
+        ])),
+        r#"
+            {
+              "data": {
+                "certainActorOrDesigner": {
+                  "name": "Proenza Schouler"
+                }
+              }
+            }
+        "#,
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn test_union_field() {
+    request_test(
+        Request::new(Document::new(vec![
+            // query {
+            //   actors {
+            //     name
+            //     expression
+            //     favoriteActorOrDesigner {
+            //       ... on Actor {
+            //         expression
+            //       }
+            //       ... on Designer {
+            //         name
+            //       }
+            //     }
+            //   }
+            // }
+            ExecutableDefinition::Operation(OperationDefinition::new(
+                OperationType::Query,
+                None,
+                SelectionSet::new(vec![Selection::Field(SelectionField::new(
+                    None,
+                    "actors".to_owned(),
+                    Some(SelectionSet::new(vec![
+                        Selection::Field(SelectionField::new(None, "name".to_owned(), None)),
+                        Selection::Field(SelectionField::new(None, "expression".to_owned(), None)),
+                        Selection::Field(SelectionField::new(
                             None,
                             "favoriteActorOrDesigner".to_owned(),
                             Some(SelectionSet::new(vec![
-                                Selection::InlineFragment(InlineFragment::new(
-                                    Some("HasName".to_owned()),
-                                    SelectionSet::new(vec![Selection::Field(SelectionField::new(
-                                        None,
-                                        "name".to_owned(),
-                                        None,
-                                    ))]),
-                                )),
                                 Selection::InlineFragment(InlineFragment::new(
                                     Some("Actor".to_owned()),
                                     SelectionSet::new(vec![Selection::Field(SelectionField::new(
@@ -656,85 +665,216 @@ async fn main() -> anyhow::Result<()> {
                                         None,
                                     ))]),
                                 )),
+                                Selection::InlineFragment(InlineFragment::new(
+                                    Some("Designer".to_owned()),
+                                    SelectionSet::new(vec![Selection::Field(SelectionField::new(
+                                        None,
+                                        "name".to_owned(),
+                                        None,
+                                    ))]),
+                                )),
                             ])),
-                        ),
-                    )])),
-                )),
-                Selection::Field(SelectionField::new(
-                    None,
-                    "bestHasName".to_owned(),
-                    Some(SelectionSet::new(vec![Selection::Field(
-                        SelectionField::new(None, "name".to_owned(), None),
-                    )])),
-                )),
-            ]),
-        )),
-    ]));
+                        )),
+                    ])),
+                ))]),
+            )),
+        ])),
+        r#"
+            {
+              "data": {
+                "actors": [
+                  {
+                    "expression": "no Serena you can't have the key",
+                    "favoriteActorOrDesigner": {
+                      "name": "Proenza Schouler"
+                    },
+                    "name": "Katie Cassidy"
+                  },
+                  {
+                    "expression": "Dan where did you go I don't like you",
+                    "favoriteActorOrDesigner": {
+                      "expression": "no Serena you can't have the key"
+                    },
+                    "name": "Jessica Szohr"
+                  }
+                ]
+              }
+            }
+        "#,
+    )
+    .await;
+}
 
-    let response = schema.request(request, &db_pool).await;
-
-    let json = json_from_response(&response);
-
-    println!("interface response: {}", pretty_print_json(&json));
-
-    let request = Request::new(Document::new(vec![
-        // query {
-        //   actorsAndDesigners {
-        //     ... on Actor {
-        //       __typename
-        //       expression
-        //     }
-        //     ... on Designer {
-        //       __typename
-        //       name
-        //     }
-        //   }
-        // }
-        ExecutableDefinition::Operation(OperationDefinition::new(
-            OperationType::Query,
-            None,
-            SelectionSet::new(vec![Selection::Field(SelectionField::new(
+#[tokio::test]
+async fn test_interface() {
+    request_test(
+        Request::new(Document::new(vec![
+            // query {
+            //   actors {
+            //     favoriteActorOrDesigner {
+            //       ... on HasName {
+            //         name
+            //       }
+            //       ... on Actor {
+            //         expression
+            //       }
+            //     }
+            //   }
+            //   bestHasName {
+            //     name
+            //   }
+            // }
+            ExecutableDefinition::Operation(OperationDefinition::new(
+                OperationType::Query,
                 None,
-                "actorsAndDesigners".to_owned(),
-                Some(SelectionSet::new(vec![
-                    Selection::InlineFragment(InlineFragment::new(
-                        Some("Actor".to_owned()),
-                        SelectionSet::new(vec![
-                            Selection::Field(SelectionField::new(
+                SelectionSet::new(vec![
+                    Selection::Field(SelectionField::new(
+                        None,
+                        "actors".to_owned(),
+                        Some(SelectionSet::new(vec![Selection::Field(
+                            SelectionField::new(
                                 None,
-                                "__typename".to_owned(),
-                                None,
-                            )),
-                            Selection::Field(SelectionField::new(
-                                None,
-                                "expression".to_owned(),
-                                None,
-                            )),
-                        ]),
+                                "favoriteActorOrDesigner".to_owned(),
+                                Some(SelectionSet::new(vec![
+                                    Selection::InlineFragment(InlineFragment::new(
+                                        Some("HasName".to_owned()),
+                                        SelectionSet::new(vec![Selection::Field(
+                                            SelectionField::new(None, "name".to_owned(), None),
+                                        )]),
+                                    )),
+                                    Selection::InlineFragment(InlineFragment::new(
+                                        Some("Actor".to_owned()),
+                                        SelectionSet::new(vec![Selection::Field(
+                                            SelectionField::new(
+                                                None,
+                                                "expression".to_owned(),
+                                                None,
+                                            ),
+                                        )]),
+                                    )),
+                                ])),
+                            ),
+                        )])),
                     )),
-                    Selection::InlineFragment(InlineFragment::new(
-                        Some("Designer".to_owned()),
-                        SelectionSet::new(vec![
-                            Selection::Field(SelectionField::new(
-                                None,
-                                "__typename".to_owned(),
-                                None,
-                            )),
-                            Selection::Field(SelectionField::new(None, "name".to_owned(), None)),
-                        ]),
+                    Selection::Field(SelectionField::new(
+                        None,
+                        "bestHasName".to_owned(),
+                        Some(SelectionSet::new(vec![Selection::Field(
+                            SelectionField::new(None, "name".to_owned(), None),
+                        )])),
                     )),
-                ])),
-            ))]),
-        )),
-    ]));
+                ]),
+            )),
+        ])),
+        r#"
+            {
+              "data": {
+                "actors": [
+                  {
+                    "favoriteActorOrDesigner": {
+                      "name": "Proenza Schouler"
+                    }
+                  },
+                  {
+                    "favoriteActorOrDesigner": {
+                      "expression": "no Serena you can't have the key",
+                      "name": "Katie Cassidy"
+                    }
+                  }
+                ],
+                "bestHasName": {
+                  "name": "Katie Cassidy"
+                }
+              }
+            }
+        "#,
+    )
+    .await;
+}
 
-    let response = schema.request(request, &db_pool).await;
-
-    let json = json_from_response(&response);
-
-    println!("list union response: {}", pretty_print_json(&json));
-
-    Ok(())
+#[tokio::test]
+async fn test_list_union_and_typename() {
+    request_test(
+        Request::new(Document::new(vec![
+            // query {
+            //   actorsAndDesigners {
+            //     ... on Actor {
+            //       __typename
+            //       expression
+            //     }
+            //     ... on Designer {
+            //       __typename
+            //       name
+            //     }
+            //   }
+            // }
+            ExecutableDefinition::Operation(OperationDefinition::new(
+                OperationType::Query,
+                None,
+                SelectionSet::new(vec![Selection::Field(SelectionField::new(
+                    None,
+                    "actorsAndDesigners".to_owned(),
+                    Some(SelectionSet::new(vec![
+                        Selection::InlineFragment(InlineFragment::new(
+                            Some("Actor".to_owned()),
+                            SelectionSet::new(vec![
+                                Selection::Field(SelectionField::new(
+                                    None,
+                                    "__typename".to_owned(),
+                                    None,
+                                )),
+                                Selection::Field(SelectionField::new(
+                                    None,
+                                    "expression".to_owned(),
+                                    None,
+                                )),
+                            ]),
+                        )),
+                        Selection::InlineFragment(InlineFragment::new(
+                            Some("Designer".to_owned()),
+                            SelectionSet::new(vec![
+                                Selection::Field(SelectionField::new(
+                                    None,
+                                    "__typename".to_owned(),
+                                    None,
+                                )),
+                                Selection::Field(SelectionField::new(
+                                    None,
+                                    "name".to_owned(),
+                                    None,
+                                )),
+                            ]),
+                        )),
+                    ])),
+                ))]),
+            )),
+        ])),
+        r#"
+            {
+              "data": {
+                "actorsAndDesigners": [
+                  {
+                    "__typename": "Actor",
+                    "expression": "no Serena you can't have the key"
+                  },
+                  {
+                    "__typename": "Actor",
+                    "expression": "Dan where did you go I don't like you"
+                  },
+                  {
+                    "__typename": "Designer",
+                    "name": "Proenza Schouler"
+                  },
+                  {
+                    "__typename": "Designer",
+                    "name": "Ralph Lauren"
+                  }
+                ]
+              }
+            }
+        "#,
+    )
+    .await;
 }
 
 fn pretty_print_json(json: &str) -> String {
