@@ -1,6 +1,10 @@
 use std::collections::HashMap;
 
-use crate::{FieldResolver, IndexMap, OperationType};
+use crate::{
+    CarverOrPopulator, DependencyType, DependencyValue, FieldResolver, IndexMap,
+    InternalDependency, InternalDependencyResolver, LiteralValueInternalDependencyResolver,
+    OperationType, StringCarver,
+};
 
 pub enum TypeFull {
     Type(String),
@@ -58,6 +62,7 @@ pub struct ObjectType {
     // TODO: are the fields on a type ordered?
     pub fields: IndexMap<String, Field>,
     pub implements: Vec<String>,
+    pub typename_field: Field,
 }
 
 impl ObjectType {
@@ -67,6 +72,8 @@ impl ObjectType {
         is_top_level_type: Option<OperationType>,
         implements: Vec<String>,
     ) -> Self {
+        let typename_field = Field::new_typename(name.clone());
+
         Self {
             name,
             fields: fields
@@ -75,11 +82,19 @@ impl ObjectType {
                 .collect(),
             is_top_level_type,
             implements,
+            typename_field,
         }
     }
 
     pub fn is_query_type(&self) -> bool {
         matches!(self.is_top_level_type, Some(OperationType::Query))
+    }
+
+    pub fn field(&self, name: &str) -> &Field {
+        match name {
+            "__typename" => &self.typename_field,
+            name => &self.fields[name],
+        }
     }
 }
 
@@ -139,6 +154,24 @@ impl Field {
             name,
             type_,
             resolver,
+        }
+    }
+
+    pub fn new_typename(type_name: String) -> Self {
+        Self {
+            name: "__typename".to_owned(),
+            type_: TypeFull::Type("String".to_owned()),
+            resolver: FieldResolver::new(
+                vec![],
+                vec![InternalDependency::new(
+                    "__typename".to_owned(),
+                    DependencyType::String,
+                    InternalDependencyResolver::LiteralValue(
+                        LiteralValueInternalDependencyResolver(DependencyValue::String(type_name)),
+                    ),
+                )],
+                CarverOrPopulator::Carver(Box::new(StringCarver::new("__typename".to_owned()))),
+            ),
         }
     }
 }

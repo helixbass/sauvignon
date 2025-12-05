@@ -7,8 +7,8 @@ use sauvignon::{
     FragmentSpread, Id, IdPopulatorList, InlineFragment, Interface, InterfaceField,
     InternalDependency, InternalDependencyResolver, InternalDependencyValues,
     LiteralValueInternalDependencyResolver, ObjectType, OperationDefinition, OperationType,
-    PopulatorList, Request, Schema, Selection, SelectionField, SelectionSet, StringColumnCarver,
-    Type, TypeDepluralizer, TypeField, TypeFull, Union, UnionOrInterfaceTypePopulatorList,
+    PopulatorList, Request, Schema, Selection, SelectionField, SelectionSet, StringCarver, Type,
+    TypeDepluralizer, TypeField, TypeFull, Union, UnionOrInterfaceTypePopulatorList,
     ValuePopulator, ValuesPopulator,
 };
 
@@ -124,7 +124,7 @@ async fn main() -> anyhow::Result<()> {
                             "name".to_owned(),
                         )),
                     )],
-                    CarverOrPopulator::Carver(Box::new(StringColumnCarver::new("name".to_owned()))),
+                    CarverOrPopulator::Carver(Box::new(StringCarver::new("name".to_owned()))),
                 ),
             ),
             TypeField::new(
@@ -140,9 +140,7 @@ async fn main() -> anyhow::Result<()> {
                             "expression".to_owned(),
                         )),
                     )],
-                    CarverOrPopulator::Carver(Box::new(StringColumnCarver::new(
-                        "expression".to_owned(),
-                    ))),
+                    CarverOrPopulator::Carver(Box::new(StringCarver::new("expression".to_owned()))),
                 ),
             ),
             TypeField::new(
@@ -197,7 +195,7 @@ async fn main() -> anyhow::Result<()> {
                         "name".to_owned(),
                     )),
                 )],
-                CarverOrPopulator::Carver(Box::new(StringColumnCarver::new("name".to_owned()))),
+                CarverOrPopulator::Carver(Box::new(StringCarver::new("name".to_owned()))),
             ),
         )],
         None,
@@ -683,9 +681,11 @@ async fn main() -> anyhow::Result<()> {
         // query {
         //   actorsAndDesigners {
         //     ... on Actor {
+        //       __typename
         //       expression
         //     }
         //     ... on Designer {
+        //       __typename
         //       name
         //     }
         //   }
@@ -699,19 +699,29 @@ async fn main() -> anyhow::Result<()> {
                 Some(SelectionSet::new(vec![
                     Selection::InlineFragment(InlineFragment::new(
                         Some("Actor".to_owned()),
-                        SelectionSet::new(vec![Selection::Field(SelectionField::new(
-                            None,
-                            "expression".to_owned(),
-                            None,
-                        ))]),
+                        SelectionSet::new(vec![
+                            Selection::Field(SelectionField::new(
+                                None,
+                                "__typename".to_owned(),
+                                None,
+                            )),
+                            Selection::Field(SelectionField::new(
+                                None,
+                                "expression".to_owned(),
+                                None,
+                            )),
+                        ]),
                     )),
                     Selection::InlineFragment(InlineFragment::new(
                         Some("Designer".to_owned()),
-                        SelectionSet::new(vec![Selection::Field(SelectionField::new(
-                            None,
-                            "name".to_owned(),
-                            None,
-                        ))]),
+                        SelectionSet::new(vec![
+                            Selection::Field(SelectionField::new(
+                                None,
+                                "__typename".to_owned(),
+                                None,
+                            )),
+                            Selection::Field(SelectionField::new(None, "name".to_owned(), None)),
+                        ]),
                     )),
                 ])),
             ))]),

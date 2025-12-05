@@ -29,7 +29,7 @@ pub use crate::request::{
 };
 pub use crate::resolve::{
     Carver, CarverOrPopulator, FieldResolver, IdPopulatorList, Populator, PopulatorList,
-    StringColumnCarver, TypeDepluralizer, UnionOrInterfaceTypePopulator,
+    StringCarver, TypeDepluralizer, UnionOrInterfaceTypePopulator,
     UnionOrInterfaceTypePopulatorList, ValuePopulator, ValuesPopulator,
 };
 pub use crate::response::{
