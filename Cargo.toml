@@ -19,3 +19,7 @@ illicit = "1.1.2"
 indoc = "2.0.7"
 rkyv = "0.8.12"
 tracing = "0.1.43"
+
+[dev-dependencies]
+tracing-chrome = "0.7.2"
+tracing-subscriber = "0.3.22"
