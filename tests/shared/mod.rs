@@ -88,6 +88,7 @@ pub async fn get_schema(db_pool: &Pool<Postgres>) -> anyhow::Result<Schema> {
         .fields(vec![InterfaceField::new(
             "name".to_owned(),
             TypeFull::Type("String".to_owned()),
+            [],
         )])
         .build()
         .unwrap();

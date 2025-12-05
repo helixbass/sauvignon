@@ -37,7 +37,7 @@ pub struct FieldPlan<'a> {
     pub name: String,
     pub field_type: &'a types::Field,
     pub selection_set_by_type: Option<HashMap<String, IndexMap<String, FieldPlan<'a>>>>,
-    pub arguments: &'a Option<HashMap<String, Argument>>,
+    pub arguments: &'a Option<IndexMap<String, Argument>>,
 }
 
 impl<'a> FieldPlan<'a> {

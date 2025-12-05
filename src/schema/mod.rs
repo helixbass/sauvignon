@@ -6,11 +6,11 @@ use squalid::{OptionExt, _d};
 
 use crate::{
     builtin_types, fields_in_progress_new, parse, CarverOrPopulator, DependencyType,
-    DependencyValue, Error, ExternalDependencyValues, FieldPlan, FieldsInProgress, Id, InProgress,
-    InProgressRecursing, InProgressRecursingList, IndexMap, Interface, InternalDependencyResolver,
-    InternalDependencyValues, OperationType, Populator, PositionsTracker, QueryPlan, Request,
-    Response, ResponseValue, ResponseValueOrInProgress, Result as SauvignonResult, Type,
-    TypeInterface, Union, Value,
+    DependencyValue, DummyUnionTypenameField, Error, ExternalDependencyValues, FieldPlan,
+    FieldsInProgress, Id, InProgress, InProgressRecursing, InProgressRecursingList, IndexMap,
+    Interface, InternalDependencyResolver, InternalDependencyValues, OperationType, Populator,
+    PositionsTracker, QueryPlan, Request, Response, ResponseValue, ResponseValueOrInProgress,
+    Result as SauvignonResult, Type, TypeInterface, Union, Value,
 };
 
 mod validation;
@@ -24,6 +24,7 @@ pub struct Schema {
     pub unions: HashMap<String, Union>,
     pub interfaces: HashMap<String, Interface>,
     pub interface_all_concrete_types: HashMap<String, HashSet<String>>,
+    pub dummy_union_typename_field: DummyUnionTypenameField,
 }
 
 impl Schema {
@@ -77,6 +78,7 @@ impl Schema {
                 .map(|interface| (interface.name.clone(), interface))
                 .collect(),
             interface_all_concrete_types,
+            dummy_union_typename_field: _d(),
         })
     }
 

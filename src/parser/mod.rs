@@ -538,6 +538,7 @@ where
                                 loop {
                                     match tokens.next() {
                                         Some(Token::Name(name)) => {
+                                            PositionsTracker::emit_argument();
                                             arguments.push(Argument::new(name, {
                                                 if !matches!(tokens.next(), Some(Token::Colon)) {
                                                     panic!("Expected colon");

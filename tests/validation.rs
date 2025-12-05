@@ -219,6 +219,9 @@ async fn test_type_names_exist() {
               actorKatie {
                 ... on NonExistent {
                   name
+                  ... on OtherNonExistent {
+                    expression
+                  }
                 }
               }
             }
@@ -241,10 +244,19 @@ async fn test_type_names_exist() {
                   ]
                 },
                 {
+                  "message": "Unknown type name: `OtherNonExistent`",
+                  "locations": [
+                    {
+                      "line": 5,
+                      "column": 7
+                    }
+                  ]
+                },
+                {
                   "message": "Unknown type name: `SomethingNonExistent`",
                   "locations": [
                     {
-                      "line": 9,
+                      "line": 12,
                       "column": 1
                     }
                   ]
@@ -473,6 +485,94 @@ async fn test_fragment_on_scalar_type() {
                     {
                       "line": 3,
                       "column": 5
+                    }
+                  ]
+                }
+              ]
+            }
+        "#,
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn test_unused_fragment() {
+    validation_test(
+        indoc!(
+            r#"
+            {
+              actorKatie {
+                name
+              }
+            }
+
+            fragment wheeFragment on Actor {
+              expression
+            }
+
+            fragment whoaFragment on Actor {
+                name
+            }
+        "#
+        ),
+        r#"
+            {
+              "errors": [
+                {
+                  "message": "Unused fragment: `wheeFragment`",
+                  "locations": [
+                    {
+                      "line": 7,
+                      "column": 1
+                    }
+                  ]
+                },
+                {
+                  "message": "Unused fragment: `whoaFragment`",
+                  "locations": [
+                    {
+                      "line": 11,
+                      "column": 1
+                    }
+                  ]
+                }
+              ]
+            }
+        "#,
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn test_arguments_exist() {
+    validation_test(
+        indoc!(
+            r#"
+            {
+              actorKatie(foo: 123, bar: "whee") {
+                name
+              }
+            }
+        "#
+        ),
+        r#"
+            {
+              "errors": [
+                {
+                  "message": "Non-existent argument: `foo`",
+                  "locations": [
+                    {
+                      "line": 2,
+                      "column": 14
+                    }
+                  ]
+                },
+                {
+                  "message": "Non-existent argument: `bar`",
+                  "locations": [
+                    {
+                      "line": 2,
+                      "column": 24
                     }
                   ]
                 }

@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use derive_builder::Builder;
 
-use crate::OperationType;
+use crate::{IndexMap, OperationType};
 
 pub struct Request {
     pub document: Document,
@@ -127,7 +127,7 @@ pub struct Field {
     #[builder(setter(strip_option), default)]
     pub selection_set: Option<Vec<Selection>>,
     #[builder(setter(custom), default)]
-    pub arguments: Option<HashMap<String, Argument>>,
+    pub arguments: Option<IndexMap<String, Argument>>,
 }
 
 impl FieldBuilder {
