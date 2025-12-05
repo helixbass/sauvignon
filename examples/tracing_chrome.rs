@@ -65,4 +65,48 @@ async fn main() {
         &db_pool,
     )
     .await;
+
+    run_request(
+        r#"
+            {
+              actorsAndDesigners {
+                ... on Actor {
+                  __typename
+                  expression
+                }
+                ... on Designer {
+                  __typename
+                  name
+                }
+              }
+            }
+        "#,
+        r#"
+            {
+              "data": {
+                "actorsAndDesigners": [
+                  {
+                    "__typename": "Actor",
+                    "expression": "no Serena you can't have the key"
+                  },
+                  {
+                    "__typename": "Actor",
+                    "expression": "Dan where did you go I don't like you"
+                  },
+                  {
+                    "__typename": "Designer",
+                    "name": "Proenza Schouler"
+                  },
+                  {
+                    "__typename": "Designer",
+                    "name": "Ralph Lauren"
+                  }
+                ]
+              }
+            }
+        "#,
+        &schema,
+        &db_pool,
+    )
+    .await;
 }
