@@ -182,4 +182,5 @@ impl Argument {
 pub enum Value {
     Int(i32),
     String(String),
+    Null,
 }

@@ -247,14 +247,13 @@ pub async fn get_schema(db_pool: &Pool<Postgres>) -> anyhow::Result<Schema> {
                     ))
                     .params([Param::new(
                         "id".to_owned(),
-                        // TODO: presumably non-null?
-                        TypeFull::Type("Id".to_owned()),
+                        TypeFull::NonNull(Box::new(TypeFull::Type("Id".to_owned()))),
                     )])
                     .build()
                     .unwrap(),
                 TypeFieldBuilder::default()
                     .name("actors")
-                    .type_(TypeFull::List("Actor".to_owned()))
+                    .type_(TypeFull::List(Box::new(TypeFull::Type("Actor".to_owned()))))
                     // {
                     //   external_dependencies => None,
                     //   internal_dependencies => [
@@ -369,7 +368,9 @@ pub async fn get_schema(db_pool: &Pool<Postgres>) -> anyhow::Result<Schema> {
                     .unwrap(),
                 TypeFieldBuilder::default()
                     .name("actorsAndDesigners")
-                    .type_(TypeFull::List("ActorOrDesigner".to_owned()))
+                    .type_(TypeFull::List(Box::new(TypeFull::Type(
+                        "ActorOrDesigner".to_owned(),
+                    ))))
                     .resolver(FieldResolver::new(
                         vec![],
                         vec![

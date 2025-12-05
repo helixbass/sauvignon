@@ -12,16 +12,16 @@ use crate::{
 
 pub enum TypeFull {
     Type(String),
-    List(String),
-    NonNull(String),
+    List(Box<TypeFull>),
+    NonNull(Box<TypeFull>),
 }
 
 impl TypeFull {
     pub fn name(&self) -> &str {
         match self {
             Self::Type(name) => name,
-            Self::List(name) => name,
-            Self::NonNull(name) => name,
+            Self::List(type_full) => type_full.name(),
+            Self::NonNull(type_full) => type_full.name(),
         }
     }
 }
@@ -294,7 +294,9 @@ pub fn introspection_type_type() -> Type {
                     .unwrap(),
                 FieldBuilder::default()
                     .name("interfaces")
-                    .type_(TypeFull::List("__Type".to_owned()))
+                    .type_(TypeFull::List(Box::new(TypeFull::Type(
+                        "__Type".to_owned(),
+                    ))))
                     .resolver(FieldResolver::new(
                         vec![ExternalDependency::new(
                             "name".to_owned(),
