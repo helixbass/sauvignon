@@ -3,11 +3,11 @@ use sqlx::postgres::PgPoolOptions;
 use sauvignon::{
     json_from_response, ArgumentInternalDependencyResolver, CarverOrPopulator, ColumnGetter,
     ColumnGetterList, DependencyType, DependencyValue, Document, ExecutableDefinition,
-    ExternalDependency, FieldResolver, FragmentDefinition, FragmentSpread, Id, IdPopulator,
-    IdPopulatorList, InlineFragment, InternalDependency, InternalDependencyResolver,
+    ExternalDependency, FieldResolver, FragmentDefinition, FragmentSpread, Id, IdPopulatorList,
+    InlineFragment, InternalDependency, InternalDependencyResolver,
     LiteralValueInternalDependencyResolver, ObjectType, OperationDefinition, OperationType,
-    Request, Schema, Selection, SelectionField, SelectionSet, StringColumnCarver, Type, TypeField,
-    TypeFull,
+    Request, Schema, Selection, SelectionField, SelectionSet, StringColumnCarver, Type,
+    TypeDepluralizer, TypeField, TypeFull, Union, ValuePopulator, ValuesPopulator,
 };
 
 #[tokio::main]
@@ -19,24 +19,97 @@ async fn main() -> anyhow::Result<()> {
 
     let actor_type = Type::Object(ObjectType::new(
         "Actor".to_owned(),
+        vec![
+            TypeField::new(
+                "name".to_owned(),
+                TypeFull::Type("String".to_owned()),
+                // {
+                //   external_dependencies => ["id" => ID],
+                //   internal_dependencies => [
+                //     column_fetcher!(),
+                //   ],
+                //   value => column_value!(),
+                // }
+                // AKA column!()
+                FieldResolver::new(
+                    vec![ExternalDependency::new("id".to_owned(), DependencyType::Id)],
+                    vec![InternalDependency::new(
+                        "name".to_owned(),
+                        DependencyType::String,
+                        InternalDependencyResolver::ColumnGetter(ColumnGetter::new(
+                            "actors".to_owned(),
+                            "name".to_owned(),
+                        )),
+                    )],
+                    CarverOrPopulator::Carver(Box::new(StringColumnCarver::new("name".to_owned()))),
+                ),
+            ),
+            TypeField::new(
+                "expression".to_owned(),
+                TypeFull::Type("String".to_owned()),
+                FieldResolver::new(
+                    vec![ExternalDependency::new("id".to_owned(), DependencyType::Id)],
+                    vec![InternalDependency::new(
+                        "expression".to_owned(),
+                        DependencyType::String,
+                        InternalDependencyResolver::ColumnGetter(ColumnGetter::new(
+                            "actors".to_owned(),
+                            "expression".to_owned(),
+                        )),
+                    )],
+                    CarverOrPopulator::Carver(Box::new(StringColumnCarver::new(
+                        "expression".to_owned(),
+                    ))),
+                ),
+            ),
+            TypeField::new(
+                "favoriteActorOrDesigner".to_owned(),
+                TypeFull::Type("ActorOrDesigner".to_owned()),
+                FieldResolver::new(
+                    vec![ExternalDependency::new("id".to_owned(), DependencyType::Id)],
+                    vec![
+                        InternalDependency::new(
+                            "type".to_owned(),
+                            DependencyType::String,
+                            InternalDependencyResolver::ColumnGetter(ColumnGetter::new(
+                                "actors".to_owned(),
+                                "favorite_actor_or_designer_type".to_owned(),
+                            )),
+                        ),
+                        InternalDependency::new(
+                            "favorite_actor_or_designer_id".to_owned(),
+                            DependencyType::Id,
+                            InternalDependencyResolver::ColumnGetter(ColumnGetter::new(
+                                "actors".to_owned(),
+                                "favorite_actor_or_designer_id".to_owned(),
+                            )),
+                        ),
+                    ],
+                    CarverOrPopulator::UnionOrInterfaceTypePopulator(
+                        Box::new(TypeDepluralizer::new()),
+                        Box::new(ValuesPopulator::new([(
+                            "favorite_actor_or_designer_id".to_owned(),
+                            "id".to_owned(),
+                        )])),
+                    ),
+                ),
+            ),
+        ],
+        None,
+    ));
+
+    let designer_type = Type::Object(ObjectType::new(
+        "Designer".to_owned(),
         vec![TypeField::new(
             "name".to_owned(),
             TypeFull::Type("String".to_owned()),
-            // {
-            //   external_dependencies => ["id" => ID],
-            //   internal_dependencies => [
-            //     column_fetcher!(),
-            //   ],
-            //   value => column_value!(),
-            // }
-            // AKA column!()
             FieldResolver::new(
                 vec![ExternalDependency::new("id".to_owned(), DependencyType::Id)],
                 vec![InternalDependency::new(
                     "name".to_owned(),
                     DependencyType::String,
                     InternalDependencyResolver::ColumnGetter(ColumnGetter::new(
-                        "actors".to_owned(),
+                        "designers".to_owned(),
                         "name".to_owned(),
                     )),
                 )],
@@ -46,10 +119,20 @@ async fn main() -> anyhow::Result<()> {
         None,
     ));
 
+    let actor_or_designer = Union::new(
+        "ActorOrDesigner".to_owned(),
+        vec!["Actor".to_owned(), "Designer".to_owned()],
+    );
+
     let (katie_id,): (Id,) = sqlx::query_as("SELECT id FROM actors WHERE name = 'Katie Cassidy'")
         .fetch_one(&db_pool)
         .await
         .unwrap();
+    let (proenza_schouler_id,): (Id,) =
+        sqlx::query_as("SELECT id FROM designers WHERE name = 'Proenza Schouler'")
+            .fetch_one(&db_pool)
+            .await
+            .unwrap();
 
     let query_type = Type::Object(ObjectType::new(
         "Query".to_owned(),
@@ -60,7 +143,7 @@ async fn main() -> anyhow::Result<()> {
                 // {
                 //   external_dependencies => None,
                 //   internal_dependencies => {"id" => Argument},
-                //   populator => IdPopulator,
+                //   populator => ValuePopulator("id"),
                 // }
                 FieldResolver::new(
                     vec![],
@@ -71,7 +154,7 @@ async fn main() -> anyhow::Result<()> {
                             ArgumentInternalDependencyResolver::new("id".to_owned()),
                         ),
                     )],
-                    CarverOrPopulator::Populator(Box::new(IdPopulator::new())),
+                    CarverOrPopulator::Populator(Box::new(ValuePopulator::new("id".to_owned()))),
                 ),
             ),
             TypeField::new(
@@ -103,7 +186,7 @@ async fn main() -> anyhow::Result<()> {
                 // {
                 //   external_dependencies => None,
                 //   internal_dependencies => {"id" => LiteralValue(4)},
-                //   populator => IdPopulator,
+                //   populator => ValuePopulator("id"),
                 // }
                 FieldResolver::new(
                     vec![],
@@ -114,14 +197,48 @@ async fn main() -> anyhow::Result<()> {
                             LiteralValueInternalDependencyResolver(DependencyValue::Id(katie_id)),
                         ),
                     )],
-                    CarverOrPopulator::Populator(Box::new(IdPopulator::new())),
+                    CarverOrPopulator::Populator(Box::new(ValuePopulator::new("id".to_owned()))),
+                ),
+            ),
+            TypeField::new(
+                "certainActorOrDesigner".to_owned(),
+                TypeFull::Type("ActorOrDesigner".to_owned()),
+                FieldResolver::new(
+                    vec![],
+                    vec![
+                        InternalDependency::new(
+                            "type".to_owned(),
+                            DependencyType::String,
+                            InternalDependencyResolver::LiteralValue(
+                                LiteralValueInternalDependencyResolver(DependencyValue::String(
+                                    "designers".to_owned(),
+                                )),
+                            ),
+                        ),
+                        InternalDependency::new(
+                            "id".to_owned(),
+                            DependencyType::Id,
+                            InternalDependencyResolver::LiteralValue(
+                                LiteralValueInternalDependencyResolver(DependencyValue::Id(
+                                    proenza_schouler_id,
+                                )),
+                            ),
+                        ),
+                    ],
+                    CarverOrPopulator::UnionOrInterfaceTypePopulator(
+                        Box::new(TypeDepluralizer::new()),
+                        Box::new(ValuePopulator::new("id".to_owned())),
+                    ),
                 ),
             ),
         ],
         Some(OperationType::Query),
     ));
 
-    let schema = Schema::try_new(vec![query_type, actor_type])?;
+    let schema = Schema::try_new(
+        vec![query_type, actor_type, designer_type],
+        vec![actor_or_designer],
+    )?;
 
     let request = Request::new(Document::new(vec![
         // query {
@@ -244,6 +361,111 @@ async fn main() -> anyhow::Result<()> {
     let json = json_from_response(&response);
 
     println!("inline fragment response: {}", pretty_print_json(&json));
+
+    let request = Request::new(Document::new(vec![
+        // query {
+        //   certainActorOrDesigner {
+        //     ... on Actor {
+        //       expression
+        //     }
+        //     ... on Designer {
+        //       name
+        //     }
+        //   }
+        // }
+        ExecutableDefinition::Operation(OperationDefinition::new(
+            OperationType::Query,
+            None,
+            SelectionSet::new(vec![Selection::Field(SelectionField::new(
+                None,
+                "certainActorOrDesigner".to_owned(),
+                Some(SelectionSet::new(vec![
+                    Selection::InlineFragment(InlineFragment::new(
+                        Some("Actor".to_owned()),
+                        SelectionSet::new(vec![Selection::Field(SelectionField::new(
+                            None,
+                            "expression".to_owned(),
+                            None,
+                        ))]),
+                    )),
+                    Selection::InlineFragment(InlineFragment::new(
+                        Some("Designer".to_owned()),
+                        SelectionSet::new(vec![Selection::Field(SelectionField::new(
+                            None,
+                            "name".to_owned(),
+                            None,
+                        ))]),
+                    )),
+                ])),
+            ))]),
+        )),
+    ]));
+
+    let response = schema.request(request, &db_pool).await;
+
+    let json = json_from_response(&response);
+
+    println!("union response: {}", pretty_print_json(&json));
+
+    let request = Request::new(Document::new(vec![
+        // query {
+        //   actors {
+        //     name
+        //     expression
+        //     favoriteActorOrDesigner {
+        //       ... on Actor {
+        //         expression
+        //       }
+        //       ... on Designer {
+        //         name
+        //       }
+        //     }
+        //   }
+        // }
+        ExecutableDefinition::Operation(OperationDefinition::new(
+            OperationType::Query,
+            None,
+            SelectionSet::new(vec![Selection::Field(SelectionField::new(
+                None,
+                "actors".to_owned(),
+                Some(SelectionSet::new(vec![
+                    Selection::Field(SelectionField::new(None, "name".to_owned(), None)),
+                    Selection::Field(SelectionField::new(None, "expression".to_owned(), None)),
+                    Selection::Field(SelectionField::new(
+                        None,
+                        "favoriteActorOrDesigner".to_owned(),
+                        Some(SelectionSet::new(vec![
+                            Selection::InlineFragment(InlineFragment::new(
+                                Some("Actor".to_owned()),
+                                SelectionSet::new(vec![Selection::Field(SelectionField::new(
+                                    None,
+                                    "expression".to_owned(),
+                                    None,
+                                ))]),
+                            )),
+                            Selection::InlineFragment(InlineFragment::new(
+                                Some("Designer".to_owned()),
+                                SelectionSet::new(vec![Selection::Field(SelectionField::new(
+                                    None,
+                                    "name".to_owned(),
+                                    None,
+                                ))]),
+                            )),
+                        ])),
+                    )),
+                ])),
+            ))]),
+        )),
+    ]));
+
+    let response = schema.request(request, &db_pool).await;
+
+    let json = json_from_response(&response);
+
+    println!(
+        "favorite actor or designer response: {}",
+        pretty_print_json(&json)
+    );
 
     Ok(())
 }

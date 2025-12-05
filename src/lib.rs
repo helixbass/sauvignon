@@ -28,17 +28,18 @@ pub use crate::request::{
     InlineFragment, OperationDefinition, Request, Selection, SelectionSet,
 };
 pub use crate::resolve::{
-    Carver, CarverOrPopulator, FieldResolver, IdPopulator, IdPopulatorList, StringColumnCarver,
+    Carver, CarverOrPopulator, FieldResolver, IdPopulatorList, Populator, StringColumnCarver,
+    TypeDepluralizer, UnionOrInterfaceTypePopulator, ValuePopulator, ValuesPopulator,
 };
 pub use crate::response::{
     fields_in_progress_new, FieldsInProgress, InProgress, InProgressRecursing,
     InProgressRecursingList, Response, ResponseInProgress, ResponseValue,
     ResponseValueOrInProgress,
 };
-pub use crate::schema::Schema;
+pub use crate::schema::{Schema, TypeOrUnionOrInterface};
 pub use crate::types::{
     builtin_types, string_type, BuiltInScalarType, Field as TypeField, ObjectType, ScalarType,
-    StringType, Type, TypeFull, TypeInterface,
+    StringType, Type, TypeFull, TypeInterface, Union,
 };
 
 // #[cfg(test)]
