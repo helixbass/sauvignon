@@ -4,12 +4,11 @@ use sauvignon::{
     json_from_response, ArgumentInternalDependencyResolver, CarverOrPopulator, ColumnGetter,
     ColumnGetterList, DependencyType, DependencyValue, Document, ExecutableDefinition,
     ExternalDependency, ExternalDependencyValues, FieldResolver, FragmentDefinition,
-    FragmentSpread, Id, IdPopulatorList, InlineFragment, Interface, InterfaceField,
-    InternalDependency, InternalDependencyResolver, InternalDependencyValues,
-    LiteralValueInternalDependencyResolver, ObjectType, OperationDefinition, OperationType,
-    PopulatorList, Request, Schema, Selection, SelectionField, SelectionSet, StringCarver, Type,
-    TypeDepluralizer, TypeField, TypeFull, Union, UnionOrInterfaceTypePopulatorList,
-    ValuePopulator, ValuesPopulator,
+    FragmentSpread, Id, InlineFragment, Interface, InterfaceField, InternalDependency,
+    InternalDependencyResolver, InternalDependencyValues, LiteralValueInternalDependencyResolver,
+    ObjectType, OperationDefinition, OperationType, PopulatorList, Request, Schema, Selection,
+    SelectionField, SelectionSet, StringCarver, Type, TypeDepluralizer, TypeField, TypeFull, Union,
+    UnionOrInterfaceTypePopulatorList, ValuePopulator, ValuePopulatorList, ValuesPopulator,
 };
 
 pub struct ActorsAndDesignersTypePopulator {}
@@ -254,7 +253,9 @@ async fn get_schema(db_pool: &Pool<Postgres>) -> anyhow::Result<Schema> {
                             "id".to_owned(),
                         )),
                     )],
-                    CarverOrPopulator::PopulatorList(Box::new(IdPopulatorList::new())),
+                    CarverOrPopulator::PopulatorList(Box::new(ValuePopulatorList::new(
+                        "id".to_owned(),
+                    ))),
                 ),
             ),
             TypeField::new(
@@ -870,6 +871,56 @@ async fn test_list_union_and_typename() {
                     "name": "Ralph Lauren"
                   }
                 ]
+              }
+            }
+        "#,
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn test_introspection_type_interfaces() {
+    request_test(
+        Request::new(Document::new(vec![
+            // TODO: update this once argument supported
+            // query {
+            //   __type {
+            //     name
+            //     interfaces {
+            //       name
+            //     }
+            //   }
+            // }
+            ExecutableDefinition::Operation(OperationDefinition::new(
+                OperationType::Query,
+                None,
+                SelectionSet::new(vec![Selection::Field(SelectionField::new(
+                    None,
+                    "__type".to_owned(),
+                    Some(SelectionSet::new(vec![
+                        Selection::Field(SelectionField::new(None, "name".to_owned(), None)),
+                        Selection::Field(SelectionField::new(
+                            None,
+                            "interfaces".to_owned(),
+                            Some(SelectionSet::new(vec![Selection::Field(
+                                SelectionField::new(None, "name".to_owned(), None),
+                            )])),
+                        )),
+                    ])),
+                ))]),
+            )),
+        ])),
+        r#"
+            {
+              "data": {
+                "__type": {
+                  "name": "Actor",
+                  "interfaces": [
+                    {
+                      "name": "HasName"
+                    }
+                  ]
+                }
               }
             }
         "#,
