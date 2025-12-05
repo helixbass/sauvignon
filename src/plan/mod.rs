@@ -3,8 +3,8 @@ use std::collections::{HashMap, HashSet};
 use squalid::OptionExt;
 
 use crate::{
-    fields_in_progress_new, request, types, IndexMap, OperationType, Request, ResponseInProgress,
-    Schema, Selection, SelectionSet,
+    fields_in_progress_new, request, types, Argument, IndexMap, OperationType, Request,
+    ResponseInProgress, Schema, Selection, SelectionSet,
 };
 
 pub struct QueryPlan<'a> {
@@ -40,6 +40,7 @@ pub struct FieldPlan<'a> {
     pub name: String,
     pub field_type: &'a types::Field,
     pub selection_set_by_type: Option<HashMap<String, IndexMap<String, FieldPlan<'a>>>>,
+    pub arguments: &'a Option<HashMap<String, Argument>>,
 }
 
 impl<'a> FieldPlan<'a> {
@@ -62,6 +63,7 @@ impl<'a> FieldPlan<'a> {
                     request,
                 )
             }),
+            arguments: &request_field.arguments,
         }
     }
 }

@@ -8,7 +8,7 @@ use crate::{
     Error, ExternalDependencyValues, FieldPlan, FieldsInProgress, Id, InProgress,
     InProgressRecursing, InProgressRecursingList, IndexMap, Interface, InternalDependencyResolver,
     InternalDependencyValues, Populator, QueryPlan, Request, Response, ResponseValue,
-    ResponseValueOrInProgress, Result as SauvignonResult, Type, TypeInterface, Union,
+    ResponseValueOrInProgress, Result as SauvignonResult, Type, TypeInterface, Union, Value,
 };
 
 pub struct Schema {
@@ -414,7 +414,24 @@ async fn populate_internal_dependencies(
                             .unwrap_or_default(),
                     )
                 }
-                _ => unimplemented!(),
+                InternalDependencyResolver::Argument(argument_resolver) => {
+                    let argument = field_plan
+                        .arguments
+                        .as_ref()
+                        .unwrap()
+                        .get(&argument_resolver.name)
+                        .unwrap();
+                    match (internal_dependency.type_, &argument.value) {
+                        (DependencyType::Id, Value::Int(argument_value)) => {
+                            DependencyValue::Id(*argument_value)
+                        }
+                        (DependencyType::String, Value::String(argument_value)) => {
+                            DependencyValue::String(argument_value.clone())
+                        }
+                        // TODO: truly unreachable?
+                        _ => unreachable!(),
+                    }
+                }
             },
         )
         .unwrap();

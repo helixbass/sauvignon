@@ -24,8 +24,8 @@ pub use crate::inscribe::json_from_response;
 pub use crate::operation::OperationType;
 pub use crate::plan::{FieldPlan, QueryPlan};
 pub use crate::request::{
-    Document, ExecutableDefinition, Field as SelectionField, FragmentDefinition, FragmentSpread,
-    InlineFragment, OperationDefinition, Request, Selection, SelectionSet,
+    Argument, Document, ExecutableDefinition, Field as SelectionField, FragmentDefinition,
+    FragmentSpread, InlineFragment, OperationDefinition, Request, Selection, SelectionSet, Value,
 };
 pub use crate::resolve::{
     Carver, CarverOrPopulator, FieldResolver, Populator, PopulatorList, StringCarver,
@@ -40,5 +40,5 @@ pub use crate::response::{
 pub use crate::schema::{Schema, TypeOrUnionOrInterface};
 pub use crate::types::{
     builtin_types, string_type, BuiltInScalarType, Field as TypeField, Interface, InterfaceField,
-    ObjectType, ScalarType, StringType, Type, TypeFull, TypeInterface, Union,
+    ObjectType, Param, ScalarType, StringType, Type, TypeFull, TypeInterface, Union,
 };
