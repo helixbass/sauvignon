@@ -7,11 +7,12 @@ use squalid::{OptionExt, _d};
 
 use crate::{
     builtin_types, fields_in_progress_new, parse, CarverOrPopulator, DependencyType,
-    DependencyValue, Error, ExecutableDefinition, ExternalDependencyValues, FieldPlan,
-    FieldsInProgress, Id, InProgress, InProgressRecursing, InProgressRecursingList, IndexMap,
-    Interface, InternalDependencyResolver, InternalDependencyValues, Location, Populator,
-    PositionsTracker, QueryPlan, Request, Response, ResponseValue, ResponseValueOrInProgress,
-    Result as SauvignonResult, Selection, Type, TypeInterface, Union, Value,
+    DependencyValue, Error, ExecutableDefinition, ExternalDependencyValues, FieldInterface,
+    FieldPlan, FieldsInProgress, Id, InProgress, InProgressRecursing, InProgressRecursingList,
+    IndexMap, Interface, InternalDependencyResolver, InternalDependencyValues, Location,
+    OperationType, Populator, PositionsTracker, QueryPlan, Request, Response, ResponseValue,
+    ResponseValueOrInProgress, Result as SauvignonResult, Selection, SelectionField, Type,
+    TypeInterface, Union, Value,
 };
 
 pub struct Schema {
@@ -101,6 +102,13 @@ impl Schema {
         &self.types[&self.query_type_name]
     }
 
+    pub fn type_name_for_operation_type(&self, operation_type: OperationType) -> &str {
+        match operation_type {
+            OperationType::Query => &self.query_type_name,
+            _ => unimplemented!(),
+        }
+    }
+
     pub fn maybe_type(&self, name: &str) -> Option<&Type> {
         self.types
             .get(name)
@@ -163,8 +171,11 @@ impl Schema {
         if !errors.is_empty() {
             return errors.into();
         }
-        // TODO: finish these
-        // validate_selection_fields_exist(request, self).append_to(&mut errors);
+        let errors = validate_selection_fields_exist(request, self);
+        if !errors.is_empty() {
+            return errors.into();
+        }
+        // TODO: finish this
         // validate_argument_names_exist(request, self).append_to(&mut errors);
 
         ValidatedRequest::new().into()
@@ -503,6 +514,7 @@ fn to_recursing_after_populating<'a>(
     ))
 }
 
+#[derive(Copy, Clone)]
 pub enum TypeOrUnionOrInterface<'a> {
     Type(&'a Type),
     Union(&'a Union),
@@ -707,14 +719,18 @@ fn validate_selection_fields_exist(request: &Request, schema: &Schema) -> Vec<Va
             ExecutableDefinition::Operation(operation_definition) => {
                 validate_selection_fields_exist_selection_set(
                     &operation_definition.selection_set,
+                    schema.type_name_for_operation_type(operation_definition.operation_type),
                     schema,
+                    request,
                     &mut ret,
                 );
             }
             ExecutableDefinition::Fragment(fragment_definition) => {
                 validate_selection_fields_exist_selection_set(
                     &fragment_definition.selection_set,
+                    &fragment_definition.on,
                     schema,
+                    request,
                     &mut ret,
                 );
             }
@@ -725,10 +741,158 @@ fn validate_selection_fields_exist(request: &Request, schema: &Schema) -> Vec<Va
 
 fn validate_selection_fields_exist_selection_set(
     selection_set: &[Selection],
+    type_name: &str,
     schema: &Schema,
+    request: &Request,
     ret: &mut Vec<ValidationError>,
 ) {
-    unimplemented!()
+    let type_ = schema.type_or_union_or_interface(type_name);
+    assert!(is_non_scalar_type(&type_));
+    for selection in selection_set {
+        match selection {
+            Selection::Field(field) => match type_ {
+                TypeOrUnionOrInterface::Type(type_) => {
+                    validate_type_or_interface_field_exists(
+                        type_.as_object().maybe_field(&field.name),
+                        type_name,
+                        field,
+                        schema,
+                        request,
+                        ret,
+                    );
+                }
+                TypeOrUnionOrInterface::Union(_) => {
+                    if field.name != "__typename" {
+                        ret.push(selection_field_doesnt_exist_validation_error(
+                            &field.name,
+                            type_name,
+                            PositionsTracker::current().map(|positions_tracker| {
+                                positions_tracker.field_location(field, &request.document)
+                            }),
+                        ));
+                    }
+                }
+                TypeOrUnionOrInterface::Interface(interface) => {
+                    validate_type_or_interface_field_exists(
+                        interface.maybe_field(&field.name),
+                        type_name,
+                        field,
+                        schema,
+                        request,
+                        ret,
+                    );
+                }
+            },
+            Selection::InlineFragment(inline_fragment) => {
+                validate_selection_fields_exist_selection_set(
+                    &inline_fragment.selection_set,
+                    inline_fragment.on.as_deref().unwrap_or(type_name),
+                    schema,
+                    request,
+                    ret,
+                );
+            }
+            _ => {}
+        }
+    }
+}
+
+fn validate_type_or_interface_field_exists<TField: FieldInterface>(
+    type_field: Option<&TField>,
+    type_name: &str,
+    field: &SelectionField,
+    schema: &Schema,
+    request: &Request,
+    ret: &mut Vec<ValidationError>,
+) {
+    match type_field {
+        None => {
+            ret.push(selection_field_doesnt_exist_validation_error(
+                &field.name,
+                type_name,
+                PositionsTracker::current().map(|positions_tracker| {
+                    positions_tracker.field_location(field, &request.document)
+                }),
+            ));
+        }
+        Some(field_type) => {
+            match (
+                is_non_scalar_type(&schema.type_or_union_or_interface(field_type.type_().name())),
+                field.selection_set.as_ref(),
+            ) {
+                (true, Some(selection_set)) => {
+                    validate_selection_fields_exist_selection_set(
+                        selection_set,
+                        field_type.type_().name(),
+                        schema,
+                        request,
+                        ret,
+                    );
+                }
+                (false, None) => {}
+                (true, None) => {
+                    ret.push(no_selection_on_object_type_validation_error(
+                        &field.name,
+                        field_type.type_().name(),
+                        PositionsTracker::current().map(|positions_tracker| {
+                            positions_tracker.field_location(field, &request.document)
+                        }),
+                    ));
+                }
+                (false, Some(_)) => {
+                    ret.push(selection_on_scalar_type_validation_error(
+                        &field.name,
+                        field_type.type_().name(),
+                        PositionsTracker::current().map(|positions_tracker| {
+                            positions_tracker.field_location(field, &request.document)
+                        }),
+                    ));
+                }
+            }
+        }
+    }
+}
+
+fn selection_field_doesnt_exist_validation_error(
+    field_name: &str,
+    type_name: &str,
+    location: Option<Location>,
+) -> ValidationError {
+    ValidationError::new(
+        format!("Field `{field_name}` doesn't exist on `{type_name}`"),
+        match location {
+            Some(location) => vec![location],
+            None => _d(),
+        },
+    )
+}
+
+fn selection_on_scalar_type_validation_error(
+    field_name: &str,
+    type_name: &str,
+    location: Option<Location>,
+) -> ValidationError {
+    ValidationError::new(
+        format!("Field `{field_name}` can't have selection set because it is of scalar type `{type_name}`"),
+        match location {
+            Some(location) => vec![location],
+            None => _d(),
+        },
+    )
+}
+
+fn no_selection_on_object_type_validation_error(
+    field_name: &str,
+    type_name: &str,
+    location: Option<Location>,
+) -> ValidationError {
+    ValidationError::new(
+        format!("Field `{field_name}` must have selection set because it is of non-scalar type `{type_name}`"),
+        match location {
+            Some(location) => vec![location],
+            None => _d(),
+        },
+    )
 }
 
 fn validate_argument_names_exist(request: &Request, schema: &Schema) -> Vec<ValidationError> {
@@ -816,5 +980,14 @@ impl From<ValidatedRequest> for ValidationRequestOrErrors {
 impl From<Vec<ValidationError>> for ValidationRequestOrErrors {
     fn from(value: Vec<ValidationError>) -> Self {
         Self::Errors(value)
+    }
+}
+
+fn is_non_scalar_type(type_: &TypeOrUnionOrInterface) -> bool {
+    match type_ {
+        TypeOrUnionOrInterface::Type(Type::Object(_)) => true,
+        TypeOrUnionOrInterface::Union(_) => true,
+        TypeOrUnionOrInterface::Interface(_) => true,
+        _ => false,
     }
 }

@@ -256,34 +256,55 @@ async fn test_type_names_exist() {
     .await;
 }
 
-// TODO: uncomment this once implemented
-// #[tokio::test]
-// async fn test_selection_fields_exist() {
-//     validation_test(
-//         indoc!(
-//             r#"
-//             {
-//               actorKatie {
-//                 namez
-//               }
-//             }
-//         "#
-//         ),
-//         r#"
-//             {
-//               "errors": [
-//                 {
-//                   "message": "Field doesn't exist on type `Actor`: `namez`",
-//                   "locations": [
-//                     {
-//                       "line": 3,
-//                       "column": 5
-//                     }
-//                   ]
-//                 }
-//               ]
-//             }
-//         "#,
-//     )
-//     .await;
-// }
+#[tokio::test]
+async fn test_selection_fields_exist() {
+    validation_test(
+        indoc!(
+            r#"
+            {
+              actorKatie {
+                namez
+                name {
+                  woops
+                }
+              }
+              actors
+            }
+        "#
+        ),
+        r#"
+            {
+              "errors": [
+                {
+                  "message": "Field `namez` doesn't exist on `Actor`",
+                  "locations": [
+                    {
+                      "line": 3,
+                      "column": 5
+                    }
+                  ]
+                },
+                {
+                  "message": "Field `name` can't have selection set because it is of scalar type `String`",
+                  "locations": [
+                    {
+                      "line": 4,
+                      "column": 5
+                    }
+                  ]
+                },
+                {
+                  "message": "Field `actors` must have selection set because it is of non-scalar type `Actor`",
+                  "locations": [
+                    {
+                      "line": 8,
+                      "column": 3
+                    }
+                  ]
+                }
+              ]
+            }
+        "#,
+    )
+    .await;
+}

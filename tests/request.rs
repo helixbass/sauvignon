@@ -164,6 +164,7 @@ async fn test_union_field() {
                 name
                 expression
                 favoriteActorOrDesigner {
+                  __typename
                   ... on Actor {
                     expression
                   }
@@ -181,6 +182,7 @@ async fn test_union_field() {
                   {
                     "expression": "no Serena you can't have the key",
                     "favoriteActorOrDesigner": {
+                      "__typename": "Designer",
                       "name": "Proenza Schouler"
                     },
                     "name": "Katie Cassidy"
@@ -188,6 +190,7 @@ async fn test_union_field() {
                   {
                     "expression": "Dan where did you go I don't like you",
                     "favoriteActorOrDesigner": {
+                      "__typename": "Actor",
                       "expression": "no Serena you can't have the key"
                     },
                     "name": "Jessica Szohr"
@@ -216,6 +219,7 @@ async fn test_interface() {
                 }
               }
               bestHasName {
+                __typename
                 name
               }
             }
@@ -237,6 +241,7 @@ async fn test_interface() {
                   }
                 ],
                 "bestHasName": {
+                  "__typename": "Actor",
                   "name": "Katie Cassidy"
                 }
               }

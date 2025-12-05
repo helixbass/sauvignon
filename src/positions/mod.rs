@@ -232,6 +232,39 @@ impl PositionsTracker {
             .unwrap()
     }
 
+    pub fn field_location(
+        &self,
+        field: &crate::request::Field,
+        document: &crate::Document,
+    ) -> Location {
+        document
+            .definitions
+            .iter()
+            .zip(self.document.borrow().definitions.iter())
+            .find_map(|(definition, definition_positions)| {
+                match (definition, definition_positions) {
+                    (
+                        ExecutableDefinition::Operation(operation_definition),
+                        OperationOrFragment::Operation(operation_positions),
+                    ) => maybe_field_location_selection_set(
+                        field,
+                        &operation_definition.selection_set,
+                        &operation_positions.selection_set,
+                    ),
+                    (
+                        ExecutableDefinition::Fragment(fragment_definition),
+                        OperationOrFragment::Fragment(fragment_positions),
+                    ) => maybe_field_location_selection_set(
+                        field,
+                        &fragment_definition.selection_set,
+                        &fragment_positions.selection_set,
+                    ),
+                    _ => unreachable!(),
+                }
+            })
+            .unwrap()
+    }
+
     pub fn current() -> Option<impl Deref<Target = Self> + Debug + 'static> {
         // TODO: per https://github.com/anp/moxie/issues/308 is using illicit
         // ok thread-local-wise vs eg Tokio can move tasks across threads?
@@ -578,10 +611,49 @@ fn maybe_inline_fragment_location_selection_set(
                     }
                     maybe_inline_fragment_location_selection_set(
                         inline_fragment,
-                        &inline_fragment.selection_set,
+                        &inline_fragment_current.selection_set,
                         &inline_fragment_positions.selection_set,
                     )
                 }
+                (crate::Selection::FragmentSpread(_), Selection::FragmentSpread) => None,
+                _ => unreachable!(),
+            },
+        )
+}
+
+fn maybe_field_location_selection_set(
+    field: &crate::request::Field,
+    selection_set: &[crate::Selection],
+    selection_set_positions: &SelectionSet,
+) -> Option<Location> {
+    selection_set
+        .into_iter()
+        .zip(selection_set_positions.selections.iter())
+        .find_map(
+            |(selection, selection_positions)| match (selection, selection_positions) {
+                (crate::Selection::Field(field_current), Selection::Field(field_positions)) => {
+                    if ptr::eq(field, field_current) {
+                        return Some(field_positions.location);
+                    }
+                    field_current
+                        .selection_set
+                        .as_ref()
+                        .and_then(|selection_set| {
+                            maybe_field_location_selection_set(
+                                field,
+                                selection_set,
+                                field_positions.selection_set.as_ref().unwrap(),
+                            )
+                        })
+                }
+                (
+                    crate::Selection::InlineFragment(inline_fragment_current),
+                    Selection::InlineFragment(inline_fragment_positions),
+                ) => maybe_field_location_selection_set(
+                    field,
+                    &inline_fragment_current.selection_set,
+                    &inline_fragment_positions.selection_set,
+                ),
                 (crate::Selection::FragmentSpread(_), Selection::FragmentSpread) => None,
                 _ => unreachable!(),
             },

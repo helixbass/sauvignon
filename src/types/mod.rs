@@ -111,14 +111,18 @@ impl ObjectType {
         self.is_top_level_type.is(OperationType::Query)
     }
 
-    pub fn field(&self, name: &str) -> &Field {
+    pub fn maybe_field(&self, name: &str) -> Option<&Field> {
         match name {
-            "__typename" => &self.typename_field,
+            "__typename" => Some(&self.typename_field),
             "__type" if self.introspection_fields.is_some() => {
-                &self.introspection_fields.as_ref().unwrap()["__type"]
+                Some(&self.introspection_fields.as_ref().unwrap()["__type"])
             }
-            name => &self.fields[name],
+            name => self.fields.get(name),
         }
+    }
+
+    pub fn field(&self, name: &str) -> &Field {
+        self.maybe_field(name).unwrap()
     }
 }
 
@@ -235,6 +239,21 @@ impl Field {
     }
 }
 
+impl FieldInterface for Field {
+    fn name(&self) -> &str {
+        &self.name
+    }
+
+    fn type_(&self) -> &TypeFull {
+        &self.type_
+    }
+}
+
+pub trait FieldInterface {
+    fn name(&self) -> &str;
+    fn type_(&self) -> &TypeFull;
+}
+
 pub fn builtin_types() -> HashMap<String, Type> {
     [
         ("String".to_owned(), string_type()),
@@ -307,6 +326,8 @@ impl Union {
 #[derive(Builder)]
 #[builder(pattern = "owned")]
 pub struct Interface {
+    #[builder(setter(skip), default = "self.default_typename_field()")]
+    pub typename_field: InterfaceField,
     #[builder(setter(into))]
     pub name: String,
     // TODO: are the fields on a type/interface ordered?
@@ -327,6 +348,19 @@ impl InterfaceBuilder {
         );
         new
     }
+
+    fn default_typename_field(&self) -> InterfaceField {
+        InterfaceField::new_typename()
+    }
+}
+
+impl Interface {
+    pub fn maybe_field(&self, name: &str) -> Option<&InterfaceField> {
+        match name {
+            "__typename" => Some(&self.typename_field),
+            name => self.fields.get(name),
+        }
+    }
 }
 
 pub struct InterfaceField {
@@ -337,6 +371,23 @@ pub struct InterfaceField {
 impl InterfaceField {
     pub fn new(name: String, type_: TypeFull) -> Self {
         Self { name, type_ }
+    }
+
+    pub fn new_typename() -> Self {
+        Self {
+            name: "__typename".to_owned(),
+            type_: TypeFull::Type("String".to_owned()),
+        }
+    }
+}
+
+impl FieldInterface for InterfaceField {
+    fn name(&self) -> &str {
+        &self.name
+    }
+
+    fn type_(&self) -> &TypeFull {
+        &self.type_
     }
 }
 
