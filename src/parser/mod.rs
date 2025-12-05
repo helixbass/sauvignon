@@ -4,7 +4,7 @@ use squalid::_d;
 
 use crate::{
     Argument, CharsEmitter, Document, ExecutableDefinition, FragmentDefinition, FragmentSpread,
-    InlineFragment, OperationDefinitionBuilder, OperationType, PositionsTracker, Request,
+    InlineFragment, Location, OperationDefinitionBuilder, OperationType, PositionsTracker, Request,
     Selection, SelectionFieldBuilder, Value,
 };
 
@@ -47,20 +47,33 @@ where
 {
     Lex {
         request: CharsEmitter::new(request.into_iter().peekable()),
+        has_errored: false,
     }
 }
 
 pub struct Lex<TRequest: Iterator<Item = char>> {
     request: CharsEmitter<TRequest>,
+    has_errored: bool,
+}
+
+impl<TRequest: Iterator<Item = char>> Lex<TRequest> {
+    fn error(&mut self, message: &str) -> LexError {
+        self.has_errored = true;
+        LexError::new(message.to_owned())
+    }
 }
 
 impl<TRequest> Iterator for Lex<TRequest>
 where
     TRequest: Iterator<Item = char>,
 {
-    type Item = Token;
+    type Item = LexResult<Token>;
 
-    fn next(&mut self) -> Option<Token> {
+    fn next(&mut self) -> Option<LexResult<Token>> {
+        if self.has_errored {
+            panic!("Shouldn't keep calling lexer after lexing error");
+        }
+
         loop {
             PositionsTracker::emit_token_pre_start();
             match self.request.next() {
@@ -109,79 +122,35 @@ where
                                 _ => Some(Token::String("".to_owned())),
                             },
                             Some(ch) => {
-                                let mut resolved_chars: Vec<char> = vec![ch];
+                                let mut resolved_chars: Vec<char> =
+                                    vec![match regular_or_escaped_string_char(ch, self) {
+                                        Ok(ch) => ch,
+                                        Err(error) => return Some(Err(error)),
+                                    }];
                                 loop {
                                     match self.request.next() {
-                                        None => panic!("expected closing double-quote"),
+                                        None => {
+                                            return Some(Err(
+                                                self.error("expected closing double-quote")
+                                            ))
+                                        }
                                         Some(ch) => match ch {
                                             '"' => {
                                                 break Some(Token::String(
                                                     resolved_chars.into_iter().collect(),
                                                 ));
                                             }
-                                            '\\' => match self.request.next() {
-                                                Some('u') => {
-                                                    let mut unicode_hex: Vec<char> = _d();
-                                                    while unicode_hex.len() < 4 {
-                                                        match self.request.next() {
-                                                            Some(ch)
-                                                                if matches!(
-                                                                    ch,
-                                                                    '0'..='9' | 'A'..='F' | 'a'..='f'
-                                                                ) =>
-                                                            {
-                                                                unicode_hex.push(ch);
-                                                            }
-                                                            _ => panic!("Unexpected hex digit"),
-                                                        }
-                                                    }
-                                                    resolved_chars.push(
-                                                        char::from_u32(
-                                                            u32::from_str_radix(
-                                                                &unicode_hex
-                                                                    .into_iter()
-                                                                    .collect::<String>(),
-                                                                16,
-                                                            )
-                                                            .unwrap(),
-                                                        )
-                                                        .expect("Couldn't convert hex to char"),
-                                                    );
-                                                }
-                                                Some('"') => {
-                                                    resolved_chars.push('"');
-                                                }
-                                                Some('\\') => {
-                                                    resolved_chars.push('\\');
-                                                }
-                                                Some('/') => {
-                                                    resolved_chars.push('/');
-                                                }
-                                                Some('b') => {
-                                                    resolved_chars.push('\u{8}');
-                                                }
-                                                Some('f') => {
-                                                    resolved_chars.push('\u{C}');
-                                                }
-                                                Some('n') => {
-                                                    resolved_chars.push('\n');
-                                                }
-                                                Some('r') => {
-                                                    resolved_chars.push('\r');
-                                                }
-                                                Some('t') => {
-                                                    resolved_chars.push('\t');
-                                                }
-                                                _ => panic!("Unexpected escape"),
-                                            },
-                                            ch => {
-                                                resolved_chars.push(ch);
-                                            }
+                                            ch => resolved_chars.push(
+                                                match regular_or_escaped_string_char(ch, self) {
+                                                    Ok(ch) => ch,
+                                                    Err(error) => return Some(Err(error)),
+                                                },
+                                            ),
                                         },
                                     }
                                 }
                             }
-                            _ => panic!("Expected end of string"),
+                            _ => return Some(Err(self.error("Expected end of string"))),
                         },
                         ch @ '-' | ch @ '0'..='9' => {
                             let is_negative = ch == '-';
@@ -197,11 +166,8 @@ where
                                 )
                             ) {
                                 integer_part.push(self.request.next().unwrap());
-                                if integer_part.len() == 2
-                                    && integer_part[0] == '0'
-                                    && integer_part[1] == '0'
-                                {
-                                    panic!("Can't have leading zero");
+                                if integer_part.len() == 2 && integer_part[0] == '0' {
+                                    return Some(Err(self.error("Can't have leading zero")));
                                 }
                             }
                             match self.request.peek() {
@@ -218,9 +184,9 @@ where
                                                     }
                                                     _ => {
                                                         if fractional_part.is_empty() {
-                                                            panic!(
-                                                                "expected fractional part digits"
-                                                            );
+                                                            return Some(Err(self.error(
+                                                                "expected fractional part digits",
+                                                            )));
                                                         }
                                                         break;
                                                     }
@@ -246,9 +212,9 @@ where
                                                             }
                                                             _ => {
                                                                 if exponent_digits.is_empty() {
-                                                                    panic!(
-                                                                        "Expected exponent digits"
-                                                                    );
+                                                                    return Some(Err(self.error(
+                                                                        "Expected exponent digits",
+                                                                    )));
                                                                 }
                                                                 break Some(Token::Float(
                                                                     format!(
@@ -274,6 +240,10 @@ where
                                                                             .collect::<String>(),
                                                                     )
                                                                     .parse::<f64>()
+                                                                    // TODO: look for .expect()'s
+                                                                    // /.unwrap()'s also as panic
+                                                                    // sites that need to be
+                                                                    // converted to Result's
                                                                     .expect("Couldn't parse float"),
                                                                 ));
                                                             }
@@ -311,7 +281,9 @@ where
                                                     }
                                                     _ => {
                                                         if exponent_digits.is_empty() {
-                                                            panic!("Expected exponent digits");
+                                                            return Some(Err(self.error(
+                                                                "Expected exponent digits",
+                                                            )));
                                                         }
                                                         break Some(Token::Float(
                                                             format!(
@@ -372,10 +344,15 @@ where
                             }
                             None
                         }
-                        _ => panic!("Unsupported char?"),
+                        ch => {
+                            return Some(Err(self.error(&format!(
+                                "Unsupported char: Unicode code point `{}`",
+                                u32::from(ch)
+                            ))))
+                        }
                     };
                     match maybe_token {
-                        Some(token) => return Some(token),
+                        Some(token) => return Some(Ok(token)),
                         None => {}
                     }
                 }
@@ -385,16 +362,57 @@ where
     }
 }
 
-pub fn parse(request: impl IntoIterator<Item = char>) -> Request {
+fn regular_or_escaped_string_char<TRequest>(ch: char, lex: &mut Lex<TRequest>) -> LexResult<char>
+where
+    TRequest: Iterator<Item = char>,
+{
+    Ok(match ch {
+        '"' => unreachable!(),
+        '\\' => match lex.request.next() {
+            Some('u') => {
+                let mut unicode_hex: Vec<char> = _d();
+                while unicode_hex.len() < 4 {
+                    match lex.request.next() {
+                        Some(ch)
+                            if matches!(
+                                ch,
+                                '0'..='9' | 'A'..='F' | 'a'..='f'
+                            ) =>
+                        {
+                            unicode_hex.push(ch);
+                        }
+                        _ => return Err(lex.error("Unexpected hex digit")),
+                    }
+                }
+                char::from_u32(
+                    u32::from_str_radix(&unicode_hex.into_iter().collect::<String>(), 16).unwrap(),
+                )
+                .expect("Couldn't convert hex to char")
+            }
+            Some('"') => '"',
+            Some('\\') => '\\',
+            Some('/') => '/',
+            Some('b') => '\u{8}',
+            Some('f') => '\u{C}',
+            Some('n') => '\n',
+            Some('r') => '\r',
+            Some('t') => '\t',
+            _ => return Err(lex.error("Unexpected escape")),
+        },
+        ch => ch,
+    })
+}
+
+pub fn parse(request: impl IntoIterator<Item = char>) -> ParseResult<Request> {
     parse_tokens(lex(request))
 }
 
-pub fn parse_tokens(tokens: impl IntoIterator<Item = Token>) -> Request {
+pub fn parse_tokens(tokens: impl IntoIterator<Item = LexResult<Token>>) -> ParseResult<Request> {
     let mut tokens = tokens.into_iter().peekable();
-    Request::new(Document::new({
+    Ok(Request::new(Document::new({
         let mut definitions: Vec<ExecutableDefinition> = _d();
         loop {
-            match tokens.next() {
+            match tokens.next().transpose()? {
                 Some(token)
                     if matches!(token, Token::LeftCurlyBracket)
                         || matches!(
@@ -410,32 +428,39 @@ pub fn parse_tokens(tokens: impl IntoIterator<Item = Token>) -> Request {
                         let mut builder = OperationDefinitionBuilder::default();
                         builder = builder.operation_type(OperationType::Query);
                         match token {
-                            Token::Name(_parsed_operation_type) => match tokens.next() {
+                            Token::Name(_parsed_operation_type) => match tokens
+                                .next()
+                                .transpose()?
+                            {
                                 Some(Token::LeftCurlyBracket) => ExecutableDefinition::Operation(
                                     builder
-                                        .selection_set(parse_selection_set(&mut tokens))
+                                        .selection_set(parse_selection_set(&mut tokens)?)
                                         .build()
                                         .unwrap(),
                                 ),
                                 Some(Token::Name(name)) => {
                                     builder = builder.name(name);
-                                    match tokens.next() {
+                                    match tokens.next().transpose()? {
                                         Some(Token::LeftCurlyBracket) => {
                                             ExecutableDefinition::Operation(
                                                 builder
-                                                    .selection_set(parse_selection_set(&mut tokens))
+                                                    .selection_set(parse_selection_set(
+                                                        &mut tokens,
+                                                    )?)
                                                     .build()
                                                     .unwrap(),
                                             )
                                         }
-                                        _ => panic!("Expected selection set"),
+                                        _ => {
+                                            return Err(parse_error("Expected selection set").into())
+                                        }
                                     }
                                 }
-                                _ => panic!("Expected query"),
+                                _ => return Err(parse_error("Expected query").into()),
                             },
                             _ => ExecutableDefinition::Operation(
                                 builder
-                                    .selection_set(parse_selection_set(&mut tokens))
+                                    .selection_set(parse_selection_set(&mut tokens)?)
                                     .build()
                                     .unwrap(),
                             ),
@@ -445,47 +470,55 @@ pub fn parse_tokens(tokens: impl IntoIterator<Item = Token>) -> Request {
                 Some(Token::Name(name)) if name == "fragment" => {
                     PositionsTracker::emit_fragment_definition();
                     definitions.push(ExecutableDefinition::Fragment(FragmentDefinition::new(
-                        match tokens.next() {
+                        match tokens.next().transpose()? {
                             Some(Token::Name(name)) => {
                                 if name == "on" {
-                                    panic!("Saw `on` instead of fragment name");
+                                    return Err(
+                                        parse_error("Saw `on` instead of fragment name").into()
+                                    );
                                 }
                                 name
                             }
-                            _ => panic!("Expected fragment name"),
+                            _ => return Err(parse_error("Expected fragment name").into()),
                         },
-                        match tokens.next() {
-                            Some(Token::Name(name)) if name == "on" => match tokens.next() {
-                                Some(Token::Name(name)) => name,
-                                _ => panic!("Expected fragment `on` name"),
-                            },
-                            _ => panic!("Expected fragment `on`"),
+                        match tokens.next().transpose()? {
+                            Some(Token::Name(name)) if name == "on" => {
+                                match tokens.next().transpose()? {
+                                    Some(Token::Name(name)) => name,
+                                    _ => {
+                                        return Err(
+                                            parse_error("Expected fragment `on` name").into()
+                                        )
+                                    }
+                                }
+                            }
+                            _ => return Err(parse_error("Expected fragment `on`").into()),
                         },
-                        match tokens.next() {
-                            Some(Token::LeftCurlyBracket) => parse_selection_set(&mut tokens),
-                            _ => panic!("Expected selection set"),
+                        match tokens.next().transpose()? {
+                            Some(Token::LeftCurlyBracket) => parse_selection_set(&mut tokens)?,
+                            _ => return Err(parse_error("Expected selection set").into()),
                         },
                     )));
                 }
                 None => break definitions,
-                _ => panic!("Expected definition"),
+                _ => return Err(parse_error("Expected definition").into()),
             }
         }
-    }))
+    })))
 }
 
-fn parse_selection_set<TIterator>(tokens: &mut Peekable<TIterator>) -> Vec<Selection>
+fn parse_selection_set<TIterator>(tokens: &mut Peekable<TIterator>) -> ParseResult<Vec<Selection>>
 where
-    TIterator: Iterator<Item = Token>,
+    TIterator: Iterator<Item = LexResult<Token>>,
 {
     PositionsTracker::emit_selection_set();
     let mut ret: Vec<Selection> = _d();
 
     loop {
-        match tokens.next() {
+        match tokens.next().transpose()? {
             Some(Token::DotDotDot) => {
                 PositionsTracker::emit_selection_inline_fragment_or_fragment_spread();
-                ret.push(match tokens.next() {
+                ret.push(match tokens.next().transpose()? {
                     Some(token) => {
                         if matches!(
                             &token,
@@ -497,31 +530,33 @@ where
                             PositionsTracker::emit_selection_inline_fragment();
                             match token {
                                 Token::Name(_) => {
-                                    let on = match tokens.next() {
+                                    let on = match tokens.next().transpose()? {
                                         Some(Token::Name(on)) => on,
-                                        _ => panic!("Expected on"),
+                                        _ => return Err(parse_error("Expected on").into()),
                                     };
-                                    match tokens.next() {
+                                    match tokens.next().transpose()? {
                                         Some(Token::LeftCurlyBracket) => {
                                             Selection::InlineFragment(InlineFragment::new(
                                                 Some(on),
-                                                parse_selection_set(tokens),
+                                                parse_selection_set(tokens)?,
                                             ))
                                         }
-                                        _ => panic!("Expected selection set"),
+                                        _ => {
+                                            return Err(parse_error("Expected selection set").into())
+                                        }
                                     }
                                 }
                                 Token::LeftCurlyBracket => Selection::InlineFragment(
-                                    InlineFragment::new(None, parse_selection_set(tokens)),
+                                    InlineFragment::new(None, parse_selection_set(tokens)?),
                                 ),
                                 _ => unreachable!(),
                             }
                         } else {
-                            panic!("Expected fragment selection");
+                            return Err(parse_error("Expected fragment selection").into());
                         }
                     }
                     _ => {
-                        panic!("Expected fragment selection");
+                        return Err(parse_error("Expected fragment selection").into());
                     }
                 });
             }
@@ -531,46 +566,51 @@ where
                     let mut builder = SelectionFieldBuilder::default();
                     builder = builder.name(name);
                     match tokens.peek() {
-                        Some(Token::LeftParen) => {
+                        Some(Ok(Token::LeftParen)) => {
                             let _ = tokens.next().unwrap();
                             builder = builder.arguments({
                                 let mut arguments: Vec<Argument> = _d();
                                 loop {
-                                    match tokens.next() {
+                                    match tokens.next().transpose()? {
                                         Some(Token::Name(name)) => {
                                             PositionsTracker::emit_argument();
                                             arguments.push(Argument::new(name, {
-                                                if !matches!(tokens.next(), Some(Token::Colon)) {
-                                                    panic!("Expected colon");
+                                                if !matches!(
+                                                    tokens.next().transpose()?,
+                                                    Some(Token::Colon)
+                                                ) {
+                                                    return Err(
+                                                        parse_error("Expected colon").into()
+                                                    );
                                                 }
-                                                parse_value(tokens, false)
+                                                parse_value(tokens, false)?
                                             }));
                                         }
                                         Some(Token::RightParen) => {
                                             if arguments.is_empty() {
-                                                panic!("Empty arguments");
+                                                return Err(parse_error("Empty arguments").into());
                                             }
                                             break arguments;
                                         }
-                                        _ => panic!("Expected argument"),
+                                        _ => return Err(parse_error("Expected argument").into()),
                                     }
                                 }
                             });
                             match tokens.peek() {
-                                Some(Token::LeftCurlyBracket) => {
+                                Some(Ok(Token::LeftCurlyBracket)) => {
                                     let _ = tokens.next().unwrap();
                                     builder
-                                        .selection_set(parse_selection_set(tokens))
+                                        .selection_set(parse_selection_set(tokens)?)
                                         .build()
                                         .unwrap()
                                 }
                                 _ => builder.build().unwrap(),
                             }
                         }
-                        Some(Token::LeftCurlyBracket) => {
+                        Some(Ok(Token::LeftCurlyBracket)) => {
                             let _ = tokens.next().unwrap();
                             builder
-                                .selection_set(parse_selection_set(tokens))
+                                .selection_set(parse_selection_set(tokens)?)
                                 .build()
                                 .unwrap()
                         }
@@ -581,25 +621,97 @@ where
             Some(Token::RightCurlyBracket) => {
                 PositionsTracker::emit_end_selection_set();
                 if ret.is_empty() {
-                    panic!("Empty selection");
+                    return Err(parse_error("Empty selection").into());
                 }
-                return ret;
+                return Ok(ret);
             }
-            _ => panic!("Expected selection set"),
+            _ => return Err(parse_error("Expected selection set").into()),
         }
     }
 }
 
-fn parse_value<TIterator>(tokens: &mut Peekable<TIterator>, is_const: bool) -> Value
+fn parse_value<TIterator>(tokens: &mut Peekable<TIterator>, is_const: bool) -> ParseResult<Value>
 where
-    TIterator: Iterator<Item = Token>,
+    TIterator: Iterator<Item = LexResult<Token>>,
 {
-    match tokens.next() {
+    Ok(match tokens.next().transpose()? {
         Some(Token::Int(int)) => Value::Int(int),
         Some(Token::String(string)) => Value::String(string),
-        _ => panic!("Expected value"),
+        _ => return Err(parse_error("Expected value").into()),
+    })
+}
+
+fn parse_error(message: &str) -> ParseError {
+    ParseError::new(message.to_owned())
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct LexError {
+    pub message: String,
+    pub location: Option<Location>,
+}
+
+impl LexError {
+    pub fn new(message: String) -> Self {
+        Self {
+            message,
+            location: _d(),
+        }
     }
 }
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum ParseOrLexError {
+    Lex(LexError),
+    Parse(ParseError),
+}
+
+impl ParseOrLexError {
+    pub fn message(&self) -> &str {
+        match self {
+            Self::Lex(error) => &error.message,
+            Self::Parse(error) => &error.message,
+        }
+    }
+
+    pub fn location(&self) -> Option<Location> {
+        match self {
+            Self::Lex(error) => error.location,
+            Self::Parse(error) => error.location,
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct ParseError {
+    pub message: String,
+    pub location: Option<Location>,
+}
+
+impl ParseError {
+    pub fn new(message: String) -> Self {
+        Self {
+            message,
+            location: _d(),
+        }
+    }
+}
+
+impl From<LexError> for ParseOrLexError {
+    fn from(value: LexError) -> Self {
+        Self::Lex(value)
+    }
+}
+
+impl From<ParseError> for ParseOrLexError {
+    fn from(value: ParseError) -> Self {
+        Self::Parse(value)
+    }
+}
+
+type LexResult<TValue> = Result<TValue, LexError>;
+
+type ParseResult<TValue> = Result<TValue, ParseOrLexError>;
 
 #[cfg(test)]
 mod tests {
@@ -607,7 +719,7 @@ mod tests {
 
     fn lex_test(request: &str, expected_tokens: impl IntoIterator<Item = Token>) {
         assert_eq!(
-            lex(request.chars()).collect::<Vec<_>>(),
+            lex(request.chars()).map(Result::unwrap).collect::<Vec<_>>(),
             expected_tokens.into_iter().collect::<Vec<_>>()
         );
     }
@@ -620,6 +732,7 @@ mod tests {
         lex_test("10.1e-53", [Token::Float(10.1e-53)]);
         lex_test("10e53", [Token::Float(10e53)]);
         lex_test("10e-53", [Token::Float(10e-53)]);
+        lex_test("0.0", [Token::Float(0.0)]);
     }
 
     #[test]
@@ -636,10 +749,177 @@ mod tests {
     #[test]
     fn test_int() {
         lex_test("35", [Token::Int(35)]);
+        lex_test("0", [Token::Int(0)]);
     }
 
     #[test]
     fn test_dot_dot_dot() {
         lex_test("...a", [Token::DotDotDot, Token::Name("a".to_owned())]);
+    }
+
+    fn lex_error_test(request: &str, expected_error_message: &str) {
+        assert_eq!(
+            parse(request.chars()).unwrap_err(),
+            ParseOrLexError::Lex(LexError::new(expected_error_message.to_owned())),
+        );
+    }
+
+    #[test]
+    fn test_lex_unterminated_string() {
+        lex_error_test(r#""abc"#, "expected closing double-quote");
+    }
+
+    #[test]
+    fn test_lex_unicode_escape_non_hex_digit() {
+        lex_error_test(r#""\u123z""#, "Unexpected hex digit");
+    }
+
+    #[test]
+    fn test_lex_leading_zero() {
+        lex_error_test(r#"01"#, "Can't have leading zero");
+        lex_error_test(r#"01.1"#, "Can't have leading zero");
+    }
+
+    #[test]
+    fn test_lex_fractional_part() {
+        lex_error_test(r#"1.e1"#, "expected fractional part digits");
+    }
+
+    #[test]
+    fn test_lex_exponent_digits() {
+        lex_error_test(r#"1.0e name"#, "Expected exponent digits");
+        lex_error_test(r#"1e name"#, "Expected exponent digits");
+    }
+
+    fn parse_error_test(request: &str, expected_error_message: &str) {
+        assert_eq!(
+            parse(request.chars()).unwrap_err(),
+            ParseOrLexError::Parse(ParseError::new(expected_error_message.to_owned())),
+        );
+    }
+
+    #[test]
+    fn test_parse_query_selection_set() {
+        parse_error_test(r#"query abc 1"#, "Expected selection set");
+        parse_error_test(r#"query 1"#, "Expected query");
+    }
+
+    #[test]
+    fn test_parse_fragment_definition_name() {
+        parse_error_test(r#"fragment on"#, "Saw `on` instead of fragment name");
+        parse_error_test(r#"fragment 1"#, "Expected fragment name");
+        parse_error_test(
+            r#"fragment fooFragment on 1"#,
+            "Expected fragment `on` name",
+        );
+        parse_error_test(r#"fragment fooFragment { name }"#, "Expected fragment `on`");
+        parse_error_test(
+            r#"fragment fooFragment on Actor 1"#,
+            "Expected selection set",
+        );
+    }
+
+    #[test]
+    fn test_parse_definition() {
+        parse_error_test(
+            r#"
+              {
+                name
+              }
+
+              1
+            "#,
+            "Expected definition",
+        );
+    }
+
+    #[test]
+    fn test_parse_inline_fragment_on() {
+        parse_error_test(
+            r#"
+              {
+                ... on {
+                  name
+                }
+              }
+            "#,
+            "Expected on",
+        );
+        parse_error_test(
+            r#"
+              {
+                ... on Actor 1
+              }
+            "#,
+            "Expected selection set",
+        );
+        parse_error_test(
+            r#"
+              {
+                ...1
+              }
+            "#,
+            "Expected fragment selection",
+        );
+    }
+
+    #[test]
+    fn test_parse_argument() {
+        parse_error_test(
+            r#"
+              {
+                actor(id 1) {
+                  name
+                }
+              }
+            "#,
+            "Expected colon",
+        );
+        parse_error_test(
+            r#"
+              {
+                actor() {
+                  name
+                }
+              }
+            "#,
+            "Empty arguments",
+        );
+        parse_error_test(
+            r#"
+              {
+                actor(1) {
+                  name
+                }
+              }
+            "#,
+            "Expected argument",
+        );
+    }
+
+    #[test]
+    fn test_parse_selection_set() {
+        parse_error_test(
+            r#"
+              {
+                actorKatie { }
+              }
+            "#,
+            "Empty selection",
+        );
+    }
+
+    #[test]
+    fn test_parse_value() {
+        parse_error_test(
+            r#"
+              {
+                actor(id: !) {
+                  name
+                }
+              }
+            "#,
+            "Expected value",
+        );
     }
 }

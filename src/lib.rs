@@ -24,7 +24,7 @@ pub use crate::dependencies::{
 pub use crate::error::{Error, Result};
 pub use crate::inscribe::json_from_response;
 pub use crate::operation::OperationType;
-pub use crate::parser::{lex, parse, Token};
+pub use crate::parser::{lex, parse, LexError, ParseError, ParseOrLexError, Token};
 pub use crate::plan::{FieldPlan, QueryPlan};
 pub use crate::positions::{CharsEmitter, Location, PositionsTracker};
 pub use crate::request::{
