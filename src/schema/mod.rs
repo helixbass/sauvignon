@@ -613,7 +613,6 @@ async fn populate_internal_dependencies(
                                 "SELECT {} FROM {} WHERE id = $1",
                                 column_getter.column_name, column_getter.table_name
                             );
-                            println!("querying id column");
                             let (column_value,): (Id,) = sqlx::query_as(&query)
                                 .bind(row_id)
                                 .fetch_one(db_pool)
@@ -628,7 +627,6 @@ async fn populate_internal_dependencies(
                                 "SELECT {} FROM {} WHERE id = $1",
                                 column_getter.column_name, column_getter.table_name
                             );
-                            println!("querying string column");
                             let (column_value,): (String,) = sqlx::query_as(&query)
                                 .bind(row_id)
                                 .fetch_one(db_pool)
@@ -647,7 +645,6 @@ async fn populate_internal_dependencies(
                         "SELECT {} FROM {}",
                         column_getter_list.column_name, column_getter_list.table_name
                     );
-                    println!("querying list of columns");
                     let rows = sqlx::query_as::<_, (Id,)>(&query)
                         .fetch_all(db_pool)
                         .instrument(trace_span!("fetch column list"))
