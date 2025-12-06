@@ -313,6 +313,27 @@ pub fn introspection_type_type() -> Type {
                     ))
                     .build()
                     .unwrap(),
+                FieldBuilder::default()
+                    .name("possibleTypes")
+                    .type_(TypeFull::List(Box::new(TypeFull::Type(
+                        "__Type".to_owned(),
+                    ))))
+                    .resolver(FieldResolver::new(
+                        vec![ExternalDependency::new(
+                            "name".to_owned(),
+                            DependencyType::String,
+                        )],
+                        vec![InternalDependency::new(
+                            "names".to_owned(),
+                            DependencyType::ListOfStrings,
+                            InternalDependencyResolver::IntrospectionTypePossibleTypes,
+                        )],
+                        CarverOrPopulator::PopulatorList(
+                            ValuePopulatorList::new("name".to_owned()).into(),
+                        ),
+                    ))
+                    .build()
+                    .unwrap(),
             ])
             .build()
             .unwrap(),

@@ -45,6 +45,7 @@ pub enum InternalDependencyResolver {
     ColumnGetterList(ColumnGetterList),
     LiteralValue(LiteralValueInternalDependencyResolver),
     IntrospectionTypeInterfaces,
+    IntrospectionTypePossibleTypes,
 }
 
 pub struct ColumnGetter {

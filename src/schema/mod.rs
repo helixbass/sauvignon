@@ -2,6 +2,7 @@ use std::collections::{HashMap, HashSet};
 use std::pin::Pin;
 use std::sync::RwLock;
 
+use itertools::Itertools;
 use rkyv::{rancor, util::AlignedVec};
 use sql_query_builder::Select;
 use sqlx::{Pool, Postgres, Row};
@@ -871,7 +872,44 @@ async fn populate_internal_dependencies(
                                         .collect()
                                 })
                             })
-                            .unwrap_or_default(),
+                            // TODO: this needs to be optional for
+                            // things other than object types and interfaces
+                            .unwrap(),
+                    )
+                }
+                InternalDependencyResolver::IntrospectionTypePossibleTypes => {
+                    let _ = trace_span!("resolve introspection type possible types").entered();
+                    let type_name = match external_dependency_values.get("name").unwrap() {
+                        DependencyValue::String(name) => name,
+                        _ => unreachable!(),
+                    };
+                    DependencyValue::List(
+                        schema
+                            .interface_all_concrete_types
+                            .get(type_name)
+                            .map(|all_concrete_type_names| {
+                                all_concrete_type_names
+                                    .into_iter()
+                                    .sorted()
+                                    .map(|concrete_type_name| {
+                                        DependencyValue::String(concrete_type_name.clone())
+                                    })
+                                    .collect()
+                            })
+                            .or_else(|| {
+                                schema.unions.get(type_name).map(|union| {
+                                    union
+                                        .types
+                                        .iter()
+                                        .map(|concrete_type_name| {
+                                            DependencyValue::String(concrete_type_name.clone())
+                                        })
+                                        .collect()
+                                })
+                            })
+                            // TODO: this needs to be optional for
+                            // things other than interfaces and unions
+                            .unwrap(),
                     )
                 }
                 InternalDependencyResolver::Argument(argument_resolver) => {
