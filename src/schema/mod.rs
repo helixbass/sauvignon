@@ -263,6 +263,18 @@ async fn maybe_optimize_list_sub_belongs_to_query(
     }
     let sub_field_plan = selection_set.values().next().unwrap();
     let foreign_key_column_name = maybe_belongs_to(sub_field_plan, table_name, id_column_name)?;
+    let sub_selection_set = sub_field_plan
+        .selection_set_by_type
+        .as_ref()
+        .unwrap()
+        .thrush(|selection_set_by_type| {
+            if selection_set_by_type.len() != 1 {
+                return None;
+            }
+            Some(selection_set_by_type.values().next().unwrap())
+        })?;
+    let (belongs_to_table_name, belongs_to_column_names_to_select) =
+        maybe_column_names_to_select_bootstrap_table_name(sub_selection_set, id_column_name)?;
     unimplemented!()
 }
 
@@ -289,6 +301,40 @@ fn maybe_belongs_to<'a>(
         }
         _ => None,
     }
+}
+
+#[instrument(level = "trace", skip(selection_set))]
+fn maybe_column_names_to_select_bootstrap_table_name<'a>(
+    selection_set: &'a IndexMap<String, FieldPlan<'a>>,
+    id_column_name: &str,
+) -> Option<(&'a str, Vec<&'a str>)> {
+    let mut table_name: Option<&'a str> = _d();
+    let mut ret: Vec<&'a str> = _d();
+    for (_, field_plan) in selection_set {
+        ret.push({
+            let column_name = match table_name {
+                None => {
+                    let (table_name_, column_name) =
+                        maybe_column_getter_field_bootstrap_table_name(
+                            &field_plan.field_type.resolver,
+                            id_column_name,
+                        )?;
+                    table_name = Some(table_name_);
+                    column_name
+                }
+                Some(table_name) => maybe_column_getter_field(
+                    &field_plan.field_type.resolver,
+                    table_name,
+                    id_column_name,
+                )?,
+            };
+            if field_plan.field_type.name != column_name {
+                return None;
+            }
+            column_name
+        });
+    }
+    Some((table_name.unwrap(), ret))
 }
 
 #[instrument(level = "debug", skip(query_plan, db_pool))]
@@ -378,6 +424,20 @@ fn maybe_column_names_to_select<'a>(
 }
 
 #[instrument(level = "trace", skip(resolver))]
+fn maybe_column_getter_field_bootstrap_table_name<'a>(
+    resolver: &'a FieldResolver,
+    id_column_name: &str,
+) -> Option<(&'a str, &'a str)> {
+    if resolver.external_dependencies.len() != 1 {
+        return None;
+    }
+    if !has_id_external_dependency_only(resolver, id_column_name) {
+        return None;
+    }
+    maybe_column_getter_internal_dependency_bootstrap_table_name(resolver)
+}
+
+#[instrument(level = "trace", skip(resolver))]
 fn maybe_column_getter_field<'a>(
     resolver: &'a FieldResolver,
     table_name: &str,
@@ -390,6 +450,25 @@ fn maybe_column_getter_field<'a>(
         return None;
     }
     maybe_column_getter_internal_dependency(resolver, table_name)
+}
+
+#[instrument(level = "trace", skip(resolver))]
+fn maybe_column_getter_internal_dependency_bootstrap_table_name<'a>(
+    resolver: &'a FieldResolver,
+) -> Option<(&'a str, &'a str)> {
+    if resolver.internal_dependencies.len() != 1 {
+        return None;
+    }
+    let internal_dependency = &resolver.internal_dependencies[0];
+    if internal_dependency.type_ != DependencyType::String {
+        return None;
+    }
+    match &internal_dependency.resolver {
+        InternalDependencyResolver::ColumnGetter(column_getter) => {
+            Some((&column_getter.table_name, &column_getter.column_name))
+        }
+        _ => None,
+    }
 }
 
 #[instrument(level = "trace", skip(resolver))]
