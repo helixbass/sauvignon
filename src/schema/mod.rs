@@ -2,7 +2,6 @@ use std::collections::{HashMap, HashSet};
 use std::pin::Pin;
 use std::sync::RwLock;
 
-use inflector::Inflector;
 use rkyv::{rancor, util::AlignedVec};
 use sql_query_builder::Select;
 use sqlx::{Pool, Postgres, Row};
@@ -10,13 +9,13 @@ use squalid::{EverythingExt, OptionExt, _d};
 use tracing::{instrument, trace, trace_span, Instrument};
 
 use crate::{
-    builtin_types, fields_in_progress_new, get_hash, parse, CarverOrPopulator, DependencyType,
-    DependencyValue, Document, DummyUnionTypenameField, Error, ExternalDependencyValues, FieldPlan,
-    FieldResolver, FieldsInProgress, Id, InProgress, InProgressRecursing, InProgressRecursingList,
-    IndexMap, Interface, InternalDependency, InternalDependencyResolver, InternalDependencyValues,
-    OperationType, Populator, PopulatorList, PopulatorListInterface, PositionsTracker, QueryPlan,
-    Request, Response, ResponseValue, ResponseValueOrInProgress, Result as SauvignonResult, Type,
-    TypeInterface, Union, Value,
+    builtin_types, fields_in_progress_new, get_hash, parse, pluralize, CarverOrPopulator,
+    DependencyType, DependencyValue, Document, DummyUnionTypenameField, Error,
+    ExternalDependencyValues, FieldPlan, FieldResolver, FieldsInProgress, Id, InProgress,
+    InProgressRecursing, InProgressRecursingList, IndexMap, Interface, InternalDependency,
+    InternalDependencyResolver, InternalDependencyValues, OperationType, Populator, PopulatorList,
+    PopulatorListInterface, PositionsTracker, QueryPlan, Request, Response, ResponseValue,
+    ResponseValueOrInProgress, Result as SauvignonResult, Type, TypeInterface, Union, Value,
 };
 
 mod validation;
@@ -397,7 +396,7 @@ fn maybe_list_of_ids_internal_dependencies(
     }
     match &internal_dependency.resolver {
         InternalDependencyResolver::ColumnGetterList(column_getter_list) => {
-            if column_getter_list.column_name.to_plural() != internal_dependency.name {
+            if pluralize(&column_getter_list.column_name) != internal_dependency.name {
                 return None;
             }
             Some((

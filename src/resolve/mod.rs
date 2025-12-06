@@ -1,11 +1,11 @@
 use std::collections::HashMap;
 
-use inflector::Inflector;
+use heck::ToPascalCase;
 use tracing::instrument;
 
 use crate::{
-    ExternalDependency, ExternalDependencyValues, InternalDependency, InternalDependencyValues,
-    ResponseValue,
+    pluralize, singularize, ExternalDependency, ExternalDependencyValues, InternalDependency,
+    InternalDependencyValues, ResponseValue,
 };
 
 pub struct FieldResolver {
@@ -210,7 +210,7 @@ impl PopulatorListInterface for ValuePopulatorList {
         internal_dependencies: &InternalDependencyValues,
     ) -> Vec<ExternalDependencyValues> {
         internal_dependencies
-            .get(&self.singular.to_plural())
+            .get(&pluralize(&self.singular))
             .unwrap()
             .as_list()
             .into_iter()
@@ -249,12 +249,7 @@ impl UnionOrInterfaceTypePopulator for TypeDepluralizer {
         _external_dependencies: &ExternalDependencyValues,
         internal_dependencies: &InternalDependencyValues,
     ) -> String {
-        internal_dependencies
-            .get("type")
-            .unwrap()
-            .as_string()
-            .to_singular()
-            .to_pascal_case()
+        singularize(internal_dependencies.get("type").unwrap().as_string()).to_pascal_case()
     }
 }
 
