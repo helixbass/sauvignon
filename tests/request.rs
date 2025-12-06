@@ -483,3 +483,32 @@ async fn test_skip_include() {
     )
     .await;
 }
+
+#[tokio::test]
+async fn test_concrete_sub_field() {
+    request_test(
+        r#"
+            query {
+              actorKatie {
+                name
+                favoriteDesigner {
+                  name
+                }
+              }
+            }
+        "#,
+        r#"
+            {
+              "data": {
+                "actorKatie": {
+                  "name": "Katie Cassidy",
+                  "favoriteDesigner": {
+                    "name": "Proenza Schouler"
+                  }
+                }
+              }
+            }
+        "#,
+    )
+    .await;
+}

@@ -1,3 +1,4 @@
+use futures::join;
 use sauvignon::{json_from_response, Schema};
 use sqlx::{Pool, Postgres};
 use tracing_chrome::ChromeLayerBuilder;
@@ -22,7 +23,39 @@ async fn main() {
     let db_pool = get_db_pool().await.unwrap();
     let schema = get_schema(&db_pool).await.unwrap();
 
-    run_request(
+    let belongs_to = run_request(
+        r#"
+            {
+              actors {
+                favoriteDesigner {
+                  name
+                }
+              }
+            }
+        "#,
+        r#"
+            {
+              "data": {
+                "actors": [
+                  {
+                    "favoriteDesigner": {
+                      "name": "Proenza Schouler"
+                    }
+                  },
+                  {
+                    "favoriteDesigner": {
+                      "name": "Ralph Lauren"
+                    }
+                  }
+                ]
+              }
+            }
+        "#,
+        &schema,
+        &db_pool,
+    );
+
+    let list_query = run_request(
         r#"
             {
               actors {
@@ -49,6 +82,7 @@ async fn main() {
         "#,
         &schema,
         &db_pool,
-    )
-    .await;
+    );
+
+    join!(belongs_to, list_query);
 }

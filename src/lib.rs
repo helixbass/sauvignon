@@ -36,8 +36,8 @@ pub use crate::request::{
     OperationDefinition, OperationDefinitionBuilder, Request, Selection, Value,
 };
 pub use crate::resolve::{
-    Carver, CarverOrPopulator, FieldResolver, Populator, PopulatorList, PopulatorListInterface,
-    StringCarver, TypeDepluralizer, UnionOrInterfaceTypePopulator,
+    Carver, CarverOrPopulator, FieldResolver, Populator, PopulatorInterface, PopulatorList,
+    PopulatorListInterface, StringCarver, TypeDepluralizer, UnionOrInterfaceTypePopulator,
     UnionOrInterfaceTypePopulatorList, ValuePopulator, ValuePopulatorList, ValuesPopulator,
 };
 pub use crate::response::{

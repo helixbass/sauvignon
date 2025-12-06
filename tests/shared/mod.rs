@@ -166,10 +166,34 @@ pub async fn get_schema(db_pool: &Pool<Postgres>) -> anyhow::Result<Schema> {
                         ],
                         CarverOrPopulator::UnionOrInterfaceTypePopulator(
                             Box::new(TypeDepluralizer::new()),
-                            Box::new(ValuesPopulator::new([(
+                            ValuesPopulator::new([(
                                 "favorite_actor_or_designer_id".to_owned(),
                                 "id".to_owned(),
-                            )])),
+                            )])
+                            .into(),
+                        ),
+                    ))
+                    .build()
+                    .unwrap(),
+                TypeFieldBuilder::default()
+                    .name("favoriteDesigner")
+                    .type_(TypeFull::Type("Designer".to_owned()))
+                    .resolver(FieldResolver::new(
+                        vec![ExternalDependency::new("id".to_owned(), DependencyType::Id)],
+                        vec![InternalDependency::new(
+                            "favorite_designer_id".to_owned(),
+                            DependencyType::Id,
+                            InternalDependencyResolver::ColumnGetter(ColumnGetter::new(
+                                "actors".to_owned(),
+                                "favorite_designer_id".to_owned(),
+                            )),
+                        )],
+                        CarverOrPopulator::Populator(
+                            ValuesPopulator::new([(
+                                "favorite_designer_id".to_owned(),
+                                "id".to_owned(),
+                            )])
+                            .into(),
                         ),
                     ))
                     .build()
@@ -241,9 +265,7 @@ pub async fn get_schema(db_pool: &Pool<Postgres>) -> anyhow::Result<Schema> {
                                 ArgumentInternalDependencyResolver::new("id".to_owned()),
                             ),
                         )],
-                        CarverOrPopulator::Populator(Box::new(ValuePopulator::new(
-                            "id".to_owned(),
-                        ))),
+                        CarverOrPopulator::Populator(ValuePopulator::new("id".to_owned()).into()),
                     ))
                     .params([Param::new(
                         "id".to_owned(),
@@ -296,9 +318,7 @@ pub async fn get_schema(db_pool: &Pool<Postgres>) -> anyhow::Result<Schema> {
                                 )),
                             ),
                         )],
-                        CarverOrPopulator::Populator(Box::new(ValuePopulator::new(
-                            "id".to_owned(),
-                        ))),
+                        CarverOrPopulator::Populator(ValuePopulator::new("id".to_owned()).into()),
                     ))
                     .build()
                     .unwrap(),
@@ -329,7 +349,7 @@ pub async fn get_schema(db_pool: &Pool<Postgres>) -> anyhow::Result<Schema> {
                         ],
                         CarverOrPopulator::UnionOrInterfaceTypePopulator(
                             Box::new(TypeDepluralizer::new()),
-                            Box::new(ValuePopulator::new("id".to_owned())),
+                            ValuePopulator::new("id".to_owned()).into(),
                         ),
                     ))
                     .build()
@@ -361,7 +381,7 @@ pub async fn get_schema(db_pool: &Pool<Postgres>) -> anyhow::Result<Schema> {
                         ],
                         CarverOrPopulator::UnionOrInterfaceTypePopulator(
                             Box::new(TypeDepluralizer::new()),
-                            Box::new(ValuePopulator::new("id".to_owned())),
+                            ValuePopulator::new("id".to_owned()).into(),
                         ),
                     ))
                     .build()

@@ -4,7 +4,7 @@ use squalid::OptionExt;
 
 use crate::{AnyHashMap, Error};
 
-#[derive(Copy, Clone, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum DependencyType {
     Id,
     String,

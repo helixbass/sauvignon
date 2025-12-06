@@ -13,9 +13,10 @@ use crate::{
     DependencyType, DependencyValue, Document, DummyUnionTypenameField, Error,
     ExternalDependencyValues, FieldPlan, FieldResolver, FieldsInProgress, Id, InProgress,
     InProgressRecursing, InProgressRecursingList, IndexMap, Interface, InternalDependency,
-    InternalDependencyResolver, InternalDependencyValues, OperationType, Populator, PopulatorList,
-    PopulatorListInterface, PositionsTracker, QueryPlan, Request, Response, ResponseValue,
-    ResponseValueOrInProgress, Result as SauvignonResult, Type, TypeInterface, Union, Value,
+    InternalDependencyResolver, InternalDependencyValues, OperationType, Populator,
+    PopulatorInterface, PopulatorList, PopulatorListInterface, PositionsTracker, QueryPlan,
+    Request, Response, ResponseValue, ResponseValueOrInProgress, Result as SauvignonResult, Type,
+    TypeInterface, Union, Value,
 };
 
 mod validation;
@@ -219,6 +220,11 @@ async fn compute_response(
     if let Some(list_query_response) = maybe_optimize_list_query(&query_plan, db_pool).await {
         return list_query_response;
     }
+    if let Some(list_query_response) =
+        maybe_optimize_list_sub_belongs_to_query(&query_plan, db_pool).await
+    {
+        return list_query_response;
+    }
     let response_in_progress = query_plan.initial_response_in_progress();
     let mut fields_in_progress = response_in_progress.fields;
     loop {
@@ -229,6 +235,152 @@ async fn compute_response(
             return fields_in_progress.into();
         }
     }
+}
+
+#[instrument(level = "debug", skip(query_plan, db_pool))]
+async fn maybe_optimize_list_sub_belongs_to_query(
+    query_plan: &QueryPlan<'_>,
+    db_pool: &Pool<Postgres>,
+) -> Option<ResponseValue> {
+    if query_plan.field_plans.len() != 1 {
+        return None;
+    }
+    let field_plan = query_plan.field_plans.values().next().unwrap();
+    let (table_name, id_column_name) = maybe_list_of_ids_field(field_plan)?;
+    let selection_set =
+        field_plan
+            .selection_set_by_type
+            .as_ref()
+            .unwrap()
+            .thrush(|selection_set_by_type| {
+                if selection_set_by_type.len() != 1 {
+                    return None;
+                }
+                Some(selection_set_by_type.values().next().unwrap())
+            })?;
+    if selection_set.len() != 1 {
+        return None;
+    }
+    let sub_field_plan = selection_set.values().next().unwrap();
+    let foreign_key_column_name = maybe_belongs_to(sub_field_plan, table_name, id_column_name)?;
+    let sub_selection_set = sub_field_plan
+        .selection_set_by_type
+        .as_ref()
+        .unwrap()
+        .thrush(|selection_set_by_type| {
+            if selection_set_by_type.len() != 1 {
+                return None;
+            }
+            Some(selection_set_by_type.values().next().unwrap())
+        })?;
+    let (belongs_to_table_name, belongs_to_column_names_to_select) =
+        maybe_column_names_to_select_bootstrap_table_name(sub_selection_set, id_column_name)?;
+    // TODO: SQL injection?
+    let mut query = Select::default().from(table_name).inner_join(&format!("{belongs_to_table_name} on {table_name}.{foreign_key_column_name} = {belongs_to_table_name}.id"));
+    for belongs_to_column_name in &belongs_to_column_names_to_select {
+        query = query.select(&format!("{belongs_to_table_name}.{belongs_to_column_name}"));
+    }
+    Some(ResponseValue::Map(
+        [(
+            field_plan.name.clone(),
+            ResponseValue::List(
+                sqlx::query(&query.as_string())
+                    .fetch_all(db_pool)
+                    .instrument(trace_span!("fetch belongs-to"))
+                    .await
+                    .unwrap()
+                    .into_iter()
+                    .map(|row| {
+                        ResponseValue::Map(
+                            [(
+                                sub_field_plan.name.clone(),
+                                ResponseValue::Map(
+                                    belongs_to_column_names_to_select
+                                        .iter()
+                                        .enumerate()
+                                        .map(|(index, belongs_to_column_name)| {
+                                            (
+                                                (*belongs_to_column_name).to_owned(),
+                                                ResponseValue::String(row.get(index)),
+                                            )
+                                        })
+                                        .collect(),
+                                ),
+                            )]
+                            .into_iter()
+                            .collect(),
+                        )
+                    })
+                    .collect(),
+            ),
+        )]
+        .into_iter()
+        .collect(),
+    ))
+}
+
+#[instrument(level = "trace", skip(field_plan))]
+fn maybe_belongs_to<'a>(
+    field_plan: &'a FieldPlan<'a>,
+    table_name: &str,
+    id_column_name: &str,
+) -> Option<&'a str> {
+    let foreign_key_column_name = maybe_column_getter_field(
+        &field_plan.field_type.resolver,
+        table_name,
+        id_column_name,
+        DependencyType::Id,
+    )?;
+    match &field_plan.field_type.resolver.carver_or_populator {
+        CarverOrPopulator::Populator(Populator::Values(values_populator))
+            if values_populator.keys.len() == 1 =>
+        {
+            let only_values_key_mapping = values_populator.keys.iter().next().unwrap();
+            if only_values_key_mapping.0 != foreign_key_column_name {
+                return None;
+            }
+            if only_values_key_mapping.1 != "id" {
+                return None;
+            }
+            Some(foreign_key_column_name)
+        }
+        _ => None,
+    }
+}
+
+#[instrument(level = "trace", skip(selection_set))]
+fn maybe_column_names_to_select_bootstrap_table_name<'a>(
+    selection_set: &'a IndexMap<String, FieldPlan<'a>>,
+    id_column_name: &str,
+) -> Option<(&'a str, Vec<&'a str>)> {
+    let mut table_name: Option<&'a str> = _d();
+    let mut ret: Vec<&'a str> = _d();
+    for (_, field_plan) in selection_set {
+        ret.push({
+            let column_name = match table_name {
+                None => {
+                    let (table_name_, column_name) =
+                        maybe_column_getter_field_bootstrap_table_name(
+                            &field_plan.field_type.resolver,
+                            id_column_name,
+                        )?;
+                    table_name = Some(table_name_);
+                    column_name
+                }
+                Some(table_name) => maybe_column_getter_field(
+                    &field_plan.field_type.resolver,
+                    table_name,
+                    id_column_name,
+                    DependencyType::String,
+                )?,
+            };
+            if field_plan.field_type.name != column_name {
+                return None;
+            }
+            column_name
+        });
+    }
+    Some((table_name.unwrap(), ret))
 }
 
 #[instrument(level = "debug", skip(query_plan, db_pool))]
@@ -307,6 +459,7 @@ fn maybe_column_names_to_select<'a>(
                 &field_plan.field_type.resolver,
                 table_name,
                 id_column_name,
+                DependencyType::String,
             )?;
             if field_plan.field_type.name != column_name {
                 return None;
@@ -318,10 +471,25 @@ fn maybe_column_names_to_select<'a>(
 }
 
 #[instrument(level = "trace", skip(resolver))]
+fn maybe_column_getter_field_bootstrap_table_name<'a>(
+    resolver: &'a FieldResolver,
+    id_column_name: &str,
+) -> Option<(&'a str, &'a str)> {
+    if resolver.external_dependencies.len() != 1 {
+        return None;
+    }
+    if !has_id_external_dependency_only(resolver, id_column_name) {
+        return None;
+    }
+    maybe_column_getter_internal_dependency_bootstrap_table_name(resolver)
+}
+
+#[instrument(level = "trace", skip(resolver))]
 fn maybe_column_getter_field<'a>(
     resolver: &'a FieldResolver,
     table_name: &str,
     id_column_name: &str,
+    dependency_type: DependencyType,
 ) -> Option<&'a str> {
     if resolver.external_dependencies.len() != 1 {
         return None;
@@ -329,19 +497,39 @@ fn maybe_column_getter_field<'a>(
     if !has_id_external_dependency_only(resolver, id_column_name) {
         return None;
     }
-    maybe_column_getter_internal_dependency(resolver, table_name)
+    maybe_column_getter_internal_dependency(resolver, table_name, dependency_type)
+}
+
+#[instrument(level = "trace", skip(resolver))]
+fn maybe_column_getter_internal_dependency_bootstrap_table_name<'a>(
+    resolver: &'a FieldResolver,
+) -> Option<(&'a str, &'a str)> {
+    if resolver.internal_dependencies.len() != 1 {
+        return None;
+    }
+    let internal_dependency = &resolver.internal_dependencies[0];
+    if internal_dependency.type_ != DependencyType::String {
+        return None;
+    }
+    match &internal_dependency.resolver {
+        InternalDependencyResolver::ColumnGetter(column_getter) => {
+            Some((&column_getter.table_name, &column_getter.column_name))
+        }
+        _ => None,
+    }
 }
 
 #[instrument(level = "trace", skip(resolver))]
 fn maybe_column_getter_internal_dependency<'a>(
     resolver: &'a FieldResolver,
     table_name: &str,
+    dependency_type: DependencyType,
 ) -> Option<&'a str> {
     if resolver.internal_dependencies.len() != 1 {
         return None;
     }
     let internal_dependency = &resolver.internal_dependencies[0];
-    if internal_dependency.type_ != DependencyType::String {
+    if internal_dependency.type_ != dependency_type {
         return None;
     }
     match &internal_dependency.resolver {
@@ -724,7 +912,7 @@ async fn populate_internal_dependencies(
 fn to_recursing_after_populating<'a>(
     external_dependency_values: &ExternalDependencyValues,
     internal_dependency_values: &InternalDependencyValues,
-    populator: &Box<dyn Populator>,
+    populator: &Populator,
     resolved_concrete_type_name: &str,
     field_plan: &'a FieldPlan<'a>,
 ) -> ResponseValueOrInProgress<'a> {

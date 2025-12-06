@@ -69,16 +69,54 @@ impl Carver for StringCarver {
 
 pub enum CarverOrPopulator {
     Carver(Box<dyn Carver>),
-    Populator(Box<dyn Populator>),
+    Populator(Populator),
     PopulatorList(PopulatorList),
-    UnionOrInterfaceTypePopulator(Box<dyn UnionOrInterfaceTypePopulator>, Box<dyn Populator>),
+    UnionOrInterfaceTypePopulator(Box<dyn UnionOrInterfaceTypePopulator>, Populator),
     UnionOrInterfaceTypePopulatorList(
         Box<dyn UnionOrInterfaceTypePopulatorList>,
         Box<dyn PopulatorListInterface>,
     ),
 }
 
-pub trait Populator {
+pub enum Populator {
+    Value(ValuePopulator),
+    Values(ValuesPopulator),
+    Dyn(Box<dyn PopulatorInterface>),
+}
+
+impl PopulatorInterface for Populator {
+    fn populate(
+        &self,
+        external_dependencies: &ExternalDependencyValues,
+        internal_dependencies: &InternalDependencyValues,
+    ) -> ExternalDependencyValues {
+        match self {
+            Self::Value(populator) => {
+                populator.populate(external_dependencies, internal_dependencies)
+            }
+            Self::Values(populator) => {
+                populator.populate(external_dependencies, internal_dependencies)
+            }
+            Self::Dyn(populator) => {
+                populator.populate(external_dependencies, internal_dependencies)
+            }
+        }
+    }
+}
+
+impl From<ValuePopulator> for Populator {
+    fn from(value: ValuePopulator) -> Self {
+        Self::Value(value)
+    }
+}
+
+impl From<ValuesPopulator> for Populator {
+    fn from(value: ValuesPopulator) -> Self {
+        Self::Values(value)
+    }
+}
+
+pub trait PopulatorInterface {
     fn populate(
         &self,
         external_dependencies: &ExternalDependencyValues,
@@ -96,7 +134,7 @@ impl ValuePopulator {
     }
 }
 
-impl Populator for ValuePopulator {
+impl PopulatorInterface for ValuePopulator {
     #[instrument(
         level = "trace",
         skip(self, _external_dependencies, internal_dependencies)
@@ -128,7 +166,7 @@ impl ValuesPopulator {
     }
 }
 
-impl Populator for ValuesPopulator {
+impl PopulatorInterface for ValuesPopulator {
     #[instrument(
         level = "trace",
         skip(self, _external_dependencies, internal_dependencies)
