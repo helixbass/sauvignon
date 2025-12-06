@@ -512,3 +512,68 @@ async fn test_concrete_sub_field() {
     )
     .await;
 }
+
+#[tokio::test]
+async fn test_introspection_possible_types() {
+    request_test(
+        r#"
+            {
+              __type(name: "ActorOrDesigner") {
+                name
+                possibleTypes {
+                  name
+                }
+              }
+            }
+        "#,
+        r#"
+            {
+              "data": {
+                "__type": {
+                  "name": "ActorOrDesigner",
+                  "possibleTypes": [
+                    {
+                      "name": "Actor"
+                    },
+                    {
+                      "name": "Designer"
+                    }
+                  ]
+                }
+              }
+            }
+        "#,
+    )
+    .await;
+
+    request_test(
+        r#"
+            {
+              __type(name: "HasName") {
+                name
+                possibleTypes {
+                  name
+                }
+              }
+            }
+        "#,
+        r#"
+            {
+              "data": {
+                "__type": {
+                  "name": "HasName",
+                  "possibleTypes": [
+                    {
+                      "name": "Actor"
+                    },
+                    {
+                      "name": "Designer"
+                    }
+                  ]
+                }
+              }
+            }
+        "#,
+    )
+    .await;
+}

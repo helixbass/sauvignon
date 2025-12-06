@@ -2,6 +2,7 @@ use std::collections::{HashMap, HashSet};
 use std::pin::Pin;
 use std::sync::RwLock;
 
+use itertools::Itertools;
 use rkyv::{rancor, util::AlignedVec};
 use sql_query_builder::Select;
 use sqlx::{Pool, Postgres, Row};
@@ -889,6 +890,7 @@ async fn populate_internal_dependencies(
                             .map(|all_concrete_type_names| {
                                 all_concrete_type_names
                                     .into_iter()
+                                    .sorted()
                                     .map(|concrete_type_name| {
                                         DependencyValue::String(concrete_type_name.clone())
                                     })
