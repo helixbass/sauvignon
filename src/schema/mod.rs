@@ -275,7 +275,42 @@ async fn maybe_optimize_list_sub_belongs_to_query(
         })?;
     let (belongs_to_table_name, belongs_to_column_names_to_select) =
         maybe_column_names_to_select_bootstrap_table_name(sub_selection_set, id_column_name)?;
-    unimplemented!()
+    // TODO: SQL injection?
+    let mut query = Select::default().from(table_name).inner_join(&format!("{belongs_to_table_name} on {table_name}.{foreign_key_column_name} = {belongs_to_table_name}.id"));
+    for belongs_to_column_name in &belongs_to_column_names_to_select {
+        query = query.select(&format!("{belongs_to_table_name}.{belongs_to_column_name}"));
+    }
+    unimplemented!();
+    // Some(ResponseValue::Map(
+    //     [(
+    //         field_plan.name.clone(),
+    //         ResponseValue::List(
+    //             sqlx::query(&query.as_string())
+    //                 .fetch_all(db_pool)
+    //                 .instrument(trace_span!("fetch list"))
+    //                 .await
+    //                 .unwrap()
+    //                 .into_iter()
+    //                 .map(|row| {
+    //                     ResponseValue::Map(
+    //                         column_names_to_select
+    //                             .iter()
+    //                             .enumerate()
+    //                             .map(|(index, column_name)| {
+    //                                 (
+    //                                     (*column_name).to_owned(),
+    //                                     ResponseValue::String(row.get(index + 1)),
+    //                                 )
+    //                             })
+    //                             .collect(),
+    //                     )
+    //                 })
+    //                 .collect(),
+    //         ),
+    //     )]
+    //     .into_iter()
+    //     .collect(),
+    // ))
 }
 
 #[instrument(level = "trace", skip(field_plan))]
@@ -284,8 +319,12 @@ fn maybe_belongs_to<'a>(
     table_name: &str,
     id_column_name: &str,
 ) -> Option<&'a str> {
-    let foreign_key_column_name =
-        maybe_column_getter_field(&field_plan.field_type.resolver, table_name, id_column_name)?;
+    let foreign_key_column_name = maybe_column_getter_field(
+        &field_plan.field_type.resolver,
+        table_name,
+        id_column_name,
+        DependencyType::Id,
+    )?;
     match &field_plan.field_type.resolver.carver_or_populator {
         CarverOrPopulator::Populator(Populator::Values(values_populator))
             if values_populator.keys.len() == 1 =>
@@ -326,6 +365,7 @@ fn maybe_column_names_to_select_bootstrap_table_name<'a>(
                     &field_plan.field_type.resolver,
                     table_name,
                     id_column_name,
+                    DependencyType::String,
                 )?,
             };
             if field_plan.field_type.name != column_name {
@@ -413,6 +453,7 @@ fn maybe_column_names_to_select<'a>(
                 &field_plan.field_type.resolver,
                 table_name,
                 id_column_name,
+                DependencyType::String,
             )?;
             if field_plan.field_type.name != column_name {
                 return None;
@@ -442,6 +483,7 @@ fn maybe_column_getter_field<'a>(
     resolver: &'a FieldResolver,
     table_name: &str,
     id_column_name: &str,
+    dependency_type: DependencyType,
 ) -> Option<&'a str> {
     if resolver.external_dependencies.len() != 1 {
         return None;
@@ -449,7 +491,7 @@ fn maybe_column_getter_field<'a>(
     if !has_id_external_dependency_only(resolver, id_column_name) {
         return None;
     }
-    maybe_column_getter_internal_dependency(resolver, table_name)
+    maybe_column_getter_internal_dependency(resolver, table_name, dependency_type)
 }
 
 #[instrument(level = "trace", skip(resolver))]
@@ -475,12 +517,13 @@ fn maybe_column_getter_internal_dependency_bootstrap_table_name<'a>(
 fn maybe_column_getter_internal_dependency<'a>(
     resolver: &'a FieldResolver,
     table_name: &str,
+    dependency_type: DependencyType,
 ) -> Option<&'a str> {
     if resolver.internal_dependencies.len() != 1 {
         return None;
     }
     let internal_dependency = &resolver.internal_dependencies[0];
-    if internal_dependency.type_ != DependencyType::String {
+    if internal_dependency.type_ != dependency_type {
         return None;
     }
     match &internal_dependency.resolver {
