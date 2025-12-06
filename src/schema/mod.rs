@@ -280,37 +280,44 @@ async fn maybe_optimize_list_sub_belongs_to_query(
     for belongs_to_column_name in &belongs_to_column_names_to_select {
         query = query.select(&format!("{belongs_to_table_name}.{belongs_to_column_name}"));
     }
-    unimplemented!();
-    // Some(ResponseValue::Map(
-    //     [(
-    //         field_plan.name.clone(),
-    //         ResponseValue::List(
-    //             sqlx::query(&query.as_string())
-    //                 .fetch_all(db_pool)
-    //                 .instrument(trace_span!("fetch list"))
-    //                 .await
-    //                 .unwrap()
-    //                 .into_iter()
-    //                 .map(|row| {
-    //                     ResponseValue::Map(
-    //                         column_names_to_select
-    //                             .iter()
-    //                             .enumerate()
-    //                             .map(|(index, column_name)| {
-    //                                 (
-    //                                     (*column_name).to_owned(),
-    //                                     ResponseValue::String(row.get(index + 1)),
-    //                                 )
-    //                             })
-    //                             .collect(),
-    //                     )
-    //                 })
-    //                 .collect(),
-    //         ),
-    //     )]
-    //     .into_iter()
-    //     .collect(),
-    // ))
+    println!("query: {query:?}");
+    Some(ResponseValue::Map(
+        [(
+            field_plan.name.clone(),
+            ResponseValue::List(
+                sqlx::query(&query.as_string())
+                    .fetch_all(db_pool)
+                    .instrument(trace_span!("fetch belongs-to"))
+                    .await
+                    .unwrap()
+                    .into_iter()
+                    .map(|row| {
+                        ResponseValue::Map(
+                            [(
+                                sub_field_plan.name.clone(),
+                                ResponseValue::Map(
+                                    belongs_to_column_names_to_select
+                                        .iter()
+                                        .enumerate()
+                                        .map(|(index, belongs_to_column_name)| {
+                                            (
+                                                (*belongs_to_column_name).to_owned(),
+                                                ResponseValue::String(row.get(index)),
+                                            )
+                                        })
+                                        .collect(),
+                                ),
+                            )]
+                            .into_iter()
+                            .collect(),
+                        )
+                    })
+                    .collect(),
+            ),
+        )]
+        .into_iter()
+        .collect(),
+    ))
 }
 
 #[instrument(level = "trace", skip(field_plan))]
