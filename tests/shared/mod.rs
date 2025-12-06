@@ -174,6 +174,26 @@ pub async fn get_schema(db_pool: &Pool<Postgres>) -> anyhow::Result<Schema> {
                     ))
                     .build()
                     .unwrap(),
+                TypeFieldBuilder::default()
+                    .name("favoriteDesigner")
+                    .type_(TypeFull::Type("Designer".to_owned()))
+                    .resolver(FieldResolver::new(
+                        vec![ExternalDependency::new("id".to_owned(), DependencyType::Id)],
+                        vec![InternalDependency::new(
+                            "favorite_designer_id".to_owned(),
+                            DependencyType::Id,
+                            InternalDependencyResolver::ColumnGetter(ColumnGetter::new(
+                                "actors".to_owned(),
+                                "favorite_designer_id".to_owned(),
+                            )),
+                        )],
+                        CarverOrPopulator::Populator(Box::new(ValuesPopulator::new([(
+                            "favorite_designer_id".to_owned(),
+                            "id".to_owned(),
+                        )]))),
+                    ))
+                    .build()
+                    .unwrap(),
             ])
             .implements(vec!["HasName".to_owned()])
             .build()
