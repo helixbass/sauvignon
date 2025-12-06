@@ -5,7 +5,7 @@ use std::sync::RwLock;
 use inflector::Inflector;
 use rkyv::{rancor, util::AlignedVec};
 use sql_query_builder::Select;
-use sqlx::{Pool, Postgres};
+use sqlx::{Pool, Postgres, Row};
 use squalid::{EverythingExt, OptionExt, _d};
 use tracing::{instrument, trace, trace_span, Instrument};
 
@@ -264,19 +264,29 @@ async fn maybe_optimize_list_query(
         query = query.select(column_name);
     }
     println!("query: {query:?}");
-    unimplemented!()
-    // format!(
-    //     "SELECT {} FROM {} WHERE id = $1",
-    //     column_getter.column_name, column_getter.table_name
-    // );
-    // println!("querying id column");
-    // let (column_value,): (Id,) = sqlx::query_as(&query)
-    //     .bind(row_id)
-    //     .fetch_one(db_pool)
-    //     .instrument(trace_span!("fetch ID column"))
-    //     .await
-    //     .unwrap();
-    // DependencyValue::Id(column_value)
+    Some(ResponseValue::List(
+        sqlx::query(&query.as_string())
+            .fetch_all(db_pool)
+            .instrument(trace_span!("fetch list"))
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|row| {
+                ResponseValue::Map(
+                    column_names_to_select
+                        .iter()
+                        .enumerate()
+                        .map(|(index, column_name)| {
+                            (
+                                (*column_name).to_owned(),
+                                ResponseValue::String(row.get(index + 1)),
+                            )
+                        })
+                        .collect(),
+                )
+            })
+            .collect(),
+    ))
 }
 
 #[instrument(level = "trace", skip(selection_set))]
