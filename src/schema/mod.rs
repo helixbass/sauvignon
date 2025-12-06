@@ -263,29 +263,35 @@ async fn maybe_optimize_list_query(
     for column_name in &column_names_to_select {
         query = query.select(column_name);
     }
-    println!("query: {query:?}");
-    Some(ResponseValue::List(
-        sqlx::query(&query.as_string())
-            .fetch_all(db_pool)
-            .instrument(trace_span!("fetch list"))
-            .await
-            .unwrap()
-            .into_iter()
-            .map(|row| {
-                ResponseValue::Map(
-                    column_names_to_select
-                        .iter()
-                        .enumerate()
-                        .map(|(index, column_name)| {
-                            (
-                                (*column_name).to_owned(),
-                                ResponseValue::String(row.get(index + 1)),
-                            )
-                        })
-                        .collect(),
-                )
-            })
-            .collect(),
+    Some(ResponseValue::Map(
+        [(
+            field_plan.name.clone(),
+            ResponseValue::List(
+                sqlx::query(&query.as_string())
+                    .fetch_all(db_pool)
+                    .instrument(trace_span!("fetch list"))
+                    .await
+                    .unwrap()
+                    .into_iter()
+                    .map(|row| {
+                        ResponseValue::Map(
+                            column_names_to_select
+                                .iter()
+                                .enumerate()
+                                .map(|(index, column_name)| {
+                                    (
+                                        (*column_name).to_owned(),
+                                        ResponseValue::String(row.get(index + 1)),
+                                    )
+                                })
+                                .collect(),
+                        )
+                    })
+                    .collect(),
+            ),
+        )]
+        .into_iter()
+        .collect(),
     ))
 }
 
