@@ -54,4 +54,34 @@ async fn main() {
         &db_pool,
     )
     .await;
+
+    run_request(
+        r#"
+            {
+              actors {
+                name
+                expression
+              }
+            }
+        "#,
+        r#"
+            {
+              "data": {
+                "actors": [
+                  {
+                    "name": "Katie Cassidy",
+                    "expression": "no Serena you can't have the key"
+                  },
+                  {
+                    "name": "Jessica Szohr",
+                    "expression": "Dan where did you go I don't like you"
+                  }
+                ]
+              }
+            }
+        "#,
+        &schema,
+        &db_pool,
+    )
+    .await;
 }
