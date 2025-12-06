@@ -9,7 +9,7 @@ use crate::{
 };
 
 pub struct QueryPlan<'a> {
-    field_plans: IndexMap<String, FieldPlan<'a>>,
+    pub field_plans: IndexMap<String, FieldPlan<'a>>,
 }
 
 impl<'a> QueryPlan<'a> {

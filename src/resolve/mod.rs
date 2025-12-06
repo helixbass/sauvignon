@@ -1,11 +1,11 @@
 use std::collections::HashMap;
 
-use inflector::Inflector;
+use heck::ToPascalCase;
 use tracing::instrument;
 
 use crate::{
-    ExternalDependency, ExternalDependencyValues, InternalDependency, InternalDependencyValues,
-    ResponseValue,
+    pluralize, singularize, ExternalDependency, ExternalDependencyValues, InternalDependency,
+    InternalDependencyValues, ResponseValue,
 };
 
 pub struct FieldResolver {
@@ -70,11 +70,11 @@ impl Carver for StringCarver {
 pub enum CarverOrPopulator {
     Carver(Box<dyn Carver>),
     Populator(Box<dyn Populator>),
-    PopulatorList(Box<dyn PopulatorList>),
+    PopulatorList(PopulatorList),
     UnionOrInterfaceTypePopulator(Box<dyn UnionOrInterfaceTypePopulator>, Box<dyn Populator>),
     UnionOrInterfaceTypePopulatorList(
         Box<dyn UnionOrInterfaceTypePopulatorList>,
-        Box<dyn PopulatorList>,
+        Box<dyn PopulatorListInterface>,
     ),
 }
 
@@ -153,7 +153,35 @@ impl Populator for ValuesPopulator {
     }
 }
 
-pub trait PopulatorList {
+pub enum PopulatorList {
+    Value(ValuePopulatorList),
+    Dyn(Box<dyn PopulatorListInterface>),
+}
+
+impl PopulatorListInterface for PopulatorList {
+    fn populate(
+        &self,
+        external_dependencies: &ExternalDependencyValues,
+        internal_dependencies: &InternalDependencyValues,
+    ) -> Vec<ExternalDependencyValues> {
+        match self {
+            Self::Value(populator) => {
+                populator.populate(external_dependencies, internal_dependencies)
+            }
+            Self::Dyn(populator) => {
+                populator.populate(external_dependencies, internal_dependencies)
+            }
+        }
+    }
+}
+
+impl From<ValuePopulatorList> for PopulatorList {
+    fn from(value: ValuePopulatorList) -> Self {
+        Self::Value(value)
+    }
+}
+
+pub trait PopulatorListInterface {
     fn populate(
         &self,
         external_dependencies: &ExternalDependencyValues,
@@ -171,7 +199,7 @@ impl ValuePopulatorList {
     }
 }
 
-impl PopulatorList for ValuePopulatorList {
+impl PopulatorListInterface for ValuePopulatorList {
     #[instrument(
         level = "trace",
         skip(self, _external_dependencies, internal_dependencies)
@@ -182,7 +210,7 @@ impl PopulatorList for ValuePopulatorList {
         internal_dependencies: &InternalDependencyValues,
     ) -> Vec<ExternalDependencyValues> {
         internal_dependencies
-            .get(&self.singular.to_plural())
+            .get(&pluralize(&self.singular))
             .unwrap()
             .as_list()
             .into_iter()
@@ -221,12 +249,7 @@ impl UnionOrInterfaceTypePopulator for TypeDepluralizer {
         _external_dependencies: &ExternalDependencyValues,
         internal_dependencies: &InternalDependencyValues,
     ) -> String {
-        internal_dependencies
-            .get("type")
-            .unwrap()
-            .as_string()
-            .to_singular()
-            .to_pascal_case()
+        singularize(internal_dependencies.get("type").unwrap().as_string()).to_pascal_case()
     }
 }
 

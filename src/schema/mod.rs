@@ -3,17 +3,19 @@ use std::pin::Pin;
 use std::sync::RwLock;
 
 use rkyv::{rancor, util::AlignedVec};
-use sqlx::{Pool, Postgres};
-use squalid::{OptionExt, _d};
+use sql_query_builder::Select;
+use sqlx::{Pool, Postgres, Row};
+use squalid::{EverythingExt, OptionExt, _d};
 use tracing::{instrument, trace, trace_span, Instrument};
 
 use crate::{
-    builtin_types, fields_in_progress_new, get_hash, parse, CarverOrPopulator, DependencyType,
-    DependencyValue, Document, DummyUnionTypenameField, Error, ExternalDependencyValues, FieldPlan,
-    FieldsInProgress, Id, InProgress, InProgressRecursing, InProgressRecursingList, IndexMap,
-    Interface, InternalDependencyResolver, InternalDependencyValues, OperationType, Populator,
-    PositionsTracker, QueryPlan, Request, Response, ResponseValue, ResponseValueOrInProgress,
-    Result as SauvignonResult, Type, TypeInterface, Union, Value,
+    builtin_types, fields_in_progress_new, get_hash, parse, pluralize, CarverOrPopulator,
+    DependencyType, DependencyValue, Document, DummyUnionTypenameField, Error,
+    ExternalDependencyValues, FieldPlan, FieldResolver, FieldsInProgress, Id, InProgress,
+    InProgressRecursing, InProgressRecursingList, IndexMap, Interface, InternalDependency,
+    InternalDependencyResolver, InternalDependencyValues, OperationType, Populator, PopulatorList,
+    PopulatorListInterface, PositionsTracker, QueryPlan, Request, Response, ResponseValue,
+    ResponseValueOrInProgress, Result as SauvignonResult, Type, TypeInterface, Union, Value,
 };
 
 mod validation;
@@ -214,6 +216,9 @@ async fn compute_response(
     db_pool: &Pool<Postgres>,
 ) -> ResponseValue {
     let query_plan = QueryPlan::new(&request, schema);
+    if let Some(list_query_response) = maybe_optimize_list_query(&query_plan, db_pool).await {
+        return list_query_response;
+    }
     let response_in_progress = query_plan.initial_response_in_progress();
     let mut fields_in_progress = response_in_progress.fields;
     loop {
@@ -223,6 +228,183 @@ async fn compute_response(
         if is_done {
             return fields_in_progress.into();
         }
+    }
+}
+
+#[instrument(level = "debug", skip(query_plan, db_pool))]
+async fn maybe_optimize_list_query(
+    query_plan: &QueryPlan<'_>,
+    db_pool: &Pool<Postgres>,
+) -> Option<ResponseValue> {
+    if query_plan.field_plans.len() != 1 {
+        return None;
+    }
+    let field_plan = query_plan.field_plans.values().next().unwrap();
+    // TODO: I've currently baked in the assumption I believe that the
+    // internal dependendency has the same plural name as the column
+    // (eg "ids" and "id")
+    let (table_name, id_column_name) = maybe_list_of_ids_field(field_plan)?;
+    let selection_set =
+        field_plan
+            .selection_set_by_type
+            .as_ref()
+            .unwrap()
+            .thrush(|selection_set_by_type| {
+                if selection_set_by_type.len() != 1 {
+                    return None;
+                }
+                Some(selection_set_by_type.values().next().unwrap())
+            })?;
+    let column_names_to_select =
+        maybe_column_names_to_select(selection_set, table_name, id_column_name)?;
+    // TODO: SQL injection?
+    let mut query = Select::default().from(table_name).select(id_column_name);
+    for column_name in &column_names_to_select {
+        query = query.select(column_name);
+    }
+    Some(ResponseValue::Map(
+        [(
+            field_plan.name.clone(),
+            ResponseValue::List(
+                sqlx::query(&query.as_string())
+                    .fetch_all(db_pool)
+                    .instrument(trace_span!("fetch list"))
+                    .await
+                    .unwrap()
+                    .into_iter()
+                    .map(|row| {
+                        ResponseValue::Map(
+                            column_names_to_select
+                                .iter()
+                                .enumerate()
+                                .map(|(index, column_name)| {
+                                    (
+                                        (*column_name).to_owned(),
+                                        ResponseValue::String(row.get(index + 1)),
+                                    )
+                                })
+                                .collect(),
+                        )
+                    })
+                    .collect(),
+            ),
+        )]
+        .into_iter()
+        .collect(),
+    ))
+}
+
+#[instrument(level = "trace", skip(selection_set))]
+fn maybe_column_names_to_select<'a>(
+    selection_set: &'a IndexMap<String, FieldPlan<'a>>,
+    table_name: &str,
+    id_column_name: &str,
+) -> Option<Vec<&'a str>> {
+    let mut ret: Vec<&'a str> = _d();
+    for (_, field_plan) in selection_set {
+        ret.push({
+            let column_name = maybe_column_getter_field(
+                &field_plan.field_type.resolver,
+                table_name,
+                id_column_name,
+            )?;
+            if field_plan.field_type.name != column_name {
+                return None;
+            }
+            column_name
+        });
+    }
+    Some(ret)
+}
+
+#[instrument(level = "trace", skip(resolver))]
+fn maybe_column_getter_field<'a>(
+    resolver: &'a FieldResolver,
+    table_name: &str,
+    id_column_name: &str,
+) -> Option<&'a str> {
+    if resolver.external_dependencies.len() != 1 {
+        return None;
+    }
+    if !has_id_external_dependency_only(resolver, id_column_name) {
+        return None;
+    }
+    maybe_column_getter_internal_dependency(resolver, table_name)
+}
+
+#[instrument(level = "trace", skip(resolver))]
+fn maybe_column_getter_internal_dependency<'a>(
+    resolver: &'a FieldResolver,
+    table_name: &str,
+) -> Option<&'a str> {
+    if resolver.internal_dependencies.len() != 1 {
+        return None;
+    }
+    let internal_dependency = &resolver.internal_dependencies[0];
+    if internal_dependency.type_ != DependencyType::String {
+        return None;
+    }
+    match &internal_dependency.resolver {
+        InternalDependencyResolver::ColumnGetter(column_getter)
+            if column_getter.table_name == table_name =>
+        {
+            Some(&column_getter.column_name)
+        }
+        _ => None,
+    }
+}
+
+#[instrument(level = "trace", skip(resolver))]
+fn has_id_external_dependency_only(resolver: &FieldResolver, id_column_name: &str) -> bool {
+    if resolver.external_dependencies.len() != 1 {
+        return false;
+    }
+    if resolver.external_dependencies[0].name != id_column_name {
+        return false;
+    }
+    if resolver.external_dependencies[0].type_ != DependencyType::Id {
+        return false;
+    }
+    true
+}
+
+#[instrument(level = "trace", skip(field_plan))]
+fn maybe_list_of_ids_field<'a>(field_plan: &'a FieldPlan<'a>) -> Option<(&'a str, &'a str)> {
+    let (table_name, id_column_name) = maybe_list_of_ids_internal_dependencies(
+        &field_plan.field_type.resolver.internal_dependencies,
+    )?;
+    match &field_plan.field_type.resolver.carver_or_populator {
+        CarverOrPopulator::PopulatorList(PopulatorList::Value(value_populator_list))
+            if value_populator_list.singular == id_column_name =>
+        {
+            Some((table_name, id_column_name))
+        }
+        _ => None,
+    }
+}
+
+#[instrument(level = "trace", skip(internal_dependencies))]
+fn maybe_list_of_ids_internal_dependencies(
+    internal_dependencies: &Vec<InternalDependency>,
+) -> Option<(&str, &str)> {
+    if internal_dependencies.len() != 1 {
+        return None;
+    }
+    let internal_dependency = &internal_dependencies[0];
+    if internal_dependency.type_ != DependencyType::ListOfIds {
+        return None;
+    }
+    match &internal_dependency.resolver {
+        InternalDependencyResolver::ColumnGetterList(column_getter_list) => {
+            if pluralize(&column_getter_list.column_name) != internal_dependency.name {
+                return None;
+            }
+            Some((
+                &column_getter_list.table_name,
+                &column_getter_list.column_name,
+            ))
+        }
+        _ => None,
     }
 }
 

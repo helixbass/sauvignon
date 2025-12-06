@@ -11,6 +11,7 @@ mod request;
 mod resolve;
 mod response;
 mod schema;
+mod string;
 mod types;
 
 pub use indexmap::IndexMap;
@@ -35,9 +36,9 @@ pub use crate::request::{
     OperationDefinition, OperationDefinitionBuilder, Request, Selection, Value,
 };
 pub use crate::resolve::{
-    Carver, CarverOrPopulator, FieldResolver, Populator, PopulatorList, StringCarver,
-    TypeDepluralizer, UnionOrInterfaceTypePopulator, UnionOrInterfaceTypePopulatorList,
-    ValuePopulator, ValuePopulatorList, ValuesPopulator,
+    Carver, CarverOrPopulator, FieldResolver, Populator, PopulatorList, PopulatorListInterface,
+    StringCarver, TypeDepluralizer, UnionOrInterfaceTypePopulator,
+    UnionOrInterfaceTypePopulatorList, ValuePopulator, ValuePopulatorList, ValuesPopulator,
 };
 pub use crate::response::{
     fields_in_progress_new, FieldsInProgress, InProgress, InProgressRecursing,
@@ -45,6 +46,7 @@ pub use crate::response::{
     ResponseValueOrInProgress,
 };
 pub use crate::schema::{Schema, TypeOrUnionOrInterface, ValidationError};
+pub use crate::string::{pluralize, singularize};
 pub use crate::types::{
     builtin_types, string_type, BuiltInScalarType, DummyUnionTypenameField, Field as TypeField,
     FieldBuilder as TypeFieldBuilder, FieldInterface, Interface, InterfaceBuilder, InterfaceField,
