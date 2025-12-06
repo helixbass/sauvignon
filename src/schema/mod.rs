@@ -280,7 +280,6 @@ async fn maybe_optimize_list_sub_belongs_to_query(
     for belongs_to_column_name in &belongs_to_column_names_to_select {
         query = query.select(&format!("{belongs_to_table_name}.{belongs_to_column_name}"));
     }
-    println!("query: {query:?}");
     Some(ResponseValue::Map(
         [(
             field_plan.name.clone(),
