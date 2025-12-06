@@ -2,6 +2,7 @@ use std::collections::{HashMap, HashSet};
 use std::pin::Pin;
 use std::sync::RwLock;
 
+use inflector::Inflector;
 use rkyv::{rancor, util::AlignedVec};
 use sqlx::{Pool, Postgres};
 use squalid::{OptionExt, _d};
@@ -11,9 +12,10 @@ use crate::{
     builtin_types, fields_in_progress_new, get_hash, parse, CarverOrPopulator, DependencyType,
     DependencyValue, Document, DummyUnionTypenameField, Error, ExternalDependencyValues, FieldPlan,
     FieldsInProgress, Id, InProgress, InProgressRecursing, InProgressRecursingList, IndexMap,
-    Interface, InternalDependencyResolver, InternalDependencyValues, OperationType, Populator,
-    PositionsTracker, QueryPlan, Request, Response, ResponseValue, ResponseValueOrInProgress,
-    Result as SauvignonResult, Type, TypeInterface, Union, Value,
+    Interface, InternalDependency, InternalDependencyResolver, InternalDependencyValues,
+    OperationType, Populator, PopulatorList, PopulatorListInterface, PositionsTracker, QueryPlan,
+    Request, Response, ResponseValue, ResponseValueOrInProgress, Result as SauvignonResult, Type,
+    TypeInterface, Union, Value,
 };
 
 mod validation;
@@ -214,6 +216,9 @@ async fn compute_response(
     db_pool: &Pool<Postgres>,
 ) -> ResponseValue {
     let query_plan = QueryPlan::new(&request, schema);
+    if let Some(list_query_response) = maybe_optimize_list_query(&query_plan, db_pool).await {
+        return list_query_response;
+    }
     let response_in_progress = query_plan.initial_response_in_progress();
     let mut fields_in_progress = response_in_progress.fields;
     loop {
@@ -223,6 +228,62 @@ async fn compute_response(
         if is_done {
             return fields_in_progress.into();
         }
+    }
+}
+
+#[instrument(level = "debug", skip(query_plan, db_pool))]
+async fn maybe_optimize_list_query(
+    query_plan: &QueryPlan<'_>,
+    db_pool: &Pool<Postgres>,
+) -> Option<ResponseValue> {
+    if query_plan.field_plans.len() != 1 {
+        return None;
+    }
+    let field_plan = query_plan.field_plans.values().next().unwrap();
+    // TODO: I've currently baked in the assumption I believe that the
+    // internal dependendency has the same plural name as the column
+    // (eg "ids" and "id")
+    let (table_name, id_column_name) = maybe_list_of_ids_field(field_plan)?;
+    unimplemented!()
+}
+
+#[instrument(level = "trace", skip(field_plan))]
+fn maybe_list_of_ids_field<'a>(field_plan: &'a FieldPlan<'a>) -> Option<(&'a str, &'a str)> {
+    let (table_name, id_column_name) = maybe_list_of_ids_internal_dependencies(
+        &field_plan.field_type.resolver.internal_dependencies,
+    )?;
+    match &field_plan.field_type.resolver.carver_or_populator {
+        CarverOrPopulator::PopulatorList(PopulatorList::Value(value_populator_list))
+            if value_populator_list.singular == id_column_name =>
+        {
+            Some((table_name, id_column_name))
+        }
+        _ => None,
+    }
+}
+
+#[instrument(level = "trace", skip(internal_dependencies))]
+fn maybe_list_of_ids_internal_dependencies(
+    internal_dependencies: &Vec<InternalDependency>,
+) -> Option<(&str, &str)> {
+    if internal_dependencies.len() != 1 {
+        return None;
+    }
+    let internal_dependency = &internal_dependencies[0];
+    if internal_dependency.type_ != DependencyType::ListOfIds {
+        return None;
+    }
+    match &internal_dependency.resolver {
+        InternalDependencyResolver::ColumnGetterList(column_getter_list) => {
+            if column_getter_list.column_name.to_plural() != internal_dependency.name {
+                return None;
+            }
+            Some((
+                &column_getter_list.table_name,
+                &column_getter_list.column_name,
+            ))
+        }
+        _ => None,
     }
 }
 
@@ -431,6 +492,7 @@ async fn populate_internal_dependencies(
                                 "SELECT {} FROM {} WHERE id = $1",
                                 column_getter.column_name, column_getter.table_name
                             );
+                            println!("querying id column");
                             let (column_value,): (Id,) = sqlx::query_as(&query)
                                 .bind(row_id)
                                 .fetch_one(db_pool)
@@ -445,6 +507,7 @@ async fn populate_internal_dependencies(
                                 "SELECT {} FROM {} WHERE id = $1",
                                 column_getter.column_name, column_getter.table_name
                             );
+                            println!("querying string column");
                             let (column_value,): (String,) = sqlx::query_as(&query)
                                 .bind(row_id)
                                 .fetch_one(db_pool)
@@ -463,6 +526,7 @@ async fn populate_internal_dependencies(
                         "SELECT {} FROM {}",
                         column_getter_list.column_name, column_getter_list.table_name
                     );
+                    println!("querying list of columns");
                     let rows = sqlx::query_as::<_, (Id,)>(&query)
                         .fetch_all(db_pool)
                         .instrument(trace_span!("fetch column list"))

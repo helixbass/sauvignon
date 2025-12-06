@@ -5,7 +5,7 @@ use sauvignon::{
     DependencyType, DependencyValue, ExternalDependency, ExternalDependencyValues, FieldResolver,
     Id, InterfaceBuilder, InterfaceField, InternalDependency, InternalDependencyResolver,
     InternalDependencyValues, LiteralValueInternalDependencyResolver, ObjectTypeBuilder,
-    OperationType, Param, PopulatorList, Schema, StringCarver, Type, TypeDepluralizer,
+    OperationType, Param, PopulatorListInterface, Schema, StringCarver, Type, TypeDepluralizer,
     TypeFieldBuilder, TypeFull, Union, UnionOrInterfaceTypePopulatorList, ValuePopulator,
     ValuePopulatorList, ValuesPopulator,
 };
@@ -50,7 +50,7 @@ impl ActorsAndDesignersPopulator {
     }
 }
 
-impl PopulatorList for ActorsAndDesignersPopulator {
+impl PopulatorListInterface for ActorsAndDesignersPopulator {
     fn populate(
         &self,
         _external_dependencies: &ExternalDependencyValues,
@@ -271,9 +271,9 @@ pub async fn get_schema(db_pool: &Pool<Postgres>) -> anyhow::Result<Schema> {
                                 "id".to_owned(),
                             )),
                         )],
-                        CarverOrPopulator::PopulatorList(Box::new(ValuePopulatorList::new(
-                            "id".to_owned(),
-                        ))),
+                        CarverOrPopulator::PopulatorList(
+                            ValuePopulatorList::new("id".to_owned()).into(),
+                        ),
                     ))
                     .build()
                     .unwrap(),

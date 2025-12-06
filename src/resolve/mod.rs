@@ -70,11 +70,11 @@ impl Carver for StringCarver {
 pub enum CarverOrPopulator {
     Carver(Box<dyn Carver>),
     Populator(Box<dyn Populator>),
-    PopulatorList(Box<dyn PopulatorList>),
+    PopulatorList(PopulatorList),
     UnionOrInterfaceTypePopulator(Box<dyn UnionOrInterfaceTypePopulator>, Box<dyn Populator>),
     UnionOrInterfaceTypePopulatorList(
         Box<dyn UnionOrInterfaceTypePopulatorList>,
-        Box<dyn PopulatorList>,
+        Box<dyn PopulatorListInterface>,
     ),
 }
 
@@ -153,7 +153,35 @@ impl Populator for ValuesPopulator {
     }
 }
 
-pub trait PopulatorList {
+pub enum PopulatorList {
+    Value(ValuePopulatorList),
+    Dyn(Box<dyn PopulatorListInterface>),
+}
+
+impl PopulatorListInterface for PopulatorList {
+    fn populate(
+        &self,
+        external_dependencies: &ExternalDependencyValues,
+        internal_dependencies: &InternalDependencyValues,
+    ) -> Vec<ExternalDependencyValues> {
+        match self {
+            Self::Value(populator) => {
+                populator.populate(external_dependencies, internal_dependencies)
+            }
+            Self::Dyn(populator) => {
+                populator.populate(external_dependencies, internal_dependencies)
+            }
+        }
+    }
+}
+
+impl From<ValuePopulatorList> for PopulatorList {
+    fn from(value: ValuePopulatorList) -> Self {
+        Self::Value(value)
+    }
+}
+
+pub trait PopulatorListInterface {
     fn populate(
         &self,
         external_dependencies: &ExternalDependencyValues,
@@ -171,7 +199,7 @@ impl ValuePopulatorList {
     }
 }
 
-impl PopulatorList for ValuePopulatorList {
+impl PopulatorListInterface for ValuePopulatorList {
     #[instrument(
         level = "trace",
         skip(self, _external_dependencies, internal_dependencies)

@@ -307,9 +307,9 @@ pub fn introspection_type_type() -> Type {
                             DependencyType::ListOfStrings,
                             InternalDependencyResolver::IntrospectionTypeInterfaces,
                         )],
-                        CarverOrPopulator::PopulatorList(Box::new(ValuePopulatorList::new(
-                            "name".to_owned(),
-                        ))),
+                        CarverOrPopulator::PopulatorList(
+                            ValuePopulatorList::new("name".to_owned()).into(),
+                        ),
                     ))
                     .build()
                     .unwrap(),
