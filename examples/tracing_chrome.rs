@@ -26,8 +26,9 @@ async fn main() {
         r#"
             {
               actors {
-                name
-                expression
+                favoriteDesigner {
+                  name
+                }
               }
             }
         "#,
@@ -36,12 +37,14 @@ async fn main() {
               "data": {
                 "actors": [
                   {
-                    "name": "Katie Cassidy",
-                    "expression": "no Serena you can't have the key"
+                    "favoriteDesigner": {
+                      "name": "Proenza Schouler"
+                    }
                   },
                   {
-                    "name": "Jessica Szohr",
-                    "expression": "Dan where did you go I don't like you"
+                    "favoriteDesigner": {
+                      "name": "Ralph Lauren"
+                    }
                   }
                 ]
               }

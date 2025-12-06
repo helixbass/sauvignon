@@ -13,9 +13,10 @@ use crate::{
     DependencyType, DependencyValue, Document, DummyUnionTypenameField, Error,
     ExternalDependencyValues, FieldPlan, FieldResolver, FieldsInProgress, Id, InProgress,
     InProgressRecursing, InProgressRecursingList, IndexMap, Interface, InternalDependency,
-    InternalDependencyResolver, InternalDependencyValues, OperationType, Populator, PopulatorList,
-    PopulatorListInterface, PositionsTracker, QueryPlan, Request, Response, ResponseValue,
-    ResponseValueOrInProgress, Result as SauvignonResult, Type, TypeInterface, Union, Value,
+    InternalDependencyResolver, InternalDependencyValues, OperationType, Populator,
+    PopulatorInterface, PopulatorList, PopulatorListInterface, PositionsTracker, QueryPlan,
+    Request, Response, ResponseValue, ResponseValueOrInProgress, Result as SauvignonResult, Type,
+    TypeInterface, Union, Value,
 };
 
 mod validation;
@@ -219,6 +220,11 @@ async fn compute_response(
     if let Some(list_query_response) = maybe_optimize_list_query(&query_plan, db_pool).await {
         return list_query_response;
     }
+    if let Some(list_query_response) =
+        maybe_optimize_list_sub_belongs_to_query(&query_plan, db_pool).await
+    {
+        return list_query_response;
+    }
     let response_in_progress = query_plan.initial_response_in_progress();
     let mut fields_in_progress = response_in_progress.fields;
     loop {
@@ -228,6 +234,60 @@ async fn compute_response(
         if is_done {
             return fields_in_progress.into();
         }
+    }
+}
+
+#[instrument(level = "debug", skip(query_plan, db_pool))]
+async fn maybe_optimize_list_sub_belongs_to_query(
+    query_plan: &QueryPlan<'_>,
+    db_pool: &Pool<Postgres>,
+) -> Option<ResponseValue> {
+    if query_plan.field_plans.len() != 1 {
+        return None;
+    }
+    let field_plan = query_plan.field_plans.values().next().unwrap();
+    let (table_name, id_column_name) = maybe_list_of_ids_field(field_plan)?;
+    let selection_set =
+        field_plan
+            .selection_set_by_type
+            .as_ref()
+            .unwrap()
+            .thrush(|selection_set_by_type| {
+                if selection_set_by_type.len() != 1 {
+                    return None;
+                }
+                Some(selection_set_by_type.values().next().unwrap())
+            })?;
+    if selection_set.len() != 1 {
+        return None;
+    }
+    let sub_field_plan = selection_set.values().next().unwrap();
+    let foreign_key_column_name = maybe_belongs_to(sub_field_plan, table_name, id_column_name)?;
+    unimplemented!()
+}
+
+#[instrument(level = "trace", skip(field_plan))]
+fn maybe_belongs_to<'a>(
+    field_plan: &'a FieldPlan<'a>,
+    table_name: &str,
+    id_column_name: &str,
+) -> Option<&'a str> {
+    let foreign_key_column_name =
+        maybe_column_getter_field(&field_plan.field_type.resolver, table_name, id_column_name)?;
+    match &field_plan.field_type.resolver.carver_or_populator {
+        CarverOrPopulator::Populator(Populator::Values(values_populator))
+            if values_populator.keys.len() == 1 =>
+        {
+            let only_values_key_mapping = values_populator.keys.iter().next().unwrap();
+            if only_values_key_mapping.0 != foreign_key_column_name {
+                return None;
+            }
+            if only_values_key_mapping.1 != "id" {
+                return None;
+            }
+            Some(foreign_key_column_name)
+        }
+        _ => None,
     }
 }
 
@@ -724,7 +784,7 @@ async fn populate_internal_dependencies(
 fn to_recursing_after_populating<'a>(
     external_dependency_values: &ExternalDependencyValues,
     internal_dependency_values: &InternalDependencyValues,
-    populator: &Box<dyn Populator>,
+    populator: &Populator,
     resolved_concrete_type_name: &str,
     field_plan: &'a FieldPlan<'a>,
 ) -> ResponseValueOrInProgress<'a> {

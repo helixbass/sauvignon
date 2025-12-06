@@ -227,7 +227,7 @@ impl Field {
                         "name".to_owned(),
                     )),
                 )],
-                CarverOrPopulator::Populator(Box::new(ValuePopulator::new("name".to_owned()))),
+                CarverOrPopulator::Populator(ValuePopulator::new("name".to_owned()).into()),
             ))
             .params([Param::new(
                 "name".to_owned(),
