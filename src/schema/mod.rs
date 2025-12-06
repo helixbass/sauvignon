@@ -5,14 +5,14 @@ use std::sync::RwLock;
 use inflector::Inflector;
 use rkyv::{rancor, util::AlignedVec};
 use sqlx::{Pool, Postgres};
-use squalid::{OptionExt, _d};
+use squalid::{EverythingExt, OptionExt, _d};
 use tracing::{instrument, trace, trace_span, Instrument};
 
 use crate::{
     builtin_types, fields_in_progress_new, get_hash, parse, CarverOrPopulator, DependencyType,
     DependencyValue, Document, DummyUnionTypenameField, Error, ExternalDependencyValues, FieldPlan,
-    FieldsInProgress, Id, InProgress, InProgressRecursing, InProgressRecursingList, IndexMap,
-    Interface, InternalDependency, InternalDependencyResolver, InternalDependencyValues,
+    FieldResolver, FieldsInProgress, Id, InProgress, InProgressRecursing, InProgressRecursingList,
+    IndexMap, Interface, InternalDependency, InternalDependencyResolver, InternalDependencyValues,
     OperationType, Populator, PopulatorList, PopulatorListInterface, PositionsTracker, QueryPlan,
     Request, Response, ResponseValue, ResponseValueOrInProgress, Result as SauvignonResult, Type,
     TypeInterface, Union, Value,
@@ -244,7 +244,94 @@ async fn maybe_optimize_list_query(
     // internal dependendency has the same plural name as the column
     // (eg "ids" and "id")
     let (table_name, id_column_name) = maybe_list_of_ids_field(field_plan)?;
+    let selection_set =
+        field_plan
+            .selection_set_by_type
+            .as_ref()
+            .unwrap()
+            .thrush(|selection_set_by_type| {
+                if selection_set_by_type.len() != 1 {
+                    return None;
+                }
+                Some(selection_set_by_type.values().next().unwrap())
+            })?;
+    let column_names_to_select =
+        maybe_column_names_to_select(selection_set, table_name, id_column_name)?;
     unimplemented!()
+}
+
+#[instrument(level = "trace", skip(selection_set))]
+fn maybe_column_names_to_select<'a>(
+    selection_set: &'a IndexMap<String, FieldPlan<'a>>,
+    table_name: &str,
+    id_column_name: &str,
+) -> Option<Vec<&'a str>> {
+    let mut ret: Vec<&'a str> = _d();
+    for (_, field_plan) in selection_set {
+        ret.push({
+            let column_name = maybe_column_getter_field(
+                &field_plan.field_type.resolver,
+                table_name,
+                id_column_name,
+            )?;
+            if field_plan.field_type.name != column_name {
+                return None;
+            }
+            column_name
+        });
+    }
+    Some(ret)
+}
+
+#[instrument(level = "trace", skip(resolver))]
+fn maybe_column_getter_field<'a>(
+    resolver: &'a FieldResolver,
+    table_name: &str,
+    id_column_name: &str,
+) -> Option<&'a str> {
+    if resolver.external_dependencies.len() != 1 {
+        return None;
+    }
+    if !has_id_external_dependency_only(resolver, id_column_name) {
+        return None;
+    }
+    maybe_column_getter_internal_dependency(resolver, table_name)
+}
+
+#[instrument(level = "trace", skip(resolver))]
+fn maybe_column_getter_internal_dependency<'a>(
+    resolver: &'a FieldResolver,
+    table_name: &str,
+) -> Option<&'a str> {
+    if resolver.internal_dependencies.len() != 1 {
+        return None;
+    }
+    let internal_dependency = &resolver.internal_dependencies[0];
+    if internal_dependency.type_ != DependencyType::String {
+        return None;
+    }
+    match &internal_dependency.resolver {
+        InternalDependencyResolver::ColumnGetter(column_getter)
+            if column_getter.table_name == table_name =>
+        {
+            Some(&column_getter.column_name)
+        }
+        _ => None,
+    }
+}
+
+#[instrument(level = "trace", skip(resolver))]
+fn has_id_external_dependency_only(resolver: &FieldResolver, id_column_name: &str) -> bool {
+    if resolver.external_dependencies.len() != 1 {
+        return false;
+    }
+    if resolver.external_dependencies[0].name != id_column_name {
+        return false;
+    }
+    if resolver.external_dependencies[0].type_ != DependencyType::Id {
+        return false;
+    }
+    true
 }
 
 #[instrument(level = "trace", skip(field_plan))]
