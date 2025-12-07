@@ -1,13 +1,15 @@
+use std::collections::HashMap;
+
 use sqlx::{postgres::PgPoolOptions, Pool, Postgres};
 
 use sauvignon::{
-    ArgumentInternalDependencyResolver, CarverOrPopulator, ColumnGetter, ColumnGetterList,
+    ArgumentInternalDependencyResolver, Carver, CarverOrPopulator, ColumnGetter, ColumnGetterList,
     DependencyType, DependencyValue, Enum, ExternalDependency, ExternalDependencyValues,
     FieldResolver, Id, InterfaceBuilder, InterfaceField, InternalDependency,
     InternalDependencyResolver, InternalDependencyValues, LiteralValueInternalDependencyResolver,
-    ObjectTypeBuilder, OperationType, Param, PopulatorListInterface, Schema, StringCarver, Type,
-    TypeDepluralizer, TypeFieldBuilder, TypeFull, Union, UnionOrInterfaceTypePopulatorList,
-    ValuePopulator, ValuePopulatorList, ValuesPopulator,
+    ObjectTypeBuilder, OperationType, Param, PopulatorListInterface, ResponseValue, Schema,
+    StringCarver, Type, TypeDepluralizer, TypeFieldBuilder, TypeFull, Union,
+    UnionOrInterfaceTypePopulatorList, ValuePopulator, ValuePopulatorList, ValuesPopulator,
 };
 
 pub struct ActorsAndDesignersTypePopulator {}
@@ -79,6 +81,43 @@ impl PopulatorListInterface for ActorsAndDesignersPopulator {
                     }),
             )
             .collect()
+    }
+}
+
+static CANADIAN_CITIES: [&'static str; 4] = ["VANCOUVER", "CORNER_BROOK", "QUEBEC", "MONTREAL"];
+
+pub struct CanadianCityQuoteCarver {
+    pub quotes: HashMap<&'static str, String>,
+}
+
+impl Default for CanadianCityQuoteCarver {
+    fn default() -> Self {
+        Self {
+            quotes: CANADIAN_CITIES
+                .iter()
+                .map(|city| {
+                    (
+                        *city,
+                        match *city {
+                            "VANCOUVER" => "We're the best".to_owned(),
+                            _ => "We're the worst".to_owned(),
+                        },
+                    )
+                })
+                .collect(),
+        }
+    }
+}
+
+impl Carver for CanadianCityQuoteCarver {
+    fn carve(
+        &self,
+        _external_dependencies: &ExternalDependencyValues,
+        internal_dependencies: &InternalDependencyValues,
+    ) -> ResponseValue {
+        ResponseValue::EnumValue(
+            self.quotes[&**internal_dependencies.get("city").unwrap().as_string()].clone(),
+        )
     }
 }
 
@@ -236,12 +275,7 @@ pub async fn get_schema(db_pool: &Pool<Postgres>) -> anyhow::Result<Schema> {
 
     let canadian_city = Type::Enum(Enum::new(
         "CanadianCity".to_owned(),
-        vec![
-            "VANCOUVER".to_owned(),
-            "CORNER BROOK".to_owned(),
-            "QUEBEC".to_owned(),
-            "MONTREAL".to_owned(),
-        ],
+        CANADIAN_CITIES.iter().map(|city| (*city).to_owned()),
     ));
 
     let (katie_id,): (Id,) = sqlx::query_as("SELECT id FROM actors WHERE name = 'Katie Cassidy'")
@@ -442,6 +476,26 @@ pub async fn get_schema(db_pool: &Pool<Postgres>) -> anyhow::Result<Schema> {
                         )],
                         CarverOrPopulator::Carver(Box::new(StringCarver::new("value".to_owned()))),
                     ))
+                    .build()
+                    .unwrap(),
+                TypeFieldBuilder::default()
+                    .name("canadianCityQuote")
+                    .type_(TypeFull::Type("String".to_owned()))
+                    .resolver(FieldResolver::new(
+                        vec![],
+                        vec![InternalDependency::new(
+                            "city".to_owned(),
+                            DependencyType::String,
+                            InternalDependencyResolver::Argument(
+                                ArgumentInternalDependencyResolver::new("city".to_owned()),
+                            ),
+                        )],
+                        CarverOrPopulator::Carver(Box::new(CanadianCityQuoteCarver::default())),
+                    ))
+                    .params([Param::new(
+                        "city".to_owned(),
+                        TypeFull::NonNull(Box::new(TypeFull::Type("CanadianCity".to_owned()))),
+                    )])
                     .build()
                     .unwrap(),
             ])

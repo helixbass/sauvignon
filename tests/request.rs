@@ -596,3 +596,22 @@ async fn test_enum() {
     )
     .await;
 }
+
+#[tokio::test]
+async fn test_enum_arguments() {
+    request_test(
+        r#"
+            {
+              canadianCityQuote(city: "VANCOUVER")
+            }
+        "#,
+        r#"
+            {
+              "data": {
+                "canadianCityQuote": "We're the best"
+              }
+            }
+        "#,
+    )
+    .await;
+}
