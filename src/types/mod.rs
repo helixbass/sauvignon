@@ -5,9 +5,9 @@ use squalid::{OptionExt, _d};
 
 use crate::{
     ArgumentInternalDependencyResolver, CarverOrPopulator, DependencyType, DependencyValue,
-    ExternalDependency, FieldResolver, IndexMap, InternalDependency, InternalDependencyResolver,
-    LiteralValueInternalDependencyResolver, OperationType, StringCarver, ValuePopulator,
-    ValuePopulatorList,
+    ExternalDependency, FieldResolver, IndexMap, IndexSet, InternalDependency,
+    InternalDependencyResolver, LiteralValueInternalDependencyResolver, OperationType,
+    StringCarver, ValuePopulator, ValuePopulatorList,
 };
 
 pub enum TypeFull {
@@ -29,6 +29,7 @@ impl TypeFull {
 pub enum Type {
     Object(ObjectType),
     Scalar(ScalarType),
+    Enum(Enum),
 }
 
 impl Type {
@@ -56,6 +57,7 @@ impl TypeInterface for Type {
         match self {
             Self::Object(type_) => type_.name(),
             Self::Scalar(type_) => type_.name(),
+            Self::Enum(type_) => type_.name(),
         }
     }
 }
@@ -511,5 +513,25 @@ impl Default for DummyUnionTypenameField {
             type_: TypeFull::Type("String".to_owned()),
             params: _d(),
         }
+    }
+}
+
+pub struct Enum {
+    pub name: String,
+    pub variants: IndexSet<String>,
+}
+
+impl Enum {
+    pub fn new(name: String, variants: impl IntoIterator<Item = String>) -> Self {
+        Self {
+            name,
+            variants: variants.into_iter().collect(),
+        }
+    }
+}
+
+impl TypeInterface for Enum {
+    fn name(&self) -> &str {
+        &self.name
     }
 }

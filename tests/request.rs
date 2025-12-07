@@ -577,3 +577,41 @@ async fn test_introspection_possible_types() {
     )
     .await;
 }
+
+#[tokio::test]
+async fn test_enum() {
+    request_test(
+        r#"
+            query {
+              bestCanadianCity
+            }
+        "#,
+        r#"
+            {
+              "data": {
+                "bestCanadianCity": "VANCOUVER"
+              }
+            }
+        "#,
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn test_enum_arguments() {
+    request_test(
+        r#"
+            {
+              canadianCityQuote(city: VANCOUVER)
+            }
+        "#,
+        r#"
+            {
+              "data": {
+                "canadianCityQuote": "We're the best"
+              }
+            }
+        "#,
+    )
+    .await;
+}

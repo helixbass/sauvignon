@@ -236,6 +236,7 @@ pub enum Value {
     String(String),
     Null,
     Bool(bool),
+    EnumVariant(String),
 }
 
 #[derive(Debug, Archive, Serialize, Deserialize)]
