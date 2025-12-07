@@ -11,7 +11,7 @@ use tracing::{instrument, trace, trace_span, Instrument};
 
 use crate::{
     builtin_types, fields_in_progress_new, get_hash, parse, pluralize, CarverOrPopulator,
-    DependencyType, DependencyValue, Document, DummyUnionTypenameField, Enum, Error,
+    DependencyType, DependencyValue, Document, DummyUnionTypenameField, Error,
     ExternalDependencyValues, FieldPlan, FieldResolver, FieldsInProgress, Id, InProgress,
     InProgressRecursing, InProgressRecursingList, IndexMap, Interface, InternalDependency,
     InternalDependencyResolver, InternalDependencyValues, OperationType, Populator,
@@ -33,16 +33,14 @@ pub struct Schema {
     pub interface_all_concrete_types: HashMap<String, HashSet<String>>,
     pub dummy_union_typename_field: DummyUnionTypenameField,
     pub cached_validated_documents: RwLock<HashMap<u64, AlignedVec>>,
-    pub enums: HashMap<String, Enum>,
 }
 
 impl Schema {
-    #[instrument(level = "trace", skip(types, unions, interfaces, enums))]
+    #[instrument(level = "trace", skip(types, unions, interfaces))]
     pub fn try_new(
         types: Vec<Type>,
         unions: Vec<Union>,
         interfaces: Vec<Interface>,
-        enums: Vec<Enum>,
     ) -> SauvignonResult<Self> {
         let query_type_index = types
             .iter()
@@ -91,10 +89,6 @@ impl Schema {
             interface_all_concrete_types,
             dummy_union_typename_field: _d(),
             cached_validated_documents: _d(),
-            enums: enums
-                .into_iter()
-                .map(|enum_| (enum_.name.to_owned(), enum_))
-                .collect(),
         })
     }
 

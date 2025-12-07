@@ -29,6 +29,7 @@ impl TypeFull {
 pub enum Type {
     Object(ObjectType),
     Scalar(ScalarType),
+    Enum(Enum),
 }
 
 impl Type {
@@ -56,6 +57,7 @@ impl TypeInterface for Type {
         match self {
             Self::Object(type_) => type_.name(),
             Self::Scalar(type_) => type_.name(),
+            Self::Enum(type_) => type_.name(),
         }
     }
 }
@@ -525,5 +527,11 @@ impl Enum {
             name,
             variants: variants.into_iter().collect(),
         }
+    }
+}
+
+impl TypeInterface for Enum {
+    fn name(&self) -> &str {
+        &self.name
     }
 }

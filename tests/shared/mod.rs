@@ -234,7 +234,7 @@ pub async fn get_schema(db_pool: &Pool<Postgres>) -> anyhow::Result<Schema> {
         vec!["Actor".to_owned(), "Designer".to_owned()],
     );
 
-    let canadian_city = Enum::new(
+    let canadian_city = Type::Enum(Enum::new(
         "CanadianCity".to_owned(),
         vec![
             "VANCOUVER".to_owned(),
@@ -242,7 +242,7 @@ pub async fn get_schema(db_pool: &Pool<Postgres>) -> anyhow::Result<Schema> {
             "QUEBEC".to_owned(),
             "MONTREAL".to_owned(),
         ],
-    );
+    ));
 
     let (katie_id,): (Id,) = sqlx::query_as("SELECT id FROM actors WHERE name = 'Katie Cassidy'")
         .fetch_one(db_pool)
@@ -451,10 +451,9 @@ pub async fn get_schema(db_pool: &Pool<Postgres>) -> anyhow::Result<Schema> {
     );
 
     Ok(Schema::try_new(
-        vec![query_type, actor_type, designer_type],
+        vec![query_type, actor_type, designer_type, canadian_city],
         vec![actor_or_designer],
         vec![has_name_interface],
-        vec![canadian_city],
     )?)
 }
 
