@@ -926,6 +926,9 @@ async fn populate_internal_dependencies(
                         (DependencyType::String, Value::String(argument_value)) => {
                             DependencyValue::String(argument_value.clone())
                         }
+                        (DependencyType::String, Value::EnumVariant(argument_value)) => {
+                            DependencyValue::String(argument_value.clone())
+                        }
                         // TODO: truly unreachable?
                         _ => unreachable!(),
                     }

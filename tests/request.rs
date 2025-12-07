@@ -602,7 +602,7 @@ async fn test_enum_arguments() {
     request_test(
         r#"
             {
-              canadianCityQuote(city: "VANCOUVER")
+              canadianCityQuote(city: VANCOUVER)
             }
         "#,
         r#"
