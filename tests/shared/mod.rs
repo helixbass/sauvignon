@@ -2,12 +2,12 @@ use sqlx::{postgres::PgPoolOptions, Pool, Postgres};
 
 use sauvignon::{
     ArgumentInternalDependencyResolver, CarverOrPopulator, ColumnGetter, ColumnGetterList,
-    DependencyType, DependencyValue, ExternalDependency, ExternalDependencyValues, FieldResolver,
-    Id, InterfaceBuilder, InterfaceField, InternalDependency, InternalDependencyResolver,
-    InternalDependencyValues, LiteralValueInternalDependencyResolver, ObjectTypeBuilder,
-    OperationType, Param, PopulatorListInterface, Schema, StringCarver, Type, TypeDepluralizer,
-    TypeFieldBuilder, TypeFull, Union, UnionOrInterfaceTypePopulatorList, ValuePopulator,
-    ValuePopulatorList, ValuesPopulator,
+    DependencyType, DependencyValue, Enum, ExternalDependency, ExternalDependencyValues,
+    FieldResolver, Id, InterfaceBuilder, InterfaceField, InternalDependency,
+    InternalDependencyResolver, InternalDependencyValues, LiteralValueInternalDependencyResolver,
+    ObjectTypeBuilder, OperationType, Param, PopulatorListInterface, Schema, StringCarver, Type,
+    TypeDepluralizer, TypeFieldBuilder, TypeFull, Union, UnionOrInterfaceTypePopulatorList,
+    ValuePopulator, ValuePopulatorList, ValuesPopulator,
 };
 
 pub struct ActorsAndDesignersTypePopulator {}
@@ -234,6 +234,16 @@ pub async fn get_schema(db_pool: &Pool<Postgres>) -> anyhow::Result<Schema> {
         vec!["Actor".to_owned(), "Designer".to_owned()],
     );
 
+    let canadian_city = Enum::new(
+        "CanadianCity".to_owned(),
+        vec![
+            "VANCOUVER".to_owned(),
+            "CORNER BROOK".to_owned(),
+            "QUEBEC".to_owned(),
+            "MONTREAL".to_owned(),
+        ],
+    );
+
     let (katie_id,): (Id,) = sqlx::query_as("SELECT id FROM actors WHERE name = 'Katie Cassidy'")
         .fetch_one(db_pool)
         .await
@@ -416,6 +426,24 @@ pub async fn get_schema(db_pool: &Pool<Postgres>) -> anyhow::Result<Schema> {
                     ))
                     .build()
                     .unwrap(),
+                TypeFieldBuilder::default()
+                    .name("bestCanadianCity")
+                    .type_(TypeFull::Type("CanadianCity".to_owned()))
+                    .resolver(FieldResolver::new(
+                        vec![],
+                        vec![InternalDependency::new(
+                            "value".to_owned(),
+                            DependencyType::String,
+                            InternalDependencyResolver::LiteralValue(
+                                LiteralValueInternalDependencyResolver(DependencyValue::String(
+                                    "VANCOUVER".to_owned(),
+                                )),
+                            ),
+                        )],
+                        CarverOrPopulator::Carver(Box::new(StringCarver::new("value".to_owned()))),
+                    ))
+                    .build()
+                    .unwrap(),
             ])
             .is_top_level_type(OperationType::Query)
             .build()
@@ -426,6 +454,7 @@ pub async fn get_schema(db_pool: &Pool<Postgres>) -> anyhow::Result<Schema> {
         vec![query_type, actor_type, designer_type],
         vec![actor_or_designer],
         vec![has_name_interface],
+        vec![canadian_city],
     )?)
 }
 

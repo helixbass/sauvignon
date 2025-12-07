@@ -14,7 +14,7 @@ mod schema;
 mod string;
 mod types;
 
-pub use indexmap::IndexMap;
+pub use indexmap::{IndexMap, IndexSet};
 
 pub use crate::any_hash_map::AnyHashMap;
 pub use crate::dependencies::{
@@ -48,8 +48,8 @@ pub use crate::response::{
 pub use crate::schema::{Schema, TypeOrUnionOrInterface, ValidationError};
 pub use crate::string::{pluralize, singularize};
 pub use crate::types::{
-    builtin_types, string_type, BuiltInScalarType, DummyUnionTypenameField, Field as TypeField,
-    FieldBuilder as TypeFieldBuilder, FieldInterface, Interface, InterfaceBuilder, InterfaceField,
-    ObjectType, ObjectTypeBuilder, Param, ScalarType, StringType, Type, TypeFull, TypeInterface,
-    TypeOrInterfaceField, Union,
+    builtin_types, string_type, BuiltInScalarType, DummyUnionTypenameField, Enum,
+    Field as TypeField, FieldBuilder as TypeFieldBuilder, FieldInterface, Interface,
+    InterfaceBuilder, InterfaceField, ObjectType, ObjectTypeBuilder, Param, ScalarType, StringType,
+    Type, TypeFull, TypeInterface, TypeOrInterfaceField, Union,
 };

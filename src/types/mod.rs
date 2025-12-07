@@ -5,9 +5,9 @@ use squalid::{OptionExt, _d};
 
 use crate::{
     ArgumentInternalDependencyResolver, CarverOrPopulator, DependencyType, DependencyValue,
-    ExternalDependency, FieldResolver, IndexMap, InternalDependency, InternalDependencyResolver,
-    LiteralValueInternalDependencyResolver, OperationType, StringCarver, ValuePopulator,
-    ValuePopulatorList,
+    ExternalDependency, FieldResolver, IndexMap, IndexSet, InternalDependency,
+    InternalDependencyResolver, LiteralValueInternalDependencyResolver, OperationType,
+    StringCarver, ValuePopulator, ValuePopulatorList,
 };
 
 pub enum TypeFull {
@@ -510,6 +510,20 @@ impl Default for DummyUnionTypenameField {
             name: "__typename".to_owned(),
             type_: TypeFull::Type("String".to_owned()),
             params: _d(),
+        }
+    }
+}
+
+pub struct Enum {
+    pub name: String,
+    pub variants: IndexSet<String>,
+}
+
+impl Enum {
+    pub fn new(name: String, variants: impl IntoIterator<Item = String>) -> Self {
+        Self {
+            name,
+            variants: variants.into_iter().collect(),
         }
     }
 }
