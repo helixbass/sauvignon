@@ -1,4 +1,4 @@
-use heck::ToPascalCase;
+use heck::ToSnakeCase;
 use proc_macro::TokenStream;
 use quote::{quote, ToTokens};
 use squalid::{OptionExtDefault, _d};
@@ -226,7 +226,7 @@ impl FieldValue {
     pub fn process(self, parent_type_name: Option<&str>) -> FieldValueProcessed {
         match self {
             Self::StringColumn => FieldValueProcessed::StringColumn {
-                table_name: pluralize(&parent_type_name.unwrap().to_pascal_case()),
+                table_name: pluralize(&parent_type_name.unwrap().to_snake_case()),
             },
             Self::Object {
                 type_,
@@ -395,7 +395,7 @@ pub fn schema(input: TokenStream) -> TokenStream {
         }
     });
 
-    quote! {
+    quote! {{
         let query_type = ::sauvignon::Type::Object(
             ::sauvignon::ObjectTypeBuilder::default()
                 .name("Query")
@@ -412,7 +412,7 @@ pub fn schema(input: TokenStream) -> TokenStream {
             vec![],
             vec![],
         )?
-    }
+    }}
     .into()
 }
 
@@ -437,7 +437,7 @@ impl ToTokens for TypeFull {
     fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
         match self {
             Self::Type(type_) => quote! {
-                ::sauvignon::TypeFull::Type(#type_)
+                ::sauvignon::TypeFull::Type(#type_.to_owned())
             },
             Self::List(type_) => quote! {
                 ::sauvignon::TypeFull::List(#type_)
