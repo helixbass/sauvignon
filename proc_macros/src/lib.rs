@@ -1,3 +1,4 @@
+use heck::ToPascalCase;
 use proc_macro::TokenStream;
 use quote::{quote, ToTokens};
 use squalid::{OptionExtDefault, _d};
@@ -10,6 +11,23 @@ use syn::{
 struct Schema {
     pub types: Vec<Type>,
     pub query: Vec<Field>,
+}
+
+impl Schema {
+    pub fn process(self) -> SchemaProcessed {
+        SchemaProcessed {
+            types: self
+                .types
+                .into_iter()
+                .map(|type_| type_.process())
+                .collect(),
+            query: self
+                .query
+                .into_iter()
+                .map(|field| field.process(None))
+                .collect(),
+        }
+    }
 }
 
 impl Parse for Schema {
@@ -52,9 +70,27 @@ impl Parse for Schema {
     }
 }
 
+struct SchemaProcessed {
+    pub types: Vec<TypeProcessed>,
+    pub query: Vec<FieldProcessed>,
+}
+
 struct Type {
     pub name: String,
     pub fields: Vec<Field>,
+}
+
+impl Type {
+    pub fn process(self) -> TypeProcessed {
+        TypeProcessed {
+            name: self.name.clone(),
+            fields: self
+                .fields
+                .into_iter()
+                .map(|field| field.process(Some(&self.name)))
+                .collect(),
+        }
+    }
 }
 
 impl Parse for Type {
@@ -90,9 +126,23 @@ impl Parse for Type {
     }
 }
 
+struct TypeProcessed {
+    pub name: String,
+    pub fields: Vec<FieldProcessed>,
+}
+
 struct Field {
     pub name: String,
     pub value: FieldValue,
+}
+
+impl Field {
+    pub fn process(self, parent_type_name: Option<&str>) -> FieldProcessed {
+        FieldProcessed {
+            name: self.name,
+            value: self.value.process(parent_type_name),
+        }
+    }
 }
 
 impl Parse for Field {
@@ -108,10 +158,15 @@ impl Parse for Field {
     }
 }
 
-impl ToTokens for Field {
+struct FieldProcessed {
+    pub name: String,
+    pub value: FieldValueProcessed,
+}
+
+impl ToTokens for FieldProcessed {
     fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
         match &self.value {
-            FieldValue::StringColumn {
+            FieldValueProcessed::StringColumn {
                 table_name,
             } => {
                 quote! {
@@ -134,7 +189,7 @@ impl ToTokens for Field {
                         .unwrap(),
                 }
             }
-            FieldValue::Object {
+            FieldValueProcessed::Object {
                 type_,
                 internal_dependencies,
             } => {
@@ -155,6 +210,23 @@ enum FieldValue {
         type_: TypeFull,
         internal_dependencies: Vec<InternalDependency>,
     },
+}
+
+impl FieldValue {
+    pub fn process(self, parent_type_name: Option<&str>) -> FieldValueProcessed {
+        match self {
+            Self::StringColumn => FieldValueProcessed::StringColumn {
+                table_name: pluralize(&parent_type_name.unwrap().to_pascal_case()),
+            },
+            Self::Object {
+                type_,
+                internal_dependencies,
+            } => FieldValueProcessed::Object {
+                type_,
+                internal_dependencies,
+            },
+        }
+    }
 }
 
 impl Parse for FieldValue {
@@ -208,6 +280,16 @@ impl Parse for FieldValue {
     }
 }
 
+enum FieldValueProcessed {
+    StringColumn {
+        table_name: String,
+    },
+    Object {
+        type_: TypeFull,
+        internal_dependencies: Vec<InternalDependency>,
+    },
+}
+
 struct InternalDependency {
     pub name: String,
     pub type_: InternalDependencyType,
@@ -248,6 +330,7 @@ impl Parse for InternalDependencyType {
 #[proc_macro]
 pub fn schema(input: TokenStream) -> TokenStream {
     let schema: Schema = parse_macro_input!(input);
+    let schema = schema.process();
 
     let query_field_builders = schema.query.iter().map(|query_field| {
         quote! { #query_field }
@@ -271,6 +354,7 @@ pub fn schema(input: TokenStream) -> TokenStream {
             vec![],
         )?
     }
+    .into()
 }
 
 // TODO: actually share this with the sauvignon crate?
@@ -304,4 +388,9 @@ impl Parse for DependencyValue {
         let id: LitInt = input.parse()?;
         Ok(Self::Id(id.base10_parse::<Id>()?))
     }
+}
+
+// TODO: share this with sauvignon crate?
+fn pluralize(value: &str) -> String {
+    format!("{value}s")
 }
