@@ -1,4 +1,5 @@
 use proc_macro::TokenStream;
+use quote::{quote, ToTokens};
 use squalid::{OptionExtDefault, _d};
 use syn::{
     braced, bracketed, parenthesized,
@@ -107,6 +108,47 @@ impl Parse for Field {
     }
 }
 
+impl ToTokens for Field {
+    fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
+        match &self.value {
+            FieldValue::StringColumn {
+                table_name,
+            } => {
+                quote! {
+                    ::sauvignon::TypeFieldBuilder::default()
+                        .name(#{self.name})
+                        .type_(::sauvignon::TypeFull::Type("String".to_owned()))
+                        .resolver(::sauvignon::FieldResolver::new(
+                            vec![::sauvignon::ExternalDependency::new("id".to_owned(), ::sauvignon::DependencyType::Id)],
+                            vec![::sauvignon::InternalDependency::new(
+                                #{self.name}.to_owned(),
+                                ::sauvignon::DependencyType::String,
+                                ::sauvignon::InternalDependencyResolver::ColumnGetter(::sauvignon::ColumnGetter::new(
+                                    #table_name.to_owned(),
+                                    #{self.name}.to_owned(),
+                                )),
+                            )],
+                            ::sauvignon::CarverOrPopulator::Carver(Box::new(::sauvignon::StringCarver::new(#{self.name}.to_owned()))),
+                        ))
+                        .build()
+                        .unwrap(),
+                }
+            }
+            FieldValue::Object {
+                type_,
+                internal_dependencies,
+            } => {
+                quote! {
+                    ::sauvignon::TypeFieldBuilder::default()
+                        .name(#self.name)
+                        .
+                }
+            }
+        }
+        .to_tokens(tokens)
+    }
+}
+
 enum FieldValue {
     StringColumn,
     Object {
@@ -206,6 +248,29 @@ impl Parse for InternalDependencyType {
 #[proc_macro]
 pub fn schema(input: TokenStream) -> TokenStream {
     let schema: Schema = parse_macro_input!(input);
+
+    let query_field_builders = schema.query.iter().map(|query_field| {
+        quote! { #query_field }
+    });
+
+    quote! {
+        let query_type = ::sauvignon::Type::Object(
+            ::sauvignon::ObjectTypeBuilder::default()
+                .name("Query")
+                .fields([
+                    #(#query_field_builders),*
+                ])
+                .is_top_level_type(::sauvignon::OperationType::Query)
+                .build()
+                .unwrap()
+        );
+
+        ::sauvignon::Schema::try_new(
+            vec![query_type, ],
+            vec![],
+            vec![],
+        )?
+    }
 }
 
 // TODO: actually share this with the sauvignon crate?

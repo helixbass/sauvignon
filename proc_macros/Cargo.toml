@@ -10,3 +10,4 @@ proc-macro = true
 quote = "1.0.42"
 syn = "2.0.111"
 squalid = { git = "https://github.com/helixbass/squalid", rev = "1a43e5d" }
+proc-macro2 = "1.0.103"
