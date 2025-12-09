@@ -1,7 +1,7 @@
 use proc_macro::TokenStream;
 use squalid::{OptionExtDefault, _d};
 use syn::{
-    braced, bracketed,
+    braced, bracketed, parenthesized,
     parse::{Parse, ParseStream, Result},
     parse_macro_input, Ident, Token,
 };
@@ -89,12 +89,42 @@ struct Field {
 
 impl Parse for Field {
     fn parse(input: ParseStream) -> Result<Self> {
-        unimplemented!()
+        let name: Ident = input.parse()?;
+        input.parse::<Token![=>]>()?;
+        let value: FieldValue = input.parse()?;
+
+        Ok(Self {
+            name: name.to_string(),
+            value,
+        })
     }
 }
 
 enum FieldValue {
     StringColumn,
+}
+
+impl Parse for FieldValue {
+    fn parse(input: ParseStream) -> Result<Self> {
+        match input.parse::<Ident>() {
+            Ok(ident) => {
+                if ident.to_string() != "string_column" {
+                    panic!("Expected `string_column`");
+                }
+                let arguments_content;
+                parenthesized!(arguments_content in input);
+                if !arguments_content.is_empty() {
+                    panic!("Not expecting argument values");
+                }
+                Ok(Self::StringColumn)
+            }
+            _ => {
+                let field_value_content;
+                braced!(field_value_content in input);
+                unimplemented!()
+            }
+        }
+    }
 }
 
 #[proc_macro]
