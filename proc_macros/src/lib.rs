@@ -3,7 +3,7 @@ use squalid::{OptionExtDefault, _d};
 use syn::{
     braced, bracketed, parenthesized,
     parse::{Parse, ParseStream, Result},
-    parse_macro_input, Ident, Token,
+    parse_macro_input, Ident, LitInt, Token,
 };
 
 struct Schema {
@@ -31,7 +31,14 @@ impl Parse for Schema {
                     }
                 }
                 "query" => {
-                    unimplemented!()
+                    assert!(query.is_none(), "Already saw 'query' key");
+                    let query_content;
+                    bracketed!(query_content in input);
+                    let query = query.populate_default();
+                    while !query_content.is_empty() {
+                        query.push(query_content.parse()?);
+                        query_content.parse::<Option<Token![,]>>()?;
+                    }
                 }
                 key => panic!("Unexpected key `{key}`"),
             }
@@ -229,6 +236,7 @@ enum DependencyValue {
 
 impl Parse for DependencyValue {
     fn parse(input: ParseStream) -> Result<Self> {
-        unimplemented!()
+        let id: LitInt = input.parse()?;
+        Ok(Self::Id(id.base10_parse::<Id>()?))
     }
 }
