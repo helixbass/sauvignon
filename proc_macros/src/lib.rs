@@ -102,6 +102,10 @@ impl Parse for Field {
 
 enum FieldValue {
     StringColumn,
+    Object {
+        type_: TypeFull,
+        internal_dependencies: Vec<InternalDependency>,
+    },
 }
 
 impl Parse for FieldValue {
@@ -121,13 +125,61 @@ impl Parse for FieldValue {
             _ => {
                 let field_value_content;
                 braced!(field_value_content in input);
-                unimplemented!()
+                let mut type_: Option<TypeFull> = _d();
+                let mut internal_dependencies: Option<Vec<InternalDependency>> = _d();
+                let key: Ident = field_value_content.parse()?;
+                field_value_content.parse::<Token![=>]>()?;
+                match &*key.to_string() {
+                    "type" => {
+                        assert!(type_.is_none(), "Already saw 'types' key");
+                        unimplemented!()
+                    }
+                    "internal_dependencies" => {
+                        assert!(internal_dependencies.is_none(), "Already saw 'types' key");
+                        unimplemented!()
+                    }
+                    key => panic!("Unexpected key `{key}`"),
+                }
+                Ok(Self::Object {
+                    type_: type_.expect("Expected `type`"),
+                    internal_dependencies: internal_dependencies
+                        .expect("Expected `internal_dependencies`"),
+                })
             }
         }
     }
 }
 
+struct InternalDependency {
+    pub name: String,
+    pub type_: InternalDependencyType,
+}
+
+impl Parse for InternalDependency {
+    fn parse(input: ParseStream) -> Result<Self> {
+        unimplemented!()
+    }
+}
+
+enum InternalDependencyType {
+    LiteralValue(DependencyValue),
+}
+
 #[proc_macro]
 pub fn schema(input: TokenStream) -> TokenStream {
     let schema: Schema = parse_macro_input!(input);
+}
+
+// TODO: actually share this with the sauvignon crate?
+enum TypeFull {
+    Type(String),
+    List(Box<TypeFull>),
+    NonNull(Box<TypeFull>),
+}
+
+// TODO: possibly actually share this with the sauvignon crate?
+enum DependencyValue {
+    Id(Id),
+    String(String),
+    List(Vec<DependencyValue>),
 }
