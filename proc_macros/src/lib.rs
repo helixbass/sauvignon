@@ -5,7 +5,9 @@ use squalid::{OptionExtDefault, _d};
 use syn::{
     braced, bracketed, parenthesized,
     parse::{Parse, ParseStream, Result},
-    parse_macro_input, Ident, LitInt, Token,
+    parse_macro_input,
+    spanned::Spanned,
+    Ident, LitInt, Token,
 };
 
 struct Schema {
@@ -256,7 +258,13 @@ impl Parse for FieldValue {
                 braced!(field_value_content in input);
                 let mut type_: Option<TypeFull> = _d();
                 let mut internal_dependencies: Option<Vec<InternalDependency>> = _d();
-                let key: Ident = field_value_content.parse()?;
+                let key = match field_value_content.parse::<Ident>() {
+                    Ok(key) => key,
+                    _ => {
+                        let key = field_value_content.parse::<Token![type]>()?;
+                        Ident::new("type", key.span())
+                    }
+                };
                 field_value_content.parse::<Token![=>]>()?;
                 match &*key.to_string() {
                     "type" => {
