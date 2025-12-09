@@ -53,3 +53,5 @@ pub use crate::types::{
     InterfaceBuilder, InterfaceField, ObjectType, ObjectTypeBuilder, Param, ScalarType, StringType,
     Type, TypeFull, TypeInterface, TypeOrInterfaceField, Union,
 };
+
+pub use proc_macros::schema;

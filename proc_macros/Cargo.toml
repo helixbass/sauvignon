@@ -1,0 +1,7 @@
+[package]
+name = "sauvignon_proc_macros"
+version = "0.0.1-dev.0"
+edition = "2024"
+
+[lib]
+proc-macro = true
