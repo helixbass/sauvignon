@@ -165,25 +165,26 @@ struct FieldProcessed {
 
 impl ToTokens for FieldProcessed {
     fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
+        let name = &self.name;
         match &self.value {
             FieldValueProcessed::StringColumn {
                 table_name,
             } => {
                 quote! {
                     ::sauvignon::TypeFieldBuilder::default()
-                        .name(#{self.name})
+                        .name(#name)
                         .type_(::sauvignon::TypeFull::Type("String".to_owned()))
                         .resolver(::sauvignon::FieldResolver::new(
                             vec![::sauvignon::ExternalDependency::new("id".to_owned(), ::sauvignon::DependencyType::Id)],
                             vec![::sauvignon::InternalDependency::new(
-                                #{self.name}.to_owned(),
+                                #name.to_owned(),
                                 ::sauvignon::DependencyType::String,
                                 ::sauvignon::InternalDependencyResolver::ColumnGetter(::sauvignon::ColumnGetter::new(
                                     #table_name.to_owned(),
-                                    #{self.name}.to_owned(),
+                                    #name.to_owned(),
                                 )),
                             )],
-                            ::sauvignon::CarverOrPopulator::Carver(Box::new(::sauvignon::StringCarver::new(#{self.name}.to_owned()))),
+                            ::sauvignon::CarverOrPopulator::Carver(Box::new(::sauvignon::StringCarver::new(#name.to_owned()))),
                         ))
                         .build()
                         .unwrap(),
@@ -195,8 +196,15 @@ impl ToTokens for FieldProcessed {
             } => {
                 quote! {
                     ::sauvignon::TypeFieldBuilder::default()
-                        .name(#self.name)
-                        .
+                        .name(#name)
+                        .type_(#type_)
+                        .resolver(::sauvignon::FieldResolver::new(
+                            vec![],
+                            vec![#(#internal_dependencies),*],
+                            ::sauvignon::CarverOrPopulator::Populator(::sauvignon::ValuePopulator::new("id".to_owned()).into()),
+                        ))
+                        .build()
+                        .unwrap(),
                 }
             }
         }
@@ -307,6 +315,30 @@ impl Parse for InternalDependency {
     }
 }
 
+impl ToTokens for InternalDependency {
+    fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
+        let name = &self.name;
+        let type_ = quote! {
+            ::sauvignon::DependencyType::Id
+        };
+        let resolver = match &self.type_ {
+            InternalDependencyType::LiteralValue(dependency_value) => quote! {
+                ::sauvignon::InternalDependencyResolver::LiteralValue(
+                    ::sauvignon::LiteralValueInternalDependencyResolver(#dependency_value)
+                )
+            },
+        };
+        quote! {
+            ::sauvignon::InternalDependency::new(
+                #name.to_owned(),
+                #type_,
+                #resolver,
+            )
+        }
+        .to_tokens(tokens)
+    }
+}
+
 enum InternalDependencyType {
     LiteralValue(DependencyValue),
 }
@@ -374,6 +406,23 @@ impl Parse for TypeFull {
     }
 }
 
+impl ToTokens for TypeFull {
+    fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
+        match self {
+            Self::Type(type_) => quote! {
+                ::sauvignon::TypeFull::Type(#type_)
+            },
+            Self::List(type_) => quote! {
+                ::sauvignon::TypeFull::List(#type_)
+            },
+            Self::NonNull(type_) => quote! {
+                ::sauvignon::TypeFull::NonNull(#type_)
+            },
+        }
+        .to_tokens(tokens)
+    }
+}
+
 // TODO: possibly actually share these with the sauvignon crate?
 type Id = i32;
 
@@ -387,6 +436,21 @@ impl Parse for DependencyValue {
     fn parse(input: ParseStream) -> Result<Self> {
         let id: LitInt = input.parse()?;
         Ok(Self::Id(id.base10_parse::<Id>()?))
+    }
+}
+
+impl ToTokens for DependencyValue {
+    fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
+        match self {
+            Self::Id(id) => quote! {
+                ::sauvignon::DependencyValue::Id(#id)
+            },
+            Self::String(string) => quote! {
+                ::sauvignon::DependencyValue::String(#string)
+            },
+            _ => unimplemented!(),
+        }
+        .to_tokens(tokens)
     }
 }
 

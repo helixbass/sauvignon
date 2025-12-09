@@ -1,4 +1,5 @@
 /target
+/proc_macros/target
 
 Cargo.lock
 
