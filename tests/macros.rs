@@ -6,12 +6,17 @@ fn test_column_getter() {
         types => [
             Actor => {
                 fields => [
-                    name => string_column!()
+                    name => string_column(),
                 ]
             }
         ]
         query => [
-            actorKatie => Actor!
+            actorKatie => {
+                type => Actor!
+                internal_dependencies => [
+                    "id" => literal_value(1),
+                ]
+            }
         ]
     };
 }
