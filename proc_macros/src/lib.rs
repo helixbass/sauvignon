@@ -132,11 +132,20 @@ impl Parse for FieldValue {
                 match &*key.to_string() {
                     "type" => {
                         assert!(type_.is_none(), "Already saw 'types' key");
-                        unimplemented!()
+                        type_ = Some(field_value_content.parse()?);
                     }
                     "internal_dependencies" => {
-                        assert!(internal_dependencies.is_none(), "Already saw 'types' key");
-                        unimplemented!()
+                        assert!(
+                            internal_dependencies.is_none(),
+                            "Already saw 'internal_dependencies' key"
+                        );
+                        let internal_dependencies_content;
+                        bracketed!(internal_dependencies_content in field_value_content);
+                        let internal_dependencies = internal_dependencies.populate_default();
+                        while !internal_dependencies_content.is_empty() {
+                            internal_dependencies.push(internal_dependencies_content.parse()?);
+                            internal_dependencies_content.parse::<Option<Token![,]>>()?;
+                        }
                     }
                     key => panic!("Unexpected key `{key}`"),
                 }
@@ -157,12 +166,34 @@ struct InternalDependency {
 
 impl Parse for InternalDependency {
     fn parse(input: ParseStream) -> Result<Self> {
-        unimplemented!()
+        let name: Ident = input.parse()?;
+        input.parse::<Token![=>]>()?;
+        let type_: InternalDependencyType = input.parse()?;
+        Ok(Self {
+            name: name.to_string(),
+            type_,
+        })
     }
 }
 
 enum InternalDependencyType {
     LiteralValue(DependencyValue),
+}
+
+impl Parse for InternalDependencyType {
+    fn parse(input: ParseStream) -> Result<Self> {
+        let name: Ident = input.parse()?;
+        if name.to_string() != "literal_value" {
+            panic!("Expected `literal_value`");
+        }
+        let arguments_content;
+        parenthesized!(arguments_content in input);
+        let value: DependencyValue = arguments_content.parse()?;
+        if !arguments_content.is_empty() {
+            panic!("Didn't expect more arguments");
+        }
+        Ok(Self::LiteralValue(value))
+    }
 }
 
 #[proc_macro]
@@ -177,9 +208,27 @@ enum TypeFull {
     NonNull(Box<TypeFull>),
 }
 
-// TODO: possibly actually share this with the sauvignon crate?
+impl Parse for TypeFull {
+    fn parse(input: ParseStream) -> Result<Self> {
+        let type_name: Ident = input.parse()?;
+        match input.parse::<Token![!]>() {
+            Ok(_) => Ok(Self::NonNull(Box::new(Self::Type(type_name.to_string())))),
+            _ => Ok(Self::Type(type_name.to_string())),
+        }
+    }
+}
+
+// TODO: possibly actually share these with the sauvignon crate?
+type Id = i32;
+
 enum DependencyValue {
     Id(Id),
     String(String),
     List(Vec<DependencyValue>),
+}
+
+impl Parse for DependencyValue {
+    fn parse(input: ParseStream) -> Result<Self> {
+        unimplemented!()
+    }
 }

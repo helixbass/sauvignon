@@ -14,7 +14,7 @@ fn test_column_getter() {
             actorKatie => {
                 type => Actor!
                 internal_dependencies => [
-                    "id" => literal_value(1),
+                    id => literal_value(1),
                 ]
             }
         ]
