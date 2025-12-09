@@ -186,7 +186,7 @@ impl ToTokens for FieldProcessed {
                                     #name.to_owned(),
                                 )),
                             )],
-                            ::sauvignon::CarverOrPopulator::Carver(Box::new(::sauvignon::StringCarver::new(#name.to_owned()))),
+                            ::sauvignon::CarverOrPopulator::Carver(::std::boxed::Box::new(::sauvignon::StringCarver::new(#name.to_owned()))),
                         ))
                         .build()
                         .unwrap(),
@@ -385,13 +385,15 @@ pub fn schema(input: TokenStream) -> TokenStream {
             quote! { #field }
         });
         quote! {
-            ::sauvignon::ObjectTypeBuilder::default()
-                .name(#name)
-                .fields([
-                    #(#type_field_builders),*
-                ])
-                .build()
-                .unwrap()
+            ::sauvignon::Type::Object(
+                ::sauvignon::ObjectTypeBuilder::default()
+                    .name(#name)
+                    .fields([
+                        #(#type_field_builders),*
+                    ])
+                    .build()
+                    .unwrap()
+            )
         }
     });
 
@@ -411,7 +413,7 @@ pub fn schema(input: TokenStream) -> TokenStream {
             vec![query_type, #(#types),*],
             vec![],
             vec![],
-        )?
+        ).unwrap()
     }}
     .into()
 }
@@ -440,10 +442,10 @@ impl ToTokens for TypeFull {
                 ::sauvignon::TypeFull::Type(#type_.to_owned())
             },
             Self::List(type_) => quote! {
-                ::sauvignon::TypeFull::List(#type_)
+                ::sauvignon::TypeFull::List(::std::boxed::Box::new(#type_))
             },
             Self::NonNull(type_) => quote! {
-                ::sauvignon::TypeFull::NonNull(#type_)
+                ::sauvignon::TypeFull::NonNull(::std::boxed::Box::new(#type_))
             },
         }
         .to_tokens(tokens)
