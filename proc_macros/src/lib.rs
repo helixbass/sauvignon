@@ -368,6 +368,22 @@ pub fn schema(input: TokenStream) -> TokenStream {
         quote! { #query_field }
     });
 
+    let types = schema.types.iter().map(|type_| {
+        let name = &type_.name;
+        let type_field_builders = type_.fields.iter().map(|field| {
+            quote! { #field }
+        });
+        quote! {
+            ::sauvignon::ObjectTypeBuilder::default()
+                .name(#name)
+                .fields([
+                    #(#type_field_builders),*
+                ])
+                .build()
+                .unwrap()
+        }
+    });
+
     quote! {
         let query_type = ::sauvignon::Type::Object(
             ::sauvignon::ObjectTypeBuilder::default()
@@ -381,7 +397,7 @@ pub fn schema(input: TokenStream) -> TokenStream {
         );
 
         ::sauvignon::Schema::try_new(
-            vec![query_type, ],
+            vec![query_type, #(#types),*],
             vec![],
             vec![],
         )?
