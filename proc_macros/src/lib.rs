@@ -258,33 +258,36 @@ impl Parse for FieldValue {
                 braced!(field_value_content in input);
                 let mut type_: Option<TypeFull> = _d();
                 let mut internal_dependencies: Option<Vec<InternalDependency>> = _d();
-                let key = match field_value_content.parse::<Ident>() {
-                    Ok(key) => key,
-                    _ => {
-                        let key = field_value_content.parse::<Token![type]>()?;
-                        Ident::new("type", key.span())
-                    }
-                };
-                field_value_content.parse::<Token![=>]>()?;
-                match &*key.to_string() {
-                    "type" => {
-                        assert!(type_.is_none(), "Already saw 'types' key");
-                        type_ = Some(field_value_content.parse()?);
-                    }
-                    "internal_dependencies" => {
-                        assert!(
-                            internal_dependencies.is_none(),
-                            "Already saw 'internal_dependencies' key"
-                        );
-                        let internal_dependencies_content;
-                        bracketed!(internal_dependencies_content in field_value_content);
-                        let internal_dependencies = internal_dependencies.populate_default();
-                        while !internal_dependencies_content.is_empty() {
-                            internal_dependencies.push(internal_dependencies_content.parse()?);
-                            internal_dependencies_content.parse::<Option<Token![,]>>()?;
+                while !field_value_content.is_empty() {
+                    let key = match field_value_content.parse::<Ident>() {
+                        Ok(key) => key,
+                        _ => {
+                            let key = field_value_content.parse::<Token![type]>()?;
+                            Ident::new("type", key.span())
                         }
+                    };
+                    field_value_content.parse::<Token![=>]>()?;
+                    match &*key.to_string() {
+                        "type" => {
+                            assert!(type_.is_none(), "Already saw 'types' key");
+                            type_ = Some(field_value_content.parse()?);
+                        }
+                        "internal_dependencies" => {
+                            assert!(
+                                internal_dependencies.is_none(),
+                                "Already saw 'internal_dependencies' key"
+                            );
+                            let internal_dependencies_content;
+                            bracketed!(internal_dependencies_content in field_value_content);
+                            let internal_dependencies = internal_dependencies.populate_default();
+                            while !internal_dependencies_content.is_empty() {
+                                internal_dependencies.push(internal_dependencies_content.parse()?);
+                                internal_dependencies_content.parse::<Option<Token![,]>>()?;
+                            }
+                        }
+                        key => panic!("Unexpected key `{key}`"),
                     }
-                    key => panic!("Unexpected key `{key}`"),
+                    field_value_content.parse::<Option<Token![,]>>()?;
                 }
                 Ok(Self::Object {
                     type_: type_.expect("Expected `type`"),
