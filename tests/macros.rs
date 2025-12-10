@@ -131,6 +131,16 @@ async fn test_column_getter() {
                 __typename
                 name
               }
+              actorsAndDesigners {
+                ... on Actor {
+                  __typename
+                  expression
+                }
+                ... on Designer {
+                  __typename
+                  name
+                }
+              }
             }
         "#,
         r#"
@@ -160,7 +170,25 @@ async fn test_column_getter() {
                 "bestHasName": {
                   "__typename": "Actor",
                   "name": "Katie Cassidy"
-                }
+                },
+                "actorsAndDesigners": [
+                  {
+                    "__typename": "Actor",
+                    "expression": "no Serena you can't have the key"
+                  },
+                  {
+                    "__typename": "Actor",
+                    "expression": "Dan where did you go I don't like you"
+                  },
+                  {
+                    "__typename": "Designer",
+                    "name": "Proenza Schouler"
+                  },
+                  {
+                    "__typename": "Designer",
+                    "name": "Ralph Lauren"
+                  }
+                ]
               }
             }
         "#,
