@@ -70,10 +70,10 @@ async fn test_column_getter() {
                 type => [ActorOrDesigner!]!
                 internal_dependencies => [
                     actor_ids => id_column_list(
-                        table_name => "actors"
+                        type => Actor
                     )
                     designer_ids => id_column_list(
-                        table_name => "designers"
+                        type => Designer
                     )
                 ]
                 populator => custom {

@@ -581,7 +581,7 @@ impl ToTokens for InternalDependencyProcessed {
 
 enum InternalDependencyType {
     LiteralValue(DependencyValue),
-    IdColumnList,
+    IdColumnList { type_: Option<String> },
     Param,
 }
 
@@ -591,8 +591,8 @@ impl InternalDependencyType {
             Self::LiteralValue(dependency_value) => {
                 InternalDependencyTypeProcessed::LiteralValue(dependency_value)
             }
-            Self::IdColumnList => InternalDependencyTypeProcessed::IdColumnList {
-                field_type_name: field_type_name.to_owned(),
+            Self::IdColumnList { type_ } => InternalDependencyTypeProcessed::IdColumnList {
+                field_type_name: type_.unwrap_or_else(|| field_type_name.to_owned()),
             },
             Self::Param => InternalDependencyTypeProcessed::Param,
         }
@@ -615,10 +615,21 @@ impl Parse for InternalDependencyType {
             "id_column_list" => {
                 let arguments_content;
                 parenthesized!(arguments_content in input);
-                if !arguments_content.is_empty() {
-                    return Err(arguments_content.error("Didn't expect more arguments"));
+                let mut type_: Option<String> = _d();
+                while !arguments_content.is_empty() {
+                    let key = parse_ident_or_type(&arguments_content)?;
+                    arguments_content.parse::<Token![=>]>()?;
+                    match &*key.to_string() {
+                        "type" => {
+                            assert!(type_.is_none(), "Already saw 'type' key");
+                            type_ = Some(arguments_content.parse::<Ident>()?.to_string());
+                        }
+                        key => {
+                            return Err(arguments_content.error(format!("Unexpected key `{key}`")))
+                        }
+                    }
                 }
-                Ok(Self::IdColumnList)
+                Ok(Self::IdColumnList { type_ })
             }
             "param" => {
                 let arguments_content;
