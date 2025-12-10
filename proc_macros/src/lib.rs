@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use heck::ToSnakeCase;
 use proc_macro::TokenStream;
 use quote::{quote, ToTokens};
@@ -19,16 +21,40 @@ struct Schema {
 
 impl Schema {
     pub fn process(self) -> SchemaProcessed {
+        let all_union_or_interface_type_names = self
+            .interfaces
+            .as_ref()
+            .map(|interfaces| {
+                interfaces
+                    .into_iter()
+                    .map(|interface| interface.name.clone())
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default()
+            .into_iter()
+            .chain(
+                self.unions
+                    .as_ref()
+                    .map(|unions| {
+                        unions
+                            .into_iter()
+                            .map(|union| union.name.clone())
+                            .collect::<Vec<_>>()
+                    })
+                    .unwrap_or_default()
+                    .into_iter(),
+            )
+            .collect::<HashSet<_>>();
         SchemaProcessed {
             types: self
                 .types
                 .into_iter()
-                .map(|type_| type_.process())
+                .map(|type_| type_.process(&all_union_or_interface_type_names))
                 .collect(),
             query: self
                 .query
                 .into_iter()
-                .map(|field| field.process(None))
+                .map(|field| field.process(None, &all_union_or_interface_type_names))
                 .collect(),
             interfaces: self.interfaces,
             unions: self.unions,
@@ -114,13 +140,13 @@ struct Type {
 }
 
 impl Type {
-    pub fn process(self) -> TypeProcessed {
+    pub fn process(self, all_union_or_interface_type_names: &HashSet<String>) -> TypeProcessed {
         TypeProcessed {
             name: self.name.clone(),
             fields: self
                 .fields
                 .into_iter()
-                .map(|field| field.process(Some(&self.name)))
+                .map(|field| field.process(Some(&self.name), all_union_or_interface_type_names))
                 .collect(),
             implements: self.implements,
         }
@@ -184,10 +210,16 @@ struct Field {
 }
 
 impl Field {
-    pub fn process(self, parent_type_name: Option<&str>) -> FieldProcessed {
+    pub fn process(
+        self,
+        parent_type_name: Option<&str>,
+        all_union_or_interface_type_names: &HashSet<String>,
+    ) -> FieldProcessed {
         FieldProcessed {
             name: self.name,
-            value: self.value.process(parent_type_name),
+            value: self
+                .value
+                .process(parent_type_name, all_union_or_interface_type_names),
         }
     }
 }
@@ -241,6 +273,7 @@ impl ToTokens for FieldProcessed {
                 type_,
                 internal_dependencies,
                 params,
+                is_union_or_interface_type,
             } => {
                 let populator = match type_.is_list_type() {
                     true => quote! {
@@ -334,7 +367,11 @@ enum FieldValue {
 }
 
 impl FieldValue {
-    pub fn process(self, parent_type_name: Option<&str>) -> FieldValueProcessed {
+    pub fn process(
+        self,
+        parent_type_name: Option<&str>,
+        all_union_or_interface_type_names: &HashSet<String>,
+    ) -> FieldValueProcessed {
         match self {
             Self::StringColumn => FieldValueProcessed::StringColumn {
                 table_name: pluralize(&parent_type_name.unwrap().to_snake_case()),
@@ -350,6 +387,8 @@ impl FieldValue {
                         .map(|internal_dependency| internal_dependency.process(type_.name()))
                         .collect()
                 }),
+                is_union_or_interface_type: all_union_or_interface_type_names
+                    .contains(type_.name()),
                 type_,
                 params,
             },
@@ -446,6 +485,7 @@ enum FieldValueProcessed {
         type_: TypeFull,
         internal_dependencies: Option<Vec<InternalDependencyProcessed>>,
         params: Option<Vec<Param>>,
+        is_union_or_interface_type: bool,
     },
     BelongsTo {
         type_: String,
