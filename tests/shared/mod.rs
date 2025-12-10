@@ -319,7 +319,9 @@ pub async fn get_schema(db_pool: &Pool<Postgres>) -> anyhow::Result<Schema> {
                     .unwrap(),
                 TypeFieldBuilder::default()
                     .name("actors")
-                    .type_(TypeFull::List(Box::new(TypeFull::Type("Actor".to_owned()))))
+                    .type_(TypeFull::NonNull(Box::new(TypeFull::List(Box::new(
+                        TypeFull::NonNull(Box::new(TypeFull::Type("Actor".to_owned()))),
+                    )))))
                     // {
                     //   external_dependencies => None,
                     //   internal_dependencies => [
