@@ -39,9 +39,6 @@ async fn test_column_getter() {
                 params => [
                     id => Id!
                 ]
-                internal_dependencies => [
-                    id => param()
-                ]
             }
             actorKatie => {
                 type => Actor!

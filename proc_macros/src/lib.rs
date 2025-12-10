@@ -1,7 +1,7 @@
 use heck::ToSnakeCase;
 use proc_macro::TokenStream;
 use quote::{quote, ToTokens};
-use squalid::{OptionExtDefault, _d};
+use squalid::{OptionExtDefault, OptionExtIterator, _d};
 use syn::{
     braced, bracketed, parenthesized,
     parse::{Parse, ParseStream, Result},
@@ -235,6 +235,18 @@ impl ToTokens for FieldProcessed {
                         ::sauvignon::CarverOrPopulator::Populator(::sauvignon::ValuePopulator::new("id".to_owned()).into())
                     },
                 };
+                let internal_dependencies = params.as_ref().map(|params| {
+                    params.into_iter().map(|param| {
+                        InternalDependencyProcessed {
+                            name: param.name.clone(),
+                            type_: InternalDependencyTypeProcessed::Param,
+                        }
+                    })
+                }).unwrap_or_empty().chain(
+                    internal_dependencies.as_ref().map(|internal_dependencies| {
+                        internal_dependencies.into_iter().cloned()
+                    }).unwrap_or_empty()
+                );
                 let params = match params {
                     None => quote! { },
                     Some(params) => {
@@ -298,7 +310,7 @@ enum FieldValue {
     StringColumn,
     Object {
         type_: TypeFull,
-        internal_dependencies: Vec<InternalDependency>,
+        internal_dependencies: Option<Vec<InternalDependency>>,
         params: Option<Vec<Param>>,
     },
     BelongsTo {
@@ -317,10 +329,12 @@ impl FieldValue {
                 internal_dependencies,
                 params,
             } => FieldValueProcessed::Object {
-                internal_dependencies: internal_dependencies
-                    .into_iter()
-                    .map(|internal_dependency| internal_dependency.process(type_.name()))
-                    .collect(),
+                internal_dependencies: internal_dependencies.map(|internal_dependencies| {
+                    internal_dependencies
+                        .into_iter()
+                        .map(|internal_dependency| internal_dependency.process(type_.name()))
+                        .collect()
+                }),
                 type_,
                 params,
             },
@@ -407,8 +421,7 @@ impl Parse for FieldValue {
                 }
                 Ok(Self::Object {
                     type_: type_.expect("Expected `type`"),
-                    internal_dependencies: internal_dependencies
-                        .expect("Expected `internal_dependencies`"),
+                    internal_dependencies,
                     params,
                 })
             }
@@ -422,7 +435,7 @@ enum FieldValueProcessed {
     },
     Object {
         type_: TypeFull,
-        internal_dependencies: Vec<InternalDependencyProcessed>,
+        internal_dependencies: Option<Vec<InternalDependencyProcessed>>,
         params: Option<Vec<Param>>,
     },
     BelongsTo {
@@ -457,6 +470,7 @@ impl Parse for InternalDependency {
     }
 }
 
+#[derive(Clone)]
 struct InternalDependencyProcessed {
     pub name: String,
     pub type_: InternalDependencyTypeProcessed,
@@ -566,6 +580,7 @@ impl Parse for InternalDependencyType {
     }
 }
 
+#[derive(Clone)]
 enum InternalDependencyTypeProcessed {
     LiteralValue(DependencyValue),
     IdColumnList { field_type_name: String },
@@ -711,6 +726,7 @@ impl ToTokens for TypeFull {
 // TODO: possibly actually share these with the sauvignon crate?
 type Id = i32;
 
+#[derive(Clone)]
 enum DependencyValue {
     Id(Id),
     String(String),
