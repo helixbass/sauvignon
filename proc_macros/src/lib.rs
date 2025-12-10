@@ -225,6 +225,7 @@ impl ToTokens for FieldProcessed {
             FieldValueProcessed::Object {
                 type_,
                 internal_dependencies,
+                params,
             } => {
                 let populator = match type_.is_list_type() {
                     true => quote! {
@@ -233,6 +234,17 @@ impl ToTokens for FieldProcessed {
                     false => quote! {
                         ::sauvignon::CarverOrPopulator::Populator(::sauvignon::ValuePopulator::new("id".to_owned()).into())
                     },
+                };
+                let params = match params {
+                    None => quote! { },
+                    Some(params) => {
+                        let params = params.into_iter().map(|param| quote! { #param });
+                        quote! {
+                            .params([
+                                #(#params),*
+                            ])
+                        }
+                    }
                 };
                 quote! {
                     ::sauvignon::TypeFieldBuilder::default()
@@ -243,6 +255,7 @@ impl ToTokens for FieldProcessed {
                             vec![#(#internal_dependencies),*],
                             #populator,
                         ))
+                        #params
                         .build()
                         .unwrap()
                 }
@@ -286,6 +299,7 @@ enum FieldValue {
     Object {
         type_: TypeFull,
         internal_dependencies: Vec<InternalDependency>,
+        params: Option<Vec<Param>>,
     },
     BelongsTo {
         type_: String,
@@ -301,12 +315,14 @@ impl FieldValue {
             Self::Object {
                 type_,
                 internal_dependencies,
+                params,
             } => FieldValueProcessed::Object {
                 internal_dependencies: internal_dependencies
                     .into_iter()
                     .map(|internal_dependency| internal_dependency.process(type_.name()))
                     .collect(),
                 type_,
+                params,
             },
             Self::BelongsTo { type_ } => FieldValueProcessed::BelongsTo {
                 type_,
@@ -345,6 +361,7 @@ impl Parse for FieldValue {
                 braced!(field_value_content in input);
                 let mut type_: Option<TypeFull> = _d();
                 let mut internal_dependencies: Option<Vec<InternalDependency>> = _d();
+                let mut params: Option<Vec<Param>> = _d();
                 while !field_value_content.is_empty() {
                     let key = match field_value_content.parse::<Ident>() {
                         Ok(key) => key,
@@ -372,6 +389,16 @@ impl Parse for FieldValue {
                                 internal_dependencies_content.parse::<Option<Token![,]>>()?;
                             }
                         }
+                        "params" => {
+                            assert!(params.is_none(), "Already saw 'params' key");
+                            let params_content;
+                            bracketed!(params_content in field_value_content);
+                            let params = params.populate_default();
+                            while !params_content.is_empty() {
+                                params.push(params_content.parse()?);
+                                params_content.parse::<Option<Token![,]>>()?;
+                            }
+                        }
                         key => {
                             return Err(field_value_content.error(format!("Unexpected key `{key}`")))
                         }
@@ -382,6 +409,7 @@ impl Parse for FieldValue {
                     type_: type_.expect("Expected `type`"),
                     internal_dependencies: internal_dependencies
                         .expect("Expected `internal_dependencies`"),
+                    params,
                 })
             }
         }
@@ -395,6 +423,7 @@ enum FieldValueProcessed {
     Object {
         type_: TypeFull,
         internal_dependencies: Vec<InternalDependencyProcessed>,
+        params: Option<Vec<Param>>,
     },
     BelongsTo {
         type_: String,
@@ -772,6 +801,38 @@ impl ToTokens for InterfaceField {
                 #name.to_owned(),
                 #type_,
                 [],
+            )
+        }
+        .to_tokens(tokens)
+    }
+}
+
+struct Param {
+    pub name: String,
+    pub type_: TypeFull,
+}
+
+impl Parse for Param {
+    fn parse(input: ParseStream) -> Result<Self> {
+        let name: Ident = input.parse()?;
+        input.parse::<Token![=>]>()?;
+        let type_: TypeFull = input.parse()?;
+
+        Ok(Self {
+            name: name.to_string(),
+            type_,
+        })
+    }
+}
+
+impl ToTokens for Param {
+    fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
+        let name = &self.name;
+        let type_ = &self.type_;
+        quote! {
+            ::sauvignon::Param::new(
+                #name.to_owned(),
+                #type_,
             )
         }
         .to_tokens(tokens)

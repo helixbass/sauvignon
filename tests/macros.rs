@@ -34,6 +34,15 @@ async fn test_column_getter() {
             }
         ]
         query => [
+            actor => {
+                type => Actor!
+                params => [
+                    id => Id!
+                ]
+                internal_dependencies => [
+                    id => param()
+                ]
+            }
             actorKatie => {
                 type => Actor!
                 internal_dependencies => [
