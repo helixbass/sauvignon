@@ -66,6 +66,23 @@ async fn test_column_getter() {
                     id => literal_value(1)
                 ]
             }
+            actorsAndDesigners => {
+                type => [ActorOrDesigner!]!
+                internal_dependencies => [
+                    actor_ids => id_column_list(
+                        table_name => "actors"
+                    )
+                    designer_ids => id_column_list(
+                        table_name => "designers"
+                    )
+                ]
+                populator => custom {
+                    CarverOrPopulator::UnionOrInterfaceTypePopulatorList(
+                        Box::new(ActorsAndDesignersTypePopulator::new()),
+                        Box::new(ActorsAndDesignersPopulator::new()),
+                    )
+                }
+            }
         ]
         interfaces => [
             HasName => {
