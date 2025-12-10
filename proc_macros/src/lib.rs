@@ -892,13 +892,23 @@ enum DependencyValue {
     Id(Id),
     String(String),
     List(Vec<DependencyValue>),
+    IdentId(Ident),
 }
 
 impl Parse for DependencyValue {
     fn parse(input: ParseStream) -> Result<Self> {
         Ok(match input.peek(LitInt) {
             true => Self::Id(input.parse::<LitInt>().unwrap().base10_parse::<Id>()?),
-            false => Self::String(input.parse::<LitStr>()?.value()),
+            false => match input.peek(Ident) {
+                true => match &*input.parse::<Ident>().unwrap().to_string() {
+                    "id" => {
+                        input.parse::<Token![=>]>()?;
+                        Self::IdentId(input.parse::<Ident>()?)
+                    }
+                    _ => return Err(input.error("Expected `id`")),
+                },
+                false => Self::String(input.parse::<LitStr>()?.value()),
+            },
         })
     }
 }
@@ -911,6 +921,9 @@ impl ToTokens for DependencyValue {
             },
             Self::String(string) => quote! {
                 ::sauvignon::DependencyValue::String(#string.to_owned())
+            },
+            Self::IdentId(ident) => quote! {
+                ::sauvignon::DependencyValue::Id(#ident)
             },
             _ => unimplemented!(),
         }
