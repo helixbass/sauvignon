@@ -1,35 +1,77 @@
+use std::collections::HashSet;
+
 use heck::ToSnakeCase;
 use proc_macro::TokenStream;
 use quote::{quote, ToTokens};
-use squalid::{OptionExtDefault, _d};
+use squalid::{OptionExtDefault, OptionExtIterator, _d};
 use syn::{
     braced, bracketed, parenthesized,
-    parse::{Parse, ParseStream, Result},
+    parse::{Parse, ParseBuffer, ParseStream, Result},
     parse_macro_input,
     spanned::Spanned,
-    Ident, LitInt, Token,
+    ExprBlock, Ident, LitBool, LitInt, LitStr, Token,
 };
 
 struct Schema {
     pub types: Vec<Type>,
     pub query: Vec<Field>,
     pub interfaces: Option<Vec<Interface>>,
+    pub unions: Option<Vec<Union>>,
+    pub enums: Option<Vec<Enum>>,
 }
 
 impl Schema {
     pub fn process(self) -> SchemaProcessed {
+        let all_union_or_interface_type_names = self
+            .interfaces
+            .as_ref()
+            .map(|interfaces| {
+                interfaces
+                    .into_iter()
+                    .map(|interface| interface.name.clone())
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default()
+            .into_iter()
+            .chain(
+                self.unions
+                    .as_ref()
+                    .map(|unions| {
+                        unions
+                            .into_iter()
+                            .map(|union| union.name.clone())
+                            .collect::<Vec<_>>()
+                    })
+                    .unwrap_or_default()
+                    .into_iter(),
+            )
+            .collect::<HashSet<_>>();
+        let all_enum_names = self
+            .enums
+            .as_ref()
+            .map(|enums| {
+                enums
+                    .into_iter()
+                    .map(|enum_| enum_.name.clone())
+                    .collect::<HashSet<_>>()
+            })
+            .unwrap_or_default();
         SchemaProcessed {
             types: self
                 .types
                 .into_iter()
-                .map(|type_| type_.process())
+                .map(|type_| type_.process(&all_union_or_interface_type_names, &all_enum_names))
                 .collect(),
             query: self
                 .query
                 .into_iter()
-                .map(|field| field.process(None))
+                .map(|field| {
+                    field.process(None, &all_union_or_interface_type_names, &all_enum_names)
+                })
                 .collect(),
             interfaces: self.interfaces,
+            unions: self.unions,
+            enums: self.enums,
         }
     }
 }
@@ -39,6 +81,8 @@ impl Parse for Schema {
         let mut types: Option<Vec<Type>> = _d();
         let mut query: Option<Vec<Field>> = _d();
         let mut interfaces: Option<Vec<Interface>> = _d();
+        let mut unions: Option<Vec<Union>> = _d();
+        let mut enums: Option<Vec<Enum>> = _d();
 
         while !input.is_empty() {
             let key: Ident = input.parse()?;
@@ -74,6 +118,26 @@ impl Parse for Schema {
                         interfaces_content.parse::<Option<Token![,]>>()?;
                     }
                 }
+                "unions" => {
+                    assert!(unions.is_none(), "Already saw 'unions' key");
+                    let unions_content;
+                    bracketed!(unions_content in input);
+                    let unions = unions.populate_default();
+                    while !unions_content.is_empty() {
+                        unions.push(unions_content.parse()?);
+                        unions_content.parse::<Option<Token![,]>>()?;
+                    }
+                }
+                "enums" => {
+                    assert!(enums.is_none(), "Already saw 'enums' key");
+                    let enums_content;
+                    bracketed!(enums_content in input);
+                    let enums = enums.populate_default();
+                    while !enums_content.is_empty() {
+                        enums.push(enums_content.parse()?);
+                        enums_content.parse::<Option<Token![,]>>()?;
+                    }
+                }
                 key => return Err(input.error(format!("Unexpected key `{key}`"))),
             }
         }
@@ -82,6 +146,8 @@ impl Parse for Schema {
             types: types.expect("Didn't see `types`"),
             query: query.expect("Didn't see `query`"),
             interfaces,
+            unions,
+            enums,
         })
     }
 }
@@ -90,6 +156,8 @@ struct SchemaProcessed {
     pub types: Vec<TypeProcessed>,
     pub query: Vec<FieldProcessed>,
     pub interfaces: Option<Vec<Interface>>,
+    pub unions: Option<Vec<Union>>,
+    pub enums: Option<Vec<Enum>>,
 }
 
 struct Type {
@@ -99,13 +167,23 @@ struct Type {
 }
 
 impl Type {
-    pub fn process(self) -> TypeProcessed {
+    pub fn process(
+        self,
+        all_union_or_interface_type_names: &HashSet<String>,
+        all_enum_names: &HashSet<String>,
+    ) -> TypeProcessed {
         TypeProcessed {
             name: self.name.clone(),
             fields: self
                 .fields
                 .into_iter()
-                .map(|field| field.process(Some(&self.name)))
+                .map(|field| {
+                    field.process(
+                        Some(&self.name),
+                        all_union_or_interface_type_names,
+                        all_enum_names,
+                    )
+                })
                 .collect(),
             implements: self.implements,
         }
@@ -169,10 +247,19 @@ struct Field {
 }
 
 impl Field {
-    pub fn process(self, parent_type_name: Option<&str>) -> FieldProcessed {
+    pub fn process(
+        self,
+        parent_type_name: Option<&str>,
+        all_union_or_interface_type_names: &HashSet<String>,
+        all_enum_names: &HashSet<String>,
+    ) -> FieldProcessed {
         FieldProcessed {
             name: self.name,
-            value: self.value.process(parent_type_name),
+            value: self.value.process(
+                parent_type_name,
+                all_union_or_interface_type_names,
+                all_enum_names,
+            ),
         }
     }
 }
@@ -225,14 +312,69 @@ impl ToTokens for FieldProcessed {
             FieldValueProcessed::Object {
                 type_,
                 internal_dependencies,
+                params,
+                maybe_type_kind,
+                carver_or_populator,
             } => {
-                let populator = match type_.is_list_type() {
-                    true => quote! {
-                        ::sauvignon::CarverOrPopulator::PopulatorList(::sauvignon::ValuePopulatorList::new("id".to_owned()).into())
+                let carver_or_populator = match carver_or_populator {
+                    Some(carver_or_populator) => quote! {
+                        #carver_or_populator
                     },
-                    false => quote! {
-                        ::sauvignon::CarverOrPopulator::Populator(::sauvignon::ValuePopulator::new("id".to_owned()).into())
+                    None => match type_.is_list_type() {
+                        true => quote! {
+                            ::sauvignon::CarverOrPopulator::PopulatorList(::sauvignon::ValuePopulatorList::new("id".to_owned()).into())
+                        },
+                        false => match maybe_type_kind {
+                            None => quote! {
+                                ::sauvignon::CarverOrPopulator::Populator(::sauvignon::ValuePopulator::new("id".to_owned()).into())
+                            },
+                            Some(TypeKind::UnionOrInterface) => quote! {
+                                ::sauvignon::CarverOrPopulator::UnionOrInterfaceTypePopulator(
+                                    Box::new(::sauvignon::TypeDepluralizer::new()),
+                                    ::sauvignon::ValuePopulator::new("id".to_owned()).into(),
+                                )
+                            },
+                            Some(TypeKind::Enum) => {
+                                let only_internal_dependency_name = {
+                                    assert!(matches!(
+                                        internal_dependencies.as_ref(),
+                                        Some(internal_dependencies) if internal_dependencies.len() == 1
+                                    ));
+                                    internal_dependencies.as_ref().unwrap()[0].name.clone()
+                                };
+                                quote! {
+                                    ::sauvignon::CarverOrPopulator::Carver(Box::new(::sauvignon::StringCarver::new(#only_internal_dependency_name.to_owned())))
+                                }
+                            }
+                        },
                     },
+                };
+                let internal_dependencies = params.as_ref().map(|params| {
+                    params.into_iter().map(|param| {
+                        InternalDependencyProcessed {
+                            name: param.name.clone(),
+                            type_: InternalDependencyTypeProcessed::Param(if param.is_id() {
+                                DependencyType::Id
+                            } else {
+                                DependencyType::String
+                            }),
+                        }
+                    })
+                }).unwrap_or_empty().chain(
+                    internal_dependencies.as_ref().map(|internal_dependencies| {
+                        internal_dependencies.into_iter().cloned()
+                    }).unwrap_or_empty()
+                );
+                let params = match params {
+                    None => quote! { },
+                    Some(params) => {
+                        let params = params.into_iter().map(|param| quote! { #param });
+                        quote! {
+                            .params([
+                                #(#params),*
+                            ])
+                        }
+                    }
                 };
                 quote! {
                     ::sauvignon::TypeFieldBuilder::default()
@@ -241,8 +383,9 @@ impl ToTokens for FieldProcessed {
                         .resolver(::sauvignon::FieldResolver::new(
                             vec![],
                             vec![#(#internal_dependencies),*],
-                            #populator,
+                            #carver_or_populator,
                         ))
+                        #params
                         .build()
                         .unwrap()
                 }
@@ -250,30 +393,71 @@ impl ToTokens for FieldProcessed {
             FieldValueProcessed::BelongsTo {
                 type_,
                 self_table_name,
+                polymorphic,
             } => {
                 let self_belongs_to_foreign_key_column_name =
                     format!("{}_id", name.to_snake_case());
-                quote! {
-                    ::sauvignon::TypeFieldBuilder::default()
-                        .name(#name)
-                        .type_(::sauvignon::TypeFull::Type(#type_.to_owned()))
-                        .resolver(::sauvignon::FieldResolver::new(
-                            vec![::sauvignon::ExternalDependency::new("id".to_owned(), ::sauvignon::DependencyType::Id)],
-                            vec![::sauvignon::InternalDependency::new(
-                                #self_belongs_to_foreign_key_column_name.to_owned(),
-                                ::sauvignon::DependencyType::Id,
-                                ::sauvignon::InternalDependencyResolver::ColumnGetter(::sauvignon::ColumnGetter::new(
-                                    #self_table_name.to_owned(),
+                match polymorphic {
+                    false => quote! {
+                        ::sauvignon::TypeFieldBuilder::default()
+                            .name(#name)
+                            .type_(::sauvignon::TypeFull::Type(#type_.to_owned()))
+                            .resolver(::sauvignon::FieldResolver::new(
+                                vec![::sauvignon::ExternalDependency::new("id".to_owned(), ::sauvignon::DependencyType::Id)],
+                                vec![::sauvignon::InternalDependency::new(
                                     #self_belongs_to_foreign_key_column_name.to_owned(),
-                                )),
-                            )],
-                            ::sauvignon::CarverOrPopulator::Populator(::sauvignon::ValuesPopulator::new([(
-                                #self_belongs_to_foreign_key_column_name.to_owned(),
-                                "id".to_owned(),
-                            )]).into()),
-                        ))
-                        .build()
-                        .unwrap()
+                                    ::sauvignon::DependencyType::Id,
+                                    ::sauvignon::InternalDependencyResolver::ColumnGetter(::sauvignon::ColumnGetter::new(
+                                        #self_table_name.to_owned(),
+                                        #self_belongs_to_foreign_key_column_name.to_owned(),
+                                    )),
+                                )],
+                                ::sauvignon::CarverOrPopulator::Populator(::sauvignon::ValuesPopulator::new([(
+                                    #self_belongs_to_foreign_key_column_name.to_owned(),
+                                    "id".to_owned(),
+                                )]).into()),
+                            ))
+                            .build()
+                            .unwrap()
+                    },
+                    true => {
+                        let self_belongs_to_foreign_key_type_column_name =
+                            format!("{}_type", name.to_snake_case());
+                        quote! {
+                            ::sauvignon::TypeFieldBuilder::default()
+                                .name(#name)
+                                .type_(::sauvignon::TypeFull::Type(#type_.to_owned()))
+                                .resolver(::sauvignon::FieldResolver::new(
+                                    vec![::sauvignon::ExternalDependency::new("id".to_owned(), ::sauvignon::DependencyType::Id)],
+                                    vec![
+                                        ::sauvignon::InternalDependency::new(
+                                            "type".to_owned(),
+                                            ::sauvignon::DependencyType::String,
+                                            ::sauvignon::InternalDependencyResolver::ColumnGetter(::sauvignon::ColumnGetter::new(
+                                                #self_table_name.to_owned(),
+                                                #self_belongs_to_foreign_key_type_column_name.to_owned(),
+                                            )),
+                                        ),
+                                        ::sauvignon::InternalDependency::new(
+                                            #self_belongs_to_foreign_key_column_name.to_owned(),
+                                            ::sauvignon::DependencyType::Id,
+                                            ::sauvignon::InternalDependencyResolver::ColumnGetter(::sauvignon::ColumnGetter::new(
+                                                #self_table_name.to_owned(),
+                                                #self_belongs_to_foreign_key_column_name.to_owned(),
+                                            )),
+                                        ),
+                                    ],
+                                    ::sauvignon::CarverOrPopulator::UnionOrInterfaceTypePopulator(
+                                        ::std::boxed::Box::new(::sauvignon::TypeDepluralizer::new()),
+                                        ::sauvignon::ValuesPopulator::new([(
+                                            #self_belongs_to_foreign_key_column_name.to_owned(),
+                                            "id".to_owned(),
+                                        )]).into()),
+                                ))
+                                .build()
+                                .unwrap()
+                        }
+                    }
                 }
             }
         }
@@ -285,15 +469,23 @@ enum FieldValue {
     StringColumn,
     Object {
         type_: TypeFull,
-        internal_dependencies: Vec<InternalDependency>,
+        internal_dependencies: Option<Vec<InternalDependency>>,
+        params: Option<Vec<Param>>,
+        carver_or_populator: Option<CarverOrPopulator>,
     },
     BelongsTo {
         type_: String,
+        polymorphic: bool,
     },
 }
 
 impl FieldValue {
-    pub fn process(self, parent_type_name: Option<&str>) -> FieldValueProcessed {
+    pub fn process(
+        self,
+        parent_type_name: Option<&str>,
+        all_union_or_interface_type_names: &HashSet<String>,
+        all_enum_names: &HashSet<String>,
+    ) -> FieldValueProcessed {
         match self {
             Self::StringColumn => FieldValueProcessed::StringColumn {
                 table_name: pluralize(&parent_type_name.unwrap().to_snake_case()),
@@ -301,16 +493,30 @@ impl FieldValue {
             Self::Object {
                 type_,
                 internal_dependencies,
+                params,
+                carver_or_populator,
             } => FieldValueProcessed::Object {
-                internal_dependencies: internal_dependencies
-                    .into_iter()
-                    .map(|internal_dependency| internal_dependency.process(type_.name()))
-                    .collect(),
+                internal_dependencies: internal_dependencies.map(|internal_dependencies| {
+                    internal_dependencies
+                        .into_iter()
+                        .map(|internal_dependency| internal_dependency.process(type_.name()))
+                        .collect()
+                }),
+                maybe_type_kind: if all_union_or_interface_type_names.contains(type_.name()) {
+                    Some(TypeKind::UnionOrInterface)
+                } else if all_enum_names.contains(type_.name()) {
+                    Some(TypeKind::Enum)
+                } else {
+                    None
+                },
                 type_,
+                params,
+                carver_or_populator,
             },
-            Self::BelongsTo { type_ } => FieldValueProcessed::BelongsTo {
+            Self::BelongsTo { type_, polymorphic } => FieldValueProcessed::BelongsTo {
                 type_,
                 self_table_name: pluralize(&parent_type_name.unwrap().to_snake_case()),
+                polymorphic,
             },
         }
     }
@@ -331,11 +537,29 @@ impl Parse for FieldValue {
                 "belongs_to" => {
                     let arguments_content;
                     parenthesized!(arguments_content in input);
-                    arguments_content.parse::<Token![type]>()?;
-                    arguments_content.parse::<Token![=>]>()?;
-                    let type_: Ident = arguments_content.parse()?;
+                    let mut type_: Option<String> = _d();
+                    let mut polymorphic: Option<bool> = _d();
+                    while !arguments_content.is_empty() {
+                        let key = parse_ident_or_type(&arguments_content)?;
+                        arguments_content.parse::<Token![=>]>()?;
+                        match &*key.to_string() {
+                            "type" => {
+                                type_ = Some(arguments_content.parse::<Ident>()?.to_string());
+                            }
+                            "polymorphic" => {
+                                polymorphic = Some(arguments_content.parse::<LitBool>()?.value);
+                            }
+                            key => {
+                                return Err(
+                                    arguments_content.error(format!("Unexpected key `{key}`"))
+                                )
+                            }
+                        }
+                        arguments_content.parse::<Option<Token![,]>>()?;
+                    }
                     Ok(Self::BelongsTo {
-                        type_: type_.to_string(),
+                        type_: type_.expect("Expected `type`").to_string(),
+                        polymorphic: polymorphic.unwrap_or(false),
                     })
                 }
                 _ => return Err(input.error("Expected known field helper eg `string_column()`")),
@@ -345,14 +569,11 @@ impl Parse for FieldValue {
                 braced!(field_value_content in input);
                 let mut type_: Option<TypeFull> = _d();
                 let mut internal_dependencies: Option<Vec<InternalDependency>> = _d();
+                let mut params: Option<Vec<Param>> = _d();
+                let mut populator: Option<CarverOrPopulator> = _d();
+                let mut carver: Option<CarverOrPopulator> = _d();
                 while !field_value_content.is_empty() {
-                    let key = match field_value_content.parse::<Ident>() {
-                        Ok(key) => key,
-                        _ => {
-                            let key = field_value_content.parse::<Token![type]>()?;
-                            Ident::new("type", key.span())
-                        }
-                    };
+                    let key = parse_ident_or_type(&field_value_content)?;
                     field_value_content.parse::<Token![=>]>()?;
                     match &*key.to_string() {
                         "type" => {
@@ -372,6 +593,26 @@ impl Parse for FieldValue {
                                 internal_dependencies_content.parse::<Option<Token![,]>>()?;
                             }
                         }
+                        "params" => {
+                            assert!(params.is_none(), "Already saw 'params' key");
+                            let params_content;
+                            bracketed!(params_content in field_value_content);
+                            let params = params.populate_default();
+                            while !params_content.is_empty() {
+                                params.push(params_content.parse()?);
+                                params_content.parse::<Option<Token![,]>>()?;
+                            }
+                        }
+                        "populator" => {
+                            assert!(populator.is_none(), "Already saw 'populator' key");
+                            assert!(carver.is_none(), "Already saw 'carver' key, can't have both 'carver' and 'populator'");
+                            populator = Some(field_value_content.parse()?);
+                        }
+                        "carver" => {
+                            assert!(carver.is_none(), "Already saw 'carver' key");
+                            assert!(populator.is_none(), "Already saw 'populator' key, can't have both 'carver' and 'populator'");
+                            carver = Some(field_value_content.parse()?);
+                        }
                         key => {
                             return Err(field_value_content.error(format!("Unexpected key `{key}`")))
                         }
@@ -380,8 +621,9 @@ impl Parse for FieldValue {
                 }
                 Ok(Self::Object {
                     type_: type_.expect("Expected `type`"),
-                    internal_dependencies: internal_dependencies
-                        .expect("Expected `internal_dependencies`"),
+                    internal_dependencies,
+                    params,
+                    carver_or_populator: carver.or(populator),
                 })
             }
         }
@@ -394,11 +636,15 @@ enum FieldValueProcessed {
     },
     Object {
         type_: TypeFull,
-        internal_dependencies: Vec<InternalDependencyProcessed>,
+        internal_dependencies: Option<Vec<InternalDependencyProcessed>>,
+        params: Option<Vec<Param>>,
+        carver_or_populator: Option<CarverOrPopulator>,
+        maybe_type_kind: Option<TypeKind>,
     },
     BelongsTo {
         type_: String,
         self_table_name: String,
+        polymorphic: bool,
     },
 }
 
@@ -418,7 +664,7 @@ impl InternalDependency {
 
 impl Parse for InternalDependency {
     fn parse(input: ParseStream) -> Result<Self> {
-        let name: Ident = input.parse()?;
+        let name = parse_ident_or_type(&input)?;
         input.parse::<Token![=>]>()?;
         let type_: InternalDependencyType = input.parse()?;
         Ok(Self {
@@ -428,6 +674,7 @@ impl Parse for InternalDependency {
     }
 }
 
+#[derive(Clone)]
 struct InternalDependencyProcessed {
     pub name: String,
     pub type_: InternalDependencyTypeProcessed,
@@ -439,6 +686,9 @@ impl ToTokens for InternalDependencyProcessed {
         let type_ = match &self.type_ {
             InternalDependencyTypeProcessed::LiteralValue(_) => quote! {
                 ::sauvignon::DependencyType::Id
+            },
+            InternalDependencyTypeProcessed::Param(dependency_type) => quote! {
+                #dependency_type
             },
             InternalDependencyTypeProcessed::IdColumnList { .. } => quote! {
                 ::sauvignon::DependencyType::ListOfIds
@@ -459,6 +709,13 @@ impl ToTokens for InternalDependencyProcessed {
                     ))
                 }
             }
+            InternalDependencyTypeProcessed::Param(_) => {
+                quote! {
+                    ::sauvignon::InternalDependencyResolver::Argument(
+                        ::sauvignon::ArgumentInternalDependencyResolver::new(#name.to_owned()),
+                    )
+                }
+            }
         };
         quote! {
             ::sauvignon::InternalDependency::new(
@@ -473,7 +730,7 @@ impl ToTokens for InternalDependencyProcessed {
 
 enum InternalDependencyType {
     LiteralValue(DependencyValue),
-    IdColumnList,
+    IdColumnList { type_: Option<String> },
 }
 
 impl InternalDependencyType {
@@ -482,8 +739,8 @@ impl InternalDependencyType {
             Self::LiteralValue(dependency_value) => {
                 InternalDependencyTypeProcessed::LiteralValue(dependency_value)
             }
-            Self::IdColumnList => InternalDependencyTypeProcessed::IdColumnList {
-                field_type_name: field_type_name.to_owned(),
+            Self::IdColumnList { type_ } => InternalDependencyTypeProcessed::IdColumnList {
+                field_type_name: type_.unwrap_or_else(|| field_type_name.to_owned()),
             },
         }
     }
@@ -505,10 +762,21 @@ impl Parse for InternalDependencyType {
             "id_column_list" => {
                 let arguments_content;
                 parenthesized!(arguments_content in input);
-                if !arguments_content.is_empty() {
-                    return Err(arguments_content.error("Didn't expect more arguments"));
+                let mut type_: Option<String> = _d();
+                while !arguments_content.is_empty() {
+                    let key = parse_ident_or_type(&arguments_content)?;
+                    arguments_content.parse::<Token![=>]>()?;
+                    match &*key.to_string() {
+                        "type" => {
+                            assert!(type_.is_none(), "Already saw 'type' key");
+                            type_ = Some(arguments_content.parse::<Ident>()?.to_string());
+                        }
+                        key => {
+                            return Err(arguments_content.error(format!("Unexpected key `{key}`")))
+                        }
+                    }
                 }
-                Ok(Self::IdColumnList)
+                Ok(Self::IdColumnList { type_ })
             }
             _ => {
                 return Err(
@@ -519,9 +787,11 @@ impl Parse for InternalDependencyType {
     }
 }
 
+#[derive(Clone)]
 enum InternalDependencyTypeProcessed {
     LiteralValue(DependencyValue),
     IdColumnList { field_type_name: String },
+    Param(DependencyType),
 }
 
 #[proc_macro]
@@ -574,6 +844,22 @@ pub fn schema(input: TokenStream) -> TokenStream {
             quote! { vec![#(#interfaces),*] }
         }
     };
+
+    let unions = match schema.unions.as_ref() {
+        None => quote! { vec![] },
+        Some(unions) => {
+            let unions = unions.into_iter().map(|union| quote! { #union });
+            quote! { vec![#(#unions),*] }
+        }
+    };
+
+    let enums = match schema.enums.as_ref() {
+        None => quote! { vec![] },
+        Some(enums) => {
+            let enums = enums.into_iter().map(|enum_| quote! { #enum_ });
+            quote! { #(#enums),* }
+        }
+    };
     quote! {{
         let query_type = ::sauvignon::Type::Object(
             ::sauvignon::ObjectTypeBuilder::default()
@@ -587,8 +873,8 @@ pub fn schema(input: TokenStream) -> TokenStream {
         );
 
         ::sauvignon::Schema::try_new(
-            vec![query_type, #(#types),*],
-            vec![],
+            vec![query_type, #(#types),*, #enums],
+            #unions,
             #interfaces,
         ).unwrap()
     }}
@@ -663,16 +949,29 @@ impl ToTokens for TypeFull {
 // TODO: possibly actually share these with the sauvignon crate?
 type Id = i32;
 
+#[derive(Clone)]
 enum DependencyValue {
     Id(Id),
     String(String),
     List(Vec<DependencyValue>),
+    IdentId(Ident),
 }
 
 impl Parse for DependencyValue {
     fn parse(input: ParseStream) -> Result<Self> {
-        let id: LitInt = input.parse()?;
-        Ok(Self::Id(id.base10_parse::<Id>()?))
+        Ok(match input.peek(LitInt) {
+            true => Self::Id(input.parse::<LitInt>().unwrap().base10_parse::<Id>()?),
+            false => match input.peek(Ident) {
+                true => match &*input.parse::<Ident>().unwrap().to_string() {
+                    "id" => {
+                        input.parse::<Token![=>]>()?;
+                        Self::IdentId(input.parse::<Ident>()?)
+                    }
+                    _ => return Err(input.error("Expected `id`")),
+                },
+                false => Self::String(input.parse::<LitStr>()?.value()),
+            },
+        })
     }
 }
 
@@ -683,7 +982,10 @@ impl ToTokens for DependencyValue {
                 ::sauvignon::DependencyValue::Id(#id)
             },
             Self::String(string) => quote! {
-                ::sauvignon::DependencyValue::String(#string)
+                ::sauvignon::DependencyValue::String(#string.to_owned())
+            },
+            Self::IdentId(ident) => quote! {
+                ::sauvignon::DependencyValue::Id(#ident)
             },
             _ => unimplemented!(),
         }
@@ -778,7 +1080,189 @@ impl ToTokens for InterfaceField {
     }
 }
 
+struct Param {
+    pub name: String,
+    pub type_: TypeFull,
+}
+
+impl Param {
+    pub fn is_id(&self) -> bool {
+        self.type_.name() == "Id"
+    }
+}
+
+impl Parse for Param {
+    fn parse(input: ParseStream) -> Result<Self> {
+        let name: Ident = input.parse()?;
+        input.parse::<Token![=>]>()?;
+        let type_: TypeFull = input.parse()?;
+
+        Ok(Self {
+            name: name.to_string(),
+            type_,
+        })
+    }
+}
+
+impl ToTokens for Param {
+    fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
+        let name = &self.name;
+        let type_ = &self.type_;
+        quote! {
+            ::sauvignon::Param::new(
+                #name.to_owned(),
+                #type_,
+            )
+        }
+        .to_tokens(tokens)
+    }
+}
+
+struct Union {
+    pub name: String,
+    pub types: Vec<String>,
+}
+
+impl Parse for Union {
+    fn parse(input: ParseStream) -> Result<Self> {
+        let name: Ident = input.parse()?;
+        input.parse::<Token![=>]>()?;
+        let types_content;
+        bracketed!(types_content in input);
+        let mut types: Vec<String> = _d();
+        while !types_content.is_empty() {
+            types.push(types_content.parse::<Ident>()?.to_string());
+            types_content.parse::<Option<Token![,]>>()?;
+        }
+        Ok(Self {
+            name: name.to_string(),
+            types,
+        })
+    }
+}
+
+impl ToTokens for Union {
+    fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
+        let name = &self.name;
+        let types = self.types.iter().map(|type_| {
+            quote! {
+                #type_.to_owned()
+            }
+        });
+        quote! {
+            ::sauvignon::Union::new(
+                #name.to_owned(),
+                vec![#(#types),*],
+            )
+        }
+        .to_tokens(tokens)
+    }
+}
+
+enum CarverOrPopulator {
+    Custom(ExprBlock),
+}
+
+impl Parse for CarverOrPopulator {
+    fn parse(input: ParseStream) -> Result<Self> {
+        let name: Ident = input.parse()?;
+        if name.to_string() != "custom" {
+            return Err(input.error("Expected `custom`"));
+        }
+        Ok(Self::Custom(input.parse()?))
+    }
+}
+
+impl ToTokens for CarverOrPopulator {
+    fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
+        match self {
+            Self::Custom(block) => quote! {
+                #block
+            }
+            .to_tokens(tokens),
+        }
+    }
+}
+
+struct Enum {
+    pub name: String,
+    pub variants: Vec<String>,
+}
+
+impl Parse for Enum {
+    fn parse(input: ParseStream) -> Result<Self> {
+        let name: Ident = input.parse()?;
+        input.parse::<Token![=>]>()?;
+        let values_content;
+        bracketed!(values_content in input);
+        let mut variants: Vec<String> = _d();
+        while !values_content.is_empty() {
+            variants.push(values_content.parse::<Ident>()?.to_string());
+            values_content.parse::<Option<Token![,]>>()?;
+        }
+        Ok(Self {
+            name: name.to_string(),
+            variants,
+        })
+    }
+}
+
+impl ToTokens for Enum {
+    fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
+        let name = &self.name;
+        let variants = self
+            .variants
+            .iter()
+            .map(|variant| quote! { #variant.to_owned() });
+        quote! {
+            ::sauvignon::Type::Enum(::sauvignon::Enum::new(
+                #name.to_owned(),
+                vec![#(#variants),*],
+            ))
+        }
+        .to_tokens(tokens)
+    }
+}
+
+enum TypeKind {
+    UnionOrInterface,
+    Enum,
+}
+
+// TODO: share this with sauvignon crate?
+#[derive(Clone)]
+enum DependencyType {
+    Id,
+    String,
+    // ListOfIds,
+    // ListOfStrings,
+}
+
+impl ToTokens for DependencyType {
+    fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
+        match self {
+            Self::Id => quote! {
+                ::sauvignon::DependencyType::Id
+            },
+            Self::String => quote! {
+                ::sauvignon::DependencyType::String
+            },
+        }
+        .to_tokens(tokens)
+    }
+}
+
 // TODO: share this with sauvignon crate?
 fn pluralize(value: &str) -> String {
     format!("{value}s")
+}
+
+fn parse_ident_or_type(input: &ParseBuffer) -> Result<Ident> {
+    Ok(match input.parse::<Ident>() {
+        Ok(key) => key,
+        _ => {
+            let key = input.parse::<Token![type]>()?;
+            Ident::new("type", key.span())
+        }
+    })
 }
