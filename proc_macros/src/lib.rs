@@ -189,7 +189,7 @@ impl ToTokens for FieldProcessed {
                             ::sauvignon::CarverOrPopulator::Carver(::std::boxed::Box::new(::sauvignon::StringCarver::new(#name.to_owned()))),
                         ))
                         .build()
-                        .unwrap(),
+                        .unwrap()
                 }
             }
             FieldValueProcessed::Object {
@@ -206,7 +206,7 @@ impl ToTokens for FieldProcessed {
                             ::sauvignon::CarverOrPopulator::Populator(::sauvignon::ValuePopulator::new("id".to_owned()).into()),
                         ))
                         .build()
-                        .unwrap(),
+                        .unwrap()
                 }
             }
             FieldValueProcessed::BelongsTo {
@@ -232,10 +232,10 @@ impl ToTokens for FieldProcessed {
                             ::sauvignon::CarverOrPopulator::Populator(::sauvignon::ValuesPopulator::new([(
                                 #self_belongs_to_foreign_key_column_name.to_owned(),
                                 "id".to_owned(),
-                            )])),
+                            )]).into()),
                         ))
                         .build()
-                        .unwrap(),
+                        .unwrap()
                 }
             }
         }
