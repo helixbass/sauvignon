@@ -61,7 +61,7 @@ impl Parse for Schema {
                         query_content.parse::<Option<Token![,]>>()?;
                     }
                 }
-                key => panic!("Unexpected key `{key}`"),
+                key => return Err(input.error(format!("Unexpected key `{key}`"))),
             }
         }
 
@@ -116,7 +116,7 @@ impl Parse for Type {
                         fields_content.parse::<Option<Token![,]>>()?;
                     }
                 }
-                key => panic!("Unexpected key `{key}`"),
+                key => return Err(type_content.error(format!("Unexpected key `{key}`"))),
             }
             type_content.parse::<Option<Token![,]>>()?;
         }
@@ -283,7 +283,7 @@ impl Parse for FieldValue {
                     let arguments_content;
                     parenthesized!(arguments_content in input);
                     if !arguments_content.is_empty() {
-                        panic!("Not expecting argument values");
+                        return Err(arguments_content.error("Not expecting argument values"));
                     }
                     Ok(Self::StringColumn)
                 }
@@ -297,7 +297,7 @@ impl Parse for FieldValue {
                         type_: type_.to_string(),
                     })
                 }
-                _ => panic!("Expected known field helper eg `string_column()`"),
+                _ => return Err(input.error("Expected known field helper eg `string_column()`")),
             },
             _ => {
                 let field_value_content;
@@ -331,7 +331,9 @@ impl Parse for FieldValue {
                                 internal_dependencies_content.parse::<Option<Token![,]>>()?;
                             }
                         }
-                        key => panic!("Unexpected key `{key}`"),
+                        key => {
+                            return Err(field_value_content.error(format!("Unexpected key `{key}`")))
+                        }
                     }
                     field_value_content.parse::<Option<Token![,]>>()?;
                 }
@@ -408,13 +410,13 @@ impl Parse for InternalDependencyType {
     fn parse(input: ParseStream) -> Result<Self> {
         let name: Ident = input.parse()?;
         if name.to_string() != "literal_value" {
-            panic!("Expected `literal_value`");
+            return Err(input.error("Expected `literal_value`"));
         }
         let arguments_content;
         parenthesized!(arguments_content in input);
         let value: DependencyValue = arguments_content.parse()?;
         if !arguments_content.is_empty() {
-            panic!("Didn't expect more arguments");
+            return Err(arguments_content.error("Didn't expect more arguments"));
         }
         Ok(Self::LiteralValue(value))
     }
