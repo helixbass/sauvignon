@@ -24,11 +24,13 @@ async fn test_column_getter() {
                         type => Designer
                     )
                 ]
+                implements => [HasName]
             }
             Designer => {
                 fields => [
                     name => string_column()
                 ]
+                implements => [HasName]
             }
         ]
         query => [
@@ -39,6 +41,13 @@ async fn test_column_getter() {
                 ]
             }
         ]
+        interfaces => [
+            HasName => {
+                fields => [
+                    name => String!
+                ]
+            }
+        ]
     };
 
     request_test(
@@ -46,10 +55,14 @@ async fn test_column_getter() {
         r#"
             query {
               actorKatie {
-                name
+                ... on HasName {
+                  name
+                }
                 expression
                 favoriteDesigner {
-                  name
+                  ... on HasName {
+                    name
+                  }
                 }
               }
             }

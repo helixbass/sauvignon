@@ -80,6 +80,7 @@ struct SchemaProcessed {
 struct Type {
     pub name: String,
     pub fields: Vec<Field>,
+    pub implements: Option<Vec<String>>,
 }
 
 impl Type {
@@ -91,6 +92,7 @@ impl Type {
                 .into_iter()
                 .map(|field| field.process(Some(&self.name)))
                 .collect(),
+            implements: self.implements,
         }
     }
 }
@@ -102,6 +104,7 @@ impl Parse for Type {
         let type_content;
         braced!(type_content in input);
         let mut fields: Option<Vec<Field>> = _d();
+        let mut implements: Option<Vec<String>> = _d();
         while !type_content.is_empty() {
             let key: Ident = type_content.parse()?;
             type_content.parse::<Token![=>]>()?;
@@ -116,6 +119,16 @@ impl Parse for Type {
                         fields_content.parse::<Option<Token![,]>>()?;
                     }
                 }
+                "implements" => {
+                    assert!(implements.is_none(), "Already saw 'implements' key");
+                    let implements_content;
+                    bracketed!(implements_content in type_content);
+                    let implements = implements.populate_default();
+                    while !implements_content.is_empty() {
+                        implements.push(implements_content.parse::<Ident>()?.to_string());
+                        implements_content.parse::<Option<Token![,]>>()?;
+                    }
+                }
                 key => return Err(type_content.error(format!("Unexpected key `{key}`"))),
             }
             type_content.parse::<Option<Token![,]>>()?;
@@ -124,6 +137,7 @@ impl Parse for Type {
         Ok(Self {
             name: name.to_string(),
             fields: fields.expect("Didn't see `fields`"),
+            implements,
         })
     }
 }
@@ -131,6 +145,7 @@ impl Parse for Type {
 struct TypeProcessed {
     pub name: String,
     pub fields: Vec<FieldProcessed>,
+    pub implements: Option<Vec<String>>,
 }
 
 struct Field {
@@ -436,6 +451,19 @@ pub fn schema(input: TokenStream) -> TokenStream {
         let type_field_builders = type_.fields.iter().map(|field| {
             quote! { #field }
         });
+        let implements = match type_.implements.as_ref() {
+            None => quote! {},
+            Some(implements) => {
+                let implements = implements.iter().map(|implement| {
+                    quote! {
+                        #implement.to_owned()
+                    }
+                });
+                quote! {
+                    .implements(vec![#(#implements),*])
+                }
+            }
+        };
         quote! {
             ::sauvignon::Type::Object(
                 ::sauvignon::ObjectTypeBuilder::default()
@@ -443,6 +471,7 @@ pub fn schema(input: TokenStream) -> TokenStream {
                     .fields([
                         #(#type_field_builders),*
                     ])
+                    #implements
                     .build()
                     .unwrap()
             )
