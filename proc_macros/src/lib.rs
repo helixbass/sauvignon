@@ -466,7 +466,8 @@ impl ToTokens for InternalDependencyProcessed {
     fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
         let name = &self.name;
         let type_ = match &self.type_ {
-            InternalDependencyTypeProcessed::LiteralValue(_) => quote! {
+            InternalDependencyTypeProcessed::LiteralValue(_)
+            | InternalDependencyTypeProcessed::Param => quote! {
                 ::sauvignon::DependencyType::Id
             },
             InternalDependencyTypeProcessed::IdColumnList { .. } => quote! {
@@ -488,6 +489,13 @@ impl ToTokens for InternalDependencyProcessed {
                     ))
                 }
             }
+            InternalDependencyTypeProcessed::Param => {
+                quote! {
+                    ::sauvignon::InternalDependencyResolver::Argument(
+                        ::sauvignon::ArgumentInternalDependencyResolver::new(#name.to_owned()),
+                    )
+                }
+            }
         };
         quote! {
             ::sauvignon::InternalDependency::new(
@@ -503,6 +511,7 @@ impl ToTokens for InternalDependencyProcessed {
 enum InternalDependencyType {
     LiteralValue(DependencyValue),
     IdColumnList,
+    Param,
 }
 
 impl InternalDependencyType {
@@ -514,6 +523,7 @@ impl InternalDependencyType {
             Self::IdColumnList => InternalDependencyTypeProcessed::IdColumnList {
                 field_type_name: field_type_name.to_owned(),
             },
+            Self::Param => InternalDependencyTypeProcessed::Param,
         }
     }
 }
@@ -539,6 +549,14 @@ impl Parse for InternalDependencyType {
                 }
                 Ok(Self::IdColumnList)
             }
+            "param" => {
+                let arguments_content;
+                parenthesized!(arguments_content in input);
+                if !arguments_content.is_empty() {
+                    return Err(arguments_content.error("Didn't expect more arguments"));
+                }
+                Ok(Self::Param)
+            }
             _ => {
                 return Err(
                     input.error("Expected known internal dependency helper eg `literal_value()`")
@@ -551,6 +569,7 @@ impl Parse for InternalDependencyType {
 enum InternalDependencyTypeProcessed {
     LiteralValue(DependencyValue),
     IdColumnList { field_type_name: String },
+    Param,
 }
 
 #[proc_macro]
