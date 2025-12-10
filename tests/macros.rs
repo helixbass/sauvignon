@@ -19,6 +19,10 @@ async fn test_column_getter() {
             Actor => {
                 fields => [
                     name => string_column(),
+                    expression => string_column(),
+                    favoriteDesigner => belongs_to(
+                        type => Designer
+                    )
                 ]
             }
         ]
@@ -38,6 +42,10 @@ async fn test_column_getter() {
             query {
               actorKatie {
                 name
+                expression
+                favoriteDesigner {
+                  name
+                }
               }
             }
         "#,
@@ -45,7 +53,11 @@ async fn test_column_getter() {
             {
               "data": {
                 "actorKatie": {
-                  "name": "Katie Cassidy"
+                  "name": "Katie Cassidy",
+                  "expression": "no Serena you can't have the key",
+                  "favoriteDesigner": {
+                    "name": "Proenza Schouler"
+                  }
                 }
               }
             }

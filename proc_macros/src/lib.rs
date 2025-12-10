@@ -209,6 +209,35 @@ impl ToTokens for FieldProcessed {
                         .unwrap(),
                 }
             }
+            FieldValueProcessed::BelongsTo {
+                type_,
+                self_table_name,
+            } => {
+                let self_belongs_to_foreign_key_column_name =
+                    format!("{}_id", name.to_snake_case());
+                quote! {
+                    ::sauvignon::TypeFieldBuilder::default()
+                        .name(#name)
+                        .type_(::sauvignon::TypeFull::Type(#type_.to_owned()))
+                        .resolver(::sauvignon::FieldResolver::new(
+                            vec![::sauvignon::ExternalDependency::new("id".to_owned(), ::sauvignon::DependencyType::Id)],
+                            vec![::sauvignon::InternalDependency::new(
+                                #self_belongs_to_foreign_key_column_name.to_owned(),
+                                ::sauvignon::DependencyType::Id,
+                                ::sauvignon::InternalDependencyResolver::ColumnGetter(::sauvignon::ColumnGetter::new(
+                                    #self_table_name.to_owned(),
+                                    #self_belongs_to_foreign_key_column_name.to_owned(),
+                                )),
+                            )],
+                            ::sauvignon::CarverOrPopulator::Populator(::sauvignon::ValuesPopulator::new([(
+                                #self_belongs_to_foreign_key_column_name.to_owned(),
+                                "id".to_owned(),
+                            )])),
+                        ))
+                        .build()
+                        .unwrap(),
+                }
+            }
         }
         .to_tokens(tokens)
     }
@@ -219,6 +248,9 @@ enum FieldValue {
     Object {
         type_: TypeFull,
         internal_dependencies: Vec<InternalDependency>,
+    },
+    BelongsTo {
+        type_: String,
     },
 }
 
@@ -235,6 +267,10 @@ impl FieldValue {
                 type_,
                 internal_dependencies,
             },
+            Self::BelongsTo { type_ } => FieldValueProcessed::BelongsTo {
+                type_,
+                self_table_name: pluralize(&parent_type_name.unwrap().to_snake_case()),
+            },
         }
     }
 }
@@ -242,17 +278,27 @@ impl FieldValue {
 impl Parse for FieldValue {
     fn parse(input: ParseStream) -> Result<Self> {
         match input.parse::<Ident>() {
-            Ok(ident) => {
-                if ident.to_string() != "string_column" {
-                    panic!("Expected `string_column`");
+            Ok(ident) => match &*ident.to_string() {
+                "string_column" => {
+                    let arguments_content;
+                    parenthesized!(arguments_content in input);
+                    if !arguments_content.is_empty() {
+                        panic!("Not expecting argument values");
+                    }
+                    Ok(Self::StringColumn)
                 }
-                let arguments_content;
-                parenthesized!(arguments_content in input);
-                if !arguments_content.is_empty() {
-                    panic!("Not expecting argument values");
+                "belongs_to" => {
+                    let arguments_content;
+                    parenthesized!(arguments_content in input);
+                    arguments_content.parse::<Token![type]>()?;
+                    arguments_content.parse::<Token![=>]>()?;
+                    let type_: Ident = arguments_content.parse()?;
+                    Ok(Self::BelongsTo {
+                        type_: type_.to_string(),
+                    })
                 }
-                Ok(Self::StringColumn)
-            }
+                _ => panic!("Expected known field helper eg `string_column()`"),
+            },
             _ => {
                 let field_value_content;
                 braced!(field_value_content in input);
@@ -306,6 +352,10 @@ enum FieldValueProcessed {
     Object {
         type_: TypeFull,
         internal_dependencies: Vec<InternalDependency>,
+    },
+    BelongsTo {
+        type_: String,
+        self_table_name: String,
     },
 }
 
