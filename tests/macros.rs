@@ -52,6 +52,13 @@ async fn test_column_getter() {
                     ids => id_column_list()
                 ]
             }
+            certainActorOrDesigner => {
+                type => ActorOrDesigner!
+                internal_dependencies => [
+                    type => literal_value("designers")
+                    id => literal_value(1)
+                ]
+            }
         ]
         interfaces => [
             HasName => {
@@ -59,6 +66,9 @@ async fn test_column_getter() {
                     name => String!
                 ]
             }
+        ]
+        unions => [
+            ActorOrDesigner => [Actor, Designer]
         ]
     };
 
@@ -83,6 +93,14 @@ async fn test_column_getter() {
               actor(id: 2) {
                 expression
               }
+              certainActorOrDesigner {
+                ... on Actor {
+                  expression
+                }
+                ... on Designer {
+                  name
+                }
+              }
             }
         "#,
         r#"
@@ -105,6 +123,9 @@ async fn test_column_getter() {
                 ],
                 "actor": {
                   "expression": "Dan where did you go I don't like you"
+                },
+                "certainActorOrDesigner": {
+                  "name": "Proenza Schouler"
                 }
               }
             }
