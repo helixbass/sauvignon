@@ -532,10 +532,23 @@ enum TypeFull {
 
 impl Parse for TypeFull {
     fn parse(input: ParseStream) -> Result<Self> {
-        let type_name: Ident = input.parse()?;
-        match input.parse::<Token![!]>() {
-            Ok(_) => Ok(Self::NonNull(Box::new(Self::Type(type_name.to_string())))),
-            _ => Ok(Self::Type(type_name.to_string())),
+        match input.parse::<Ident>() {
+            Ok(type_name) => match input.parse::<Token![!]>() {
+                Ok(_) => Ok(Self::NonNull(Box::new(Self::Type(type_name.to_string())))),
+                _ => Ok(Self::Type(type_name.to_string())),
+            },
+            _ => {
+                let list_type_content;
+                bracketed!(list_type_content in input);
+                let inner_type: TypeFull = list_type_content.parse()?;
+                if !list_type_content.is_empty() {
+                    return Err(list_type_content.error("Expected only inner type"));
+                }
+                match input.parse::<Token![!]>() {
+                    Ok(_) => Ok(Self::NonNull(Box::new(Self::List(Box::new(inner_type))))),
+                    _ => Ok(Self::List(Box::new(inner_type))),
+                }
+            }
         }
     }
 }

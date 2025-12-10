@@ -40,6 +40,12 @@ async fn test_column_getter() {
                     id => literal_value(1),
                 ]
             }
+            actors => {
+                type => [Actor!]!
+                internal_dependencies => [
+                    ids => id_column_list()
+                ]
+            }
         ]
         interfaces => [
             HasName => {
