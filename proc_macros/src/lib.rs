@@ -9,7 +9,7 @@ use syn::{
     parse::{Parse, ParseBuffer, ParseStream, Result},
     parse_macro_input,
     spanned::Spanned,
-    Ident, LitInt, LitStr, Token,
+    ExprBlock, Ident, LitInt, LitStr, Token,
 };
 
 struct Schema {
@@ -274,20 +274,26 @@ impl ToTokens for FieldProcessed {
                 internal_dependencies,
                 params,
                 is_union_or_interface_type,
+                populator,
             } => {
-                let populator = match type_.is_list_type() {
-                    true => quote! {
-                        ::sauvignon::CarverOrPopulator::PopulatorList(::sauvignon::ValuePopulatorList::new("id".to_owned()).into())
+                let populator = match populator {
+                    Some(populator) => quote! {
+                        #populator
                     },
-                    false => match is_union_or_interface_type {
-                        false => quote! {
-                            ::sauvignon::CarverOrPopulator::Populator(::sauvignon::ValuePopulator::new("id".to_owned()).into())
-                        },
+                    None => match type_.is_list_type() {
                         true => quote! {
-                            ::sauvignon::CarverOrPopulator::UnionOrInterfaceTypePopulator(
-                                Box::new(::sauvignon::TypeDepluralizer::new()),
-                                ::sauvignon::ValuePopulator::new("id".to_owned()).into(),
-                            )
+                            ::sauvignon::CarverOrPopulator::PopulatorList(::sauvignon::ValuePopulatorList::new("id".to_owned()).into())
+                        },
+                        false => match is_union_or_interface_type {
+                            false => quote! {
+                                ::sauvignon::CarverOrPopulator::Populator(::sauvignon::ValuePopulator::new("id".to_owned()).into())
+                            },
+                            true => quote! {
+                                ::sauvignon::CarverOrPopulator::UnionOrInterfaceTypePopulator(
+                                    Box::new(::sauvignon::TypeDepluralizer::new()),
+                                    ::sauvignon::ValuePopulator::new("id".to_owned()).into(),
+                                )
+                            },
                         },
                     },
                 };
@@ -368,6 +374,7 @@ enum FieldValue {
         type_: TypeFull,
         internal_dependencies: Option<Vec<InternalDependency>>,
         params: Option<Vec<Param>>,
+        populator: Option<Populator>,
     },
     BelongsTo {
         type_: String,
@@ -388,6 +395,7 @@ impl FieldValue {
                 type_,
                 internal_dependencies,
                 params,
+                populator,
             } => FieldValueProcessed::Object {
                 internal_dependencies: internal_dependencies.map(|internal_dependencies| {
                     internal_dependencies
@@ -399,6 +407,7 @@ impl FieldValue {
                     .contains(type_.name()),
                 type_,
                 params,
+                populator,
             },
             Self::BelongsTo { type_ } => FieldValueProcessed::BelongsTo {
                 type_,
@@ -438,6 +447,7 @@ impl Parse for FieldValue {
                 let mut type_: Option<TypeFull> = _d();
                 let mut internal_dependencies: Option<Vec<InternalDependency>> = _d();
                 let mut params: Option<Vec<Param>> = _d();
+                let mut populator: Option<Populator> = _d();
                 while !field_value_content.is_empty() {
                     let key = parse_ident_or_type(&field_value_content)?;
                     field_value_content.parse::<Token![=>]>()?;
@@ -469,6 +479,10 @@ impl Parse for FieldValue {
                                 params_content.parse::<Option<Token![,]>>()?;
                             }
                         }
+                        "populator" => {
+                            assert!(populator.is_none(), "Already saw 'populator' key");
+                            populator = Some(field_value_content.parse()?);
+                        }
                         key => {
                             return Err(field_value_content.error(format!("Unexpected key `{key}`")))
                         }
@@ -479,6 +493,7 @@ impl Parse for FieldValue {
                     type_: type_.expect("Expected `type`"),
                     internal_dependencies,
                     params,
+                    populator,
                 })
             }
         }
@@ -493,6 +508,7 @@ enum FieldValueProcessed {
         type_: TypeFull,
         internal_dependencies: Option<Vec<InternalDependencyProcessed>>,
         params: Option<Vec<Param>>,
+        populator: Option<Populator>,
         is_union_or_interface_type: bool,
     },
     BelongsTo {
@@ -990,6 +1006,31 @@ impl ToTokens for Union {
             )
         }
         .to_tokens(tokens)
+    }
+}
+
+enum Populator {
+    Custom(ExprBlock),
+}
+
+impl Parse for Populator {
+    fn parse(input: ParseStream) -> Result<Self> {
+        let name: Ident = input.parse()?;
+        if name.to_string() != "custom" {
+            return Err(input.error("Expected `custom`"));
+        }
+        Ok(Self::Custom(input.parse()?))
+    }
+}
+
+impl ToTokens for Populator {
+    fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
+        match self {
+            Self::Custom(block) => quote! {
+                #block
+            }
+            .to_tokens(tokens),
+        }
     }
 }
 
