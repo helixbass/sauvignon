@@ -85,6 +85,12 @@ async fn test_column_getter() {
                     )
                 }
             }
+            bestCanadianCity => {
+                type => CanadianCity!
+                internal_dependencies => [
+                    value => literal_value("VANCOUVER")
+                ]
+            }
         ]
         interfaces => [
             HasName => {
@@ -95,6 +101,9 @@ async fn test_column_getter() {
         ]
         unions => [
             ActorOrDesigner => [Actor, Designer]
+        ]
+        enums => [
+            CanadianCity => [VANCOUVER, CORNER_BROOK, QUEBEC, MONTREAL]
         ]
     };
 
@@ -141,6 +150,7 @@ async fn test_column_getter() {
                   name
                 }
               }
+              bestCanadianCity
             }
         "#,
         r#"
@@ -188,7 +198,8 @@ async fn test_column_getter() {
                     "__typename": "Designer",
                     "name": "Ralph Lauren"
                   }
-                ]
+                ],
+                "bestCanadianCity": "VANCOUVER"
               }
             }
         "#,

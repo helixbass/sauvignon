@@ -17,6 +17,7 @@ struct Schema {
     pub query: Vec<Field>,
     pub interfaces: Option<Vec<Interface>>,
     pub unions: Option<Vec<Union>>,
+    pub enums: Option<Vec<Enum>>,
 }
 
 impl Schema {
@@ -58,6 +59,7 @@ impl Schema {
                 .collect(),
             interfaces: self.interfaces,
             unions: self.unions,
+            enums: self.enums,
         }
     }
 }
@@ -68,6 +70,7 @@ impl Parse for Schema {
         let mut query: Option<Vec<Field>> = _d();
         let mut interfaces: Option<Vec<Interface>> = _d();
         let mut unions: Option<Vec<Union>> = _d();
+        let mut enums: Option<Vec<Enum>> = _d();
 
         while !input.is_empty() {
             let key: Ident = input.parse()?;
@@ -113,6 +116,16 @@ impl Parse for Schema {
                         unions_content.parse::<Option<Token![,]>>()?;
                     }
                 }
+                "enums" => {
+                    assert!(enums.is_none(), "Already saw 'enums' key");
+                    let enums_content;
+                    bracketed!(enums_content in input);
+                    let enums = enums.populate_default();
+                    while !enums_content.is_empty() {
+                        enums.push(enums_content.parse()?);
+                        enums_content.parse::<Option<Token![,]>>()?;
+                    }
+                }
                 key => return Err(input.error(format!("Unexpected key `{key}`"))),
             }
         }
@@ -122,6 +135,7 @@ impl Parse for Schema {
             query: query.expect("Didn't see `query`"),
             interfaces,
             unions,
+            enums,
         })
     }
 }
@@ -131,6 +145,7 @@ struct SchemaProcessed {
     pub query: Vec<FieldProcessed>,
     pub interfaces: Option<Vec<Interface>>,
     pub unions: Option<Vec<Union>>,
+    pub enums: Option<Vec<Enum>>,
 }
 
 struct Type {
@@ -729,6 +744,14 @@ pub fn schema(input: TokenStream) -> TokenStream {
             quote! { vec![#(#unions),*] }
         }
     };
+
+    let enums = match schema.enums.as_ref() {
+        None => quote! { vec![] },
+        Some(enums) => {
+            let enums = enums.into_iter().map(|enum_| quote! { #enum_ });
+            quote! { #(#enums),* }
+        }
+    };
     quote! {{
         let query_type = ::sauvignon::Type::Object(
             ::sauvignon::ObjectTypeBuilder::default()
@@ -742,7 +765,7 @@ pub fn schema(input: TokenStream) -> TokenStream {
         );
 
         ::sauvignon::Schema::try_new(
-            vec![query_type, #(#types),*],
+            vec![query_type, #(#types),*, #enums],
             #unions,
             #interfaces,
         ).unwrap()
@@ -1031,6 +1054,46 @@ impl ToTokens for Populator {
             }
             .to_tokens(tokens),
         }
+    }
+}
+
+struct Enum {
+    pub name: String,
+    pub variants: Vec<String>,
+}
+
+impl Parse for Enum {
+    fn parse(input: ParseStream) -> Result<Self> {
+        let name: Ident = input.parse()?;
+        input.parse::<Token![=>]>()?;
+        let values_content;
+        bracketed!(values_content in input);
+        let mut variants: Vec<String> = _d();
+        while !values_content.is_empty() {
+            variants.push(values_content.parse::<Ident>()?.to_string());
+            values_content.parse::<Option<Token![,]>>()?;
+        }
+        Ok(Self {
+            name: name.to_string(),
+            variants,
+        })
+    }
+}
+
+impl ToTokens for Enum {
+    fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
+        let name = &self.name;
+        let variants = self
+            .variants
+            .iter()
+            .map(|variant| quote! { #variant.to_owned() });
+        quote! {
+            ::sauvignon::Type::Enum(::sauvignon::Enum::new(
+                #name.to_owned(),
+                vec![#(#variants),*],
+            ))
+        }
+        .to_tokens(tokens)
     }
 }
 
