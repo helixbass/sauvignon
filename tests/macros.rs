@@ -161,6 +161,7 @@ async fn test_column_getter() {
                 }
               }
               bestCanadianCity
+              canadianCityQuote(city: VANCOUVER)
             }
         "#,
         r#"
@@ -209,7 +210,8 @@ async fn test_column_getter() {
                     "name": "Ralph Lauren"
                   }
                 ],
-                "bestCanadianCity": "VANCOUVER"
+                "bestCanadianCity": "VANCOUVER",
+                "canadianCityQuote": "We're the best"
               }
             }
         "#,

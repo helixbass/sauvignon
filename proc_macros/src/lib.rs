@@ -353,7 +353,11 @@ impl ToTokens for FieldProcessed {
                     params.into_iter().map(|param| {
                         InternalDependencyProcessed {
                             name: param.name.clone(),
-                            type_: InternalDependencyTypeProcessed::Param,
+                            type_: InternalDependencyTypeProcessed::Param(if param.is_id() {
+                                DependencyType::Id
+                            } else {
+                                DependencyType::String
+                            }),
                         }
                     })
                 }).unwrap_or_empty().chain(
@@ -618,9 +622,11 @@ impl ToTokens for InternalDependencyProcessed {
     fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
         let name = &self.name;
         let type_ = match &self.type_ {
-            InternalDependencyTypeProcessed::LiteralValue(_)
-            | InternalDependencyTypeProcessed::Param => quote! {
+            InternalDependencyTypeProcessed::LiteralValue(_) => quote! {
                 ::sauvignon::DependencyType::Id
+            },
+            InternalDependencyTypeProcessed::Param(dependency_type) => quote! {
+                #dependency_type
             },
             InternalDependencyTypeProcessed::IdColumnList { .. } => quote! {
                 ::sauvignon::DependencyType::ListOfIds
@@ -641,7 +647,7 @@ impl ToTokens for InternalDependencyProcessed {
                     ))
                 }
             }
-            InternalDependencyTypeProcessed::Param => {
+            InternalDependencyTypeProcessed::Param(_) => {
                 quote! {
                     ::sauvignon::InternalDependencyResolver::Argument(
                         ::sauvignon::ArgumentInternalDependencyResolver::new(#name.to_owned()),
@@ -663,7 +669,6 @@ impl ToTokens for InternalDependencyProcessed {
 enum InternalDependencyType {
     LiteralValue(DependencyValue),
     IdColumnList { type_: Option<String> },
-    Param,
 }
 
 impl InternalDependencyType {
@@ -675,7 +680,6 @@ impl InternalDependencyType {
             Self::IdColumnList { type_ } => InternalDependencyTypeProcessed::IdColumnList {
                 field_type_name: type_.unwrap_or_else(|| field_type_name.to_owned()),
             },
-            Self::Param => InternalDependencyTypeProcessed::Param,
         }
     }
 }
@@ -712,14 +716,6 @@ impl Parse for InternalDependencyType {
                 }
                 Ok(Self::IdColumnList { type_ })
             }
-            "param" => {
-                let arguments_content;
-                parenthesized!(arguments_content in input);
-                if !arguments_content.is_empty() {
-                    return Err(arguments_content.error("Didn't expect more arguments"));
-                }
-                Ok(Self::Param)
-            }
             _ => {
                 return Err(
                     input.error("Expected known internal dependency helper eg `literal_value()`")
@@ -733,7 +729,7 @@ impl Parse for InternalDependencyType {
 enum InternalDependencyTypeProcessed {
     LiteralValue(DependencyValue),
     IdColumnList { field_type_name: String },
-    Param,
+    Param(DependencyType),
 }
 
 #[proc_macro]
@@ -1014,6 +1010,12 @@ struct Param {
     pub type_: TypeFull,
 }
 
+impl Param {
+    pub fn is_id(&self) -> bool {
+        self.type_.name() == "Id"
+    }
+}
+
 impl Parse for Param {
     fn parse(input: ParseStream) -> Result<Self> {
         let name: Ident = input.parse()?;
@@ -1150,6 +1152,29 @@ impl ToTokens for Enum {
 enum TypeKind {
     UnionOrInterface,
     Enum,
+}
+
+// TODO: share this with sauvignon crate?
+#[derive(Clone)]
+enum DependencyType {
+    Id,
+    String,
+    // ListOfIds,
+    // ListOfStrings,
+}
+
+impl ToTokens for DependencyType {
+    fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
+        match self {
+            Self::Id => quote! {
+                ::sauvignon::DependencyType::Id
+            },
+            Self::String => quote! {
+                ::sauvignon::DependencyType::String
+            },
+        }
+        .to_tokens(tokens)
+    }
 }
 
 // TODO: share this with sauvignon crate?
