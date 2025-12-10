@@ -9,7 +9,7 @@ use syn::{
     parse::{Parse, ParseBuffer, ParseStream, Result},
     parse_macro_input,
     spanned::Spanned,
-    ExprBlock, Ident, LitInt, LitStr, Token,
+    ExprBlock, Ident, LitBool, LitInt, LitStr, Token,
 };
 
 struct Schema {
@@ -393,30 +393,71 @@ impl ToTokens for FieldProcessed {
             FieldValueProcessed::BelongsTo {
                 type_,
                 self_table_name,
+                polymorphic,
             } => {
                 let self_belongs_to_foreign_key_column_name =
                     format!("{}_id", name.to_snake_case());
-                quote! {
-                    ::sauvignon::TypeFieldBuilder::default()
-                        .name(#name)
-                        .type_(::sauvignon::TypeFull::Type(#type_.to_owned()))
-                        .resolver(::sauvignon::FieldResolver::new(
-                            vec![::sauvignon::ExternalDependency::new("id".to_owned(), ::sauvignon::DependencyType::Id)],
-                            vec![::sauvignon::InternalDependency::new(
-                                #self_belongs_to_foreign_key_column_name.to_owned(),
-                                ::sauvignon::DependencyType::Id,
-                                ::sauvignon::InternalDependencyResolver::ColumnGetter(::sauvignon::ColumnGetter::new(
-                                    #self_table_name.to_owned(),
+                match polymorphic {
+                    false => quote! {
+                        ::sauvignon::TypeFieldBuilder::default()
+                            .name(#name)
+                            .type_(::sauvignon::TypeFull::Type(#type_.to_owned()))
+                            .resolver(::sauvignon::FieldResolver::new(
+                                vec![::sauvignon::ExternalDependency::new("id".to_owned(), ::sauvignon::DependencyType::Id)],
+                                vec![::sauvignon::InternalDependency::new(
                                     #self_belongs_to_foreign_key_column_name.to_owned(),
-                                )),
-                            )],
-                            ::sauvignon::CarverOrPopulator::Populator(::sauvignon::ValuesPopulator::new([(
-                                #self_belongs_to_foreign_key_column_name.to_owned(),
-                                "id".to_owned(),
-                            )]).into()),
-                        ))
-                        .build()
-                        .unwrap()
+                                    ::sauvignon::DependencyType::Id,
+                                    ::sauvignon::InternalDependencyResolver::ColumnGetter(::sauvignon::ColumnGetter::new(
+                                        #self_table_name.to_owned(),
+                                        #self_belongs_to_foreign_key_column_name.to_owned(),
+                                    )),
+                                )],
+                                ::sauvignon::CarverOrPopulator::Populator(::sauvignon::ValuesPopulator::new([(
+                                    #self_belongs_to_foreign_key_column_name.to_owned(),
+                                    "id".to_owned(),
+                                )]).into()),
+                            ))
+                            .build()
+                            .unwrap()
+                    },
+                    true => {
+                        let self_belongs_to_foreign_key_type_column_name =
+                            format!("{}_type", name.to_snake_case());
+                        quote! {
+                            ::sauvignon::TypeFieldBuilder::default()
+                                .name(#name)
+                                .type_(::sauvignon::TypeFull::Type(#type_.to_owned()))
+                                .resolver(::sauvignon::FieldResolver::new(
+                                    vec![::sauvignon::ExternalDependency::new("id".to_owned(), ::sauvignon::DependencyType::Id)],
+                                    vec![
+                                        ::sauvignon::InternalDependency::new(
+                                            "type".to_owned(),
+                                            ::sauvignon::DependencyType::String,
+                                            ::sauvignon::InternalDependencyResolver::ColumnGetter(::sauvignon::ColumnGetter::new(
+                                                #self_table_name.to_owned(),
+                                                #self_belongs_to_foreign_key_type_column_name.to_owned(),
+                                            )),
+                                        ),
+                                        ::sauvignon::InternalDependency::new(
+                                            #self_belongs_to_foreign_key_column_name.to_owned(),
+                                            ::sauvignon::DependencyType::Id,
+                                            ::sauvignon::InternalDependencyResolver::ColumnGetter(::sauvignon::ColumnGetter::new(
+                                                #self_table_name.to_owned(),
+                                                #self_belongs_to_foreign_key_column_name.to_owned(),
+                                            )),
+                                        ),
+                                    ],
+                                    ::sauvignon::CarverOrPopulator::UnionOrInterfaceTypePopulator(
+                                        ::std::boxed::Box::new(::sauvignon::TypeDepluralizer::new()),
+                                        ::sauvignon::ValuesPopulator::new([(
+                                            #self_belongs_to_foreign_key_column_name.to_owned(),
+                                            "id".to_owned(),
+                                        )]).into()),
+                                ))
+                                .build()
+                                .unwrap()
+                        }
+                    }
                 }
             }
         }
@@ -434,6 +475,7 @@ enum FieldValue {
     },
     BelongsTo {
         type_: String,
+        polymorphic: bool,
     },
 }
 
@@ -471,9 +513,10 @@ impl FieldValue {
                 params,
                 carver_or_populator,
             },
-            Self::BelongsTo { type_ } => FieldValueProcessed::BelongsTo {
+            Self::BelongsTo { type_, polymorphic } => FieldValueProcessed::BelongsTo {
                 type_,
                 self_table_name: pluralize(&parent_type_name.unwrap().to_snake_case()),
+                polymorphic,
             },
         }
     }
@@ -494,11 +537,29 @@ impl Parse for FieldValue {
                 "belongs_to" => {
                     let arguments_content;
                     parenthesized!(arguments_content in input);
-                    arguments_content.parse::<Token![type]>()?;
-                    arguments_content.parse::<Token![=>]>()?;
-                    let type_: Ident = arguments_content.parse()?;
+                    let mut type_: Option<String> = _d();
+                    let mut polymorphic: Option<bool> = _d();
+                    while !arguments_content.is_empty() {
+                        let key = parse_ident_or_type(&arguments_content)?;
+                        arguments_content.parse::<Token![=>]>()?;
+                        match &*key.to_string() {
+                            "type" => {
+                                type_ = Some(arguments_content.parse::<Ident>()?.to_string());
+                            }
+                            "polymorphic" => {
+                                polymorphic = Some(arguments_content.parse::<LitBool>()?.value);
+                            }
+                            key => {
+                                return Err(
+                                    arguments_content.error(format!("Unexpected key `{key}`"))
+                                )
+                            }
+                        }
+                        arguments_content.parse::<Option<Token![,]>>()?;
+                    }
                     Ok(Self::BelongsTo {
-                        type_: type_.to_string(),
+                        type_: type_.expect("Expected `type`").to_string(),
+                        polymorphic: polymorphic.unwrap_or(false),
                     })
                 }
                 _ => return Err(input.error("Expected known field helper eg `string_column()`")),
@@ -583,6 +644,7 @@ enum FieldValueProcessed {
     BelongsTo {
         type_: String,
         self_table_name: String,
+        polymorphic: bool,
     },
 }
 
