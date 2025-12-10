@@ -46,16 +46,28 @@ impl Schema {
                     .into_iter(),
             )
             .collect::<HashSet<_>>();
+        let all_enum_names = self
+            .enums
+            .as_ref()
+            .map(|enums| {
+                enums
+                    .into_iter()
+                    .map(|enum_| enum_.name.clone())
+                    .collect::<HashSet<_>>()
+            })
+            .unwrap_or_default();
         SchemaProcessed {
             types: self
                 .types
                 .into_iter()
-                .map(|type_| type_.process(&all_union_or_interface_type_names))
+                .map(|type_| type_.process(&all_union_or_interface_type_names, &all_enum_names))
                 .collect(),
             query: self
                 .query
                 .into_iter()
-                .map(|field| field.process(None, &all_union_or_interface_type_names))
+                .map(|field| {
+                    field.process(None, &all_union_or_interface_type_names, &all_enum_names)
+                })
                 .collect(),
             interfaces: self.interfaces,
             unions: self.unions,
@@ -155,13 +167,23 @@ struct Type {
 }
 
 impl Type {
-    pub fn process(self, all_union_or_interface_type_names: &HashSet<String>) -> TypeProcessed {
+    pub fn process(
+        self,
+        all_union_or_interface_type_names: &HashSet<String>,
+        all_enum_names: &HashSet<String>,
+    ) -> TypeProcessed {
         TypeProcessed {
             name: self.name.clone(),
             fields: self
                 .fields
                 .into_iter()
-                .map(|field| field.process(Some(&self.name), all_union_or_interface_type_names))
+                .map(|field| {
+                    field.process(
+                        Some(&self.name),
+                        all_union_or_interface_type_names,
+                        all_enum_names,
+                    )
+                })
                 .collect(),
             implements: self.implements,
         }
@@ -229,12 +251,15 @@ impl Field {
         self,
         parent_type_name: Option<&str>,
         all_union_or_interface_type_names: &HashSet<String>,
+        all_enum_names: &HashSet<String>,
     ) -> FieldProcessed {
         FieldProcessed {
             name: self.name,
-            value: self
-                .value
-                .process(parent_type_name, all_union_or_interface_type_names),
+            value: self.value.process(
+                parent_type_name,
+                all_union_or_interface_type_names,
+                all_enum_names,
+            ),
         }
     }
 }
@@ -288,7 +313,7 @@ impl ToTokens for FieldProcessed {
                 type_,
                 internal_dependencies,
                 params,
-                is_union_or_interface_type,
+                maybe_type_kind,
                 populator,
             } => {
                 let populator = match populator {
@@ -299,16 +324,28 @@ impl ToTokens for FieldProcessed {
                         true => quote! {
                             ::sauvignon::CarverOrPopulator::PopulatorList(::sauvignon::ValuePopulatorList::new("id".to_owned()).into())
                         },
-                        false => match is_union_or_interface_type {
-                            false => quote! {
+                        false => match maybe_type_kind {
+                            None => quote! {
                                 ::sauvignon::CarverOrPopulator::Populator(::sauvignon::ValuePopulator::new("id".to_owned()).into())
                             },
-                            true => quote! {
+                            Some(TypeKind::UnionOrInterface) => quote! {
                                 ::sauvignon::CarverOrPopulator::UnionOrInterfaceTypePopulator(
                                     Box::new(::sauvignon::TypeDepluralizer::new()),
                                     ::sauvignon::ValuePopulator::new("id".to_owned()).into(),
                                 )
                             },
+                            Some(TypeKind::Enum) => {
+                                let only_internal_dependency_name = {
+                                    assert!(matches!(
+                                        internal_dependencies.as_ref(),
+                                        Some(internal_dependencies) if internal_dependencies.len() == 1
+                                    ));
+                                    internal_dependencies.as_ref().unwrap()[0].name.clone()
+                                };
+                                quote! {
+                                    ::sauvignon::CarverOrPopulator::Carver(Box::new(::sauvignon::StringCarver::new(#only_internal_dependency_name.to_owned())))
+                                }
+                            }
                         },
                     },
                 };
@@ -401,6 +438,7 @@ impl FieldValue {
         self,
         parent_type_name: Option<&str>,
         all_union_or_interface_type_names: &HashSet<String>,
+        all_enum_names: &HashSet<String>,
     ) -> FieldValueProcessed {
         match self {
             Self::StringColumn => FieldValueProcessed::StringColumn {
@@ -418,8 +456,13 @@ impl FieldValue {
                         .map(|internal_dependency| internal_dependency.process(type_.name()))
                         .collect()
                 }),
-                is_union_or_interface_type: all_union_or_interface_type_names
-                    .contains(type_.name()),
+                maybe_type_kind: if all_union_or_interface_type_names.contains(type_.name()) {
+                    Some(TypeKind::UnionOrInterface)
+                } else if all_enum_names.contains(type_.name()) {
+                    Some(TypeKind::Enum)
+                } else {
+                    None
+                },
                 type_,
                 params,
                 populator,
@@ -524,7 +567,7 @@ enum FieldValueProcessed {
         internal_dependencies: Option<Vec<InternalDependencyProcessed>>,
         params: Option<Vec<Param>>,
         populator: Option<Populator>,
-        is_union_or_interface_type: bool,
+        maybe_type_kind: Option<TypeKind>,
     },
     BelongsTo {
         type_: String,
@@ -1095,6 +1138,11 @@ impl ToTokens for Enum {
         }
         .to_tokens(tokens)
     }
+}
+
+enum TypeKind {
+    UnionOrInterface,
+    Enum,
 }
 
 // TODO: share this with sauvignon crate?
