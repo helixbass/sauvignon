@@ -14,6 +14,7 @@ struct Schema {
     pub types: Vec<Type>,
     pub query: Vec<Field>,
     pub interfaces: Option<Vec<Interface>>,
+    pub unions: Option<Vec<Union>>,
 }
 
 impl Schema {
@@ -30,6 +31,7 @@ impl Schema {
                 .map(|field| field.process(None))
                 .collect(),
             interfaces: self.interfaces,
+            unions: self.unions,
         }
     }
 }
@@ -39,6 +41,7 @@ impl Parse for Schema {
         let mut types: Option<Vec<Type>> = _d();
         let mut query: Option<Vec<Field>> = _d();
         let mut interfaces: Option<Vec<Interface>> = _d();
+        let mut unions: Option<Vec<Union>> = _d();
 
         while !input.is_empty() {
             let key: Ident = input.parse()?;
@@ -74,6 +77,16 @@ impl Parse for Schema {
                         interfaces_content.parse::<Option<Token![,]>>()?;
                     }
                 }
+                "unions" => {
+                    assert!(unions.is_none(), "Already saw 'unions' key");
+                    let unions_content;
+                    bracketed!(unions_content in input);
+                    let unions = unions.populate_default();
+                    while !unions_content.is_empty() {
+                        unions.push(unions_content.parse()?);
+                        unions_content.parse::<Option<Token![,]>>()?;
+                    }
+                }
                 key => return Err(input.error(format!("Unexpected key `{key}`"))),
             }
         }
@@ -82,6 +95,7 @@ impl Parse for Schema {
             types: types.expect("Didn't see `types`"),
             query: query.expect("Didn't see `query`"),
             interfaces,
+            unions,
         })
     }
 }
@@ -90,6 +104,7 @@ struct SchemaProcessed {
     pub types: Vec<TypeProcessed>,
     pub query: Vec<FieldProcessed>,
     pub interfaces: Option<Vec<Interface>>,
+    pub unions: Option<Vec<Union>>,
 }
 
 struct Type {
@@ -631,6 +646,14 @@ pub fn schema(input: TokenStream) -> TokenStream {
             quote! { vec![#(#interfaces),*] }
         }
     };
+
+    let unions = match schema.unions.as_ref() {
+        None => quote! { vec![] },
+        Some(unions) => {
+            let unions = unions.into_iter().map(|union| quote! { #union });
+            quote! { vec![#(#unions),*] }
+        }
+    };
     quote! {{
         let query_type = ::sauvignon::Type::Object(
             ::sauvignon::ObjectTypeBuilder::default()
@@ -645,7 +668,7 @@ pub fn schema(input: TokenStream) -> TokenStream {
 
         ::sauvignon::Schema::try_new(
             vec![query_type, #(#types),*],
-            vec![],
+            #unions,
             #interfaces,
         ).unwrap()
     }}
@@ -743,7 +766,7 @@ impl ToTokens for DependencyValue {
                 ::sauvignon::DependencyValue::Id(#id)
             },
             Self::String(string) => quote! {
-                ::sauvignon::DependencyValue::String(#string)
+                ::sauvignon::DependencyValue::String(#string.to_owned())
             },
             _ => unimplemented!(),
         }
@@ -864,6 +887,47 @@ impl ToTokens for Param {
             ::sauvignon::Param::new(
                 #name.to_owned(),
                 #type_,
+            )
+        }
+        .to_tokens(tokens)
+    }
+}
+
+struct Union {
+    pub name: String,
+    pub types: Vec<String>,
+}
+
+impl Parse for Union {
+    fn parse(input: ParseStream) -> Result<Self> {
+        let name: Ident = input.parse()?;
+        input.parse::<Token![=>]>()?;
+        let types_content;
+        bracketed!(types_content in input);
+        let mut types: Vec<String> = _d();
+        while !types_content.is_empty() {
+            types.push(types_content.parse::<Ident>()?.to_string());
+            types_content.parse::<Option<Token![,]>>()?;
+        }
+        Ok(Self {
+            name: name.to_string(),
+            types,
+        })
+    }
+}
+
+impl ToTokens for Union {
+    fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
+        let name = &self.name;
+        let types = self.types.iter().map(|type_| {
+            quote! {
+                #type_.to_owned()
+            }
+        });
+        quote! {
+            ::sauvignon::Union::new(
+                #name.to_owned(),
+                vec![#(#types),*],
             )
         }
         .to_tokens(tokens)
