@@ -59,6 +59,13 @@ async fn test_column_getter() {
                     id => literal_value(1)
                 ]
             }
+            bestHasName => {
+                type => HasName!
+                internal_dependencies => [
+                    type => literal_value("actors")
+                    id => literal_value(1)
+                ]
+            }
         ]
         interfaces => [
             HasName => {
@@ -101,6 +108,10 @@ async fn test_column_getter() {
                   name
                 }
               }
+              bestHasName {
+                __typename
+                name
+              }
             }
         "#,
         r#"
@@ -126,6 +137,10 @@ async fn test_column_getter() {
                 },
                 "certainActorOrDesigner": {
                   "name": "Proenza Schouler"
+                },
+                "bestHasName": {
+                  "__typename": "Actor",
+                  "name": "Katie Cassidy"
                 }
               }
             }
