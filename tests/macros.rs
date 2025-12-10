@@ -1,9 +1,11 @@
-use sauvignon::{json_from_response, schema, Schema};
+use sauvignon::{json_from_response, schema, CarverOrPopulator, Schema};
 
 mod shared;
 
 pub use shared::get_schema;
-use shared::{get_db_pool, pretty_print_json};
+use shared::{
+    get_db_pool, pretty_print_json, ActorsAndDesignersPopulator, ActorsAndDesignersTypePopulator,
+};
 
 async fn request_test(schema: &Schema, request: &str, expected: &str) {
     let db_pool = get_db_pool().await.unwrap();
