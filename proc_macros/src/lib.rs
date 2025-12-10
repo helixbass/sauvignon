@@ -13,6 +13,7 @@ use syn::{
 struct Schema {
     pub types: Vec<Type>,
     pub query: Vec<Field>,
+    pub interfaces: Vec<Interface>,
 }
 
 impl Schema {
@@ -28,6 +29,7 @@ impl Schema {
                 .into_iter()
                 .map(|field| field.process(None))
                 .collect(),
+            interfaces: self.interfaces,
         }
     }
 }
@@ -36,6 +38,7 @@ impl Parse for Schema {
     fn parse(input: ParseStream) -> Result<Self> {
         let mut types: Option<Vec<Type>> = _d();
         let mut query: Option<Vec<Field>> = _d();
+        let mut interfaces: Option<Vec<Interface>> = _d();
 
         while !input.is_empty() {
             let key: Ident = input.parse()?;
@@ -61,6 +64,16 @@ impl Parse for Schema {
                         query_content.parse::<Option<Token![,]>>()?;
                     }
                 }
+                "interfaces" => {
+                    assert!(interfaces.is_none(), "Already saw 'interfaces' key");
+                    let interfaces_content;
+                    bracketed!(interfaces_content in input);
+                    let interfaces = interfaces.populate_default();
+                    while !interfaces_content.is_empty() {
+                        interfaces.push(interfaces_content.parse()?);
+                        interfaces_content.parse::<Option<Token![,]>>()?;
+                    }
+                }
                 key => return Err(input.error(format!("Unexpected key `{key}`"))),
             }
         }
@@ -68,6 +81,7 @@ impl Parse for Schema {
         Ok(Self {
             types: types.expect("Didn't see `types`"),
             query: query.expect("Didn't see `query`"),
+            interfaces,
         })
     }
 }
@@ -75,6 +89,7 @@ impl Parse for Schema {
 struct SchemaProcessed {
     pub types: Vec<TypeProcessed>,
     pub query: Vec<FieldProcessed>,
+    pub interfaces: Vec<Interface>,
 }
 
 struct Type {
@@ -478,6 +493,13 @@ pub fn schema(input: TokenStream) -> TokenStream {
         }
     });
 
+    let interfaces = match schema.interfaces.as_ref() {
+        None => quote! { vec![] },
+        Some(interfaces) => {
+            let interfaces = interfaces.into_iter().map(|interface| quote! { interface });
+            quote! { vec![#(#interfaces),*] }
+        }
+    };
     quote! {{
         let query_type = ::sauvignon::Type::Object(
             ::sauvignon::ObjectTypeBuilder::default()
@@ -493,7 +515,7 @@ pub fn schema(input: TokenStream) -> TokenStream {
         ::sauvignon::Schema::try_new(
             vec![query_type, #(#types),*],
             vec![],
-            vec![],
+            #interfaces,
         ).unwrap()
     }}
     .into()
@@ -563,6 +585,50 @@ impl ToTokens for DependencyValue {
         .to_tokens(tokens)
     }
 }
+
+struct Interface {
+    pub name: String,
+    pub fields: Vec<InterfaceField>,
+}
+
+impl Parse for Interface {
+    fn parse(input: ParseStream) -> Result<Self> {
+        let name = input.parse::<Ident>()?.to_string();
+        input.parse::<Token![=>]>()?;
+        let object_content;
+        braced!(object_content in input);
+        let mut fields: Option<Vec<InterfaceField>> = _d();
+        while !object_content.is_empty() {
+            let key: Ident = object_content.parse()?;
+            object_content.parse::<Token![=>]>()?;
+            match &*key.to_string() {
+                "fields" => {
+                    assert!(fields.is_none(), "Already saw 'fields' key");
+                    let fields_content;
+                    bracketed!(fields_content in object_content);
+                    let fields = fields.populate_default();
+                    while !fields_content.is_empty() {
+                        fields.push(fields_content.parse()?);
+                        fields_content.parse::<Option<Token![,]>>()?;
+                    }
+                }
+                key => return Err(object_content.error(format!("Unexpected key `{key}`"))),
+            }
+            object_content.parse::<Option<Token![,]>>()?;
+        }
+
+        Ok(Self {
+            name,
+            fields: fields.expect("Didn't see `fields`"),
+        })
+    }
+}
+
+struct InterfaceField {
+    pub name: String,
+    pub type_: TypeFull,
+}
+// let mut type_: Option<TypeFull> = _d();
 
 // TODO: share this with sauvignon crate?
 fn pluralize(value: &str) -> String {
