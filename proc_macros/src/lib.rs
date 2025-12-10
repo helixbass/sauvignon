@@ -279,8 +279,16 @@ impl ToTokens for FieldProcessed {
                     true => quote! {
                         ::sauvignon::CarverOrPopulator::PopulatorList(::sauvignon::ValuePopulatorList::new("id".to_owned()).into())
                     },
-                    false => quote! {
-                        ::sauvignon::CarverOrPopulator::Populator(::sauvignon::ValuePopulator::new("id".to_owned()).into())
+                    false => match is_union_or_interface_type {
+                        false => quote! {
+                            ::sauvignon::CarverOrPopulator::Populator(::sauvignon::ValuePopulator::new("id".to_owned()).into())
+                        },
+                        true => quote! {
+                            ::sauvignon::CarverOrPopulator::UnionOrInterfaceTypePopulator(
+                                Box::new(::sauvignon::TypeDepluralizer::new()),
+                                ::sauvignon::ValuePopulator::new("id".to_owned()).into(),
+                            )
+                        },
                     },
                 };
                 let internal_dependencies = params.as_ref().map(|params| {
