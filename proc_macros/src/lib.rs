@@ -294,8 +294,11 @@ impl FieldValue {
                 type_,
                 internal_dependencies,
             } => FieldValueProcessed::Object {
+                internal_dependencies: internal_dependencies
+                    .into_iter()
+                    .map(|internal_dependency| internal_dependency.process(type_.name()))
+                    .collect(),
                 type_,
-                internal_dependencies,
             },
             Self::BelongsTo { type_ } => FieldValueProcessed::BelongsTo {
                 type_,
@@ -383,7 +386,7 @@ enum FieldValueProcessed {
     },
     Object {
         type_: TypeFull,
-        internal_dependencies: Vec<InternalDependency>,
+        internal_dependencies: Vec<InternalDependencyProcessed>,
     },
     BelongsTo {
         type_: String,
@@ -493,7 +496,14 @@ impl Parse for InternalDependencyType {
                 }
                 Ok(Self::LiteralValue(value))
             }
-            "id_column_list" => Ok(Self::IdColumnList),
+            "id_column_list" => {
+                let arguments_content;
+                parenthesized!(arguments_content in input);
+                if !arguments_content.is_empty() {
+                    return Err(arguments_content.error("Didn't expect more arguments"));
+                }
+                Ok(Self::IdColumnList)
+            }
             _ => {
                 return Err(
                     input.error("Expected known internal dependency helper eg `literal_value()`")
@@ -584,6 +594,16 @@ enum TypeFull {
     Type(String),
     List(Box<TypeFull>),
     NonNull(Box<TypeFull>),
+}
+
+impl TypeFull {
+    pub fn name(&self) -> &str {
+        match self {
+            Self::Type(type_) => type_,
+            Self::List(list) => list.name(),
+            Self::NonNull(non_null) => non_null.name(),
+        }
+    }
 }
 
 impl Parse for TypeFull {
