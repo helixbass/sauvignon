@@ -71,6 +71,9 @@ async fn test_column_getter() {
                   }
                 }
               }
+              actors {
+                name
+              }
             }
         "#,
         r#"
@@ -82,7 +85,15 @@ async fn test_column_getter() {
                   "favoriteDesigner": {
                     "name": "Proenza Schouler"
                   }
-                }
+                },
+                "actors": [
+                  {
+                    "name": "Katie Cassidy"
+                  },
+                  {
+                    "name": "Jessica Szohr"
+                  }
+                ]
               }
             }
         "#,

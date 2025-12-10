@@ -226,6 +226,14 @@ impl ToTokens for FieldProcessed {
                 type_,
                 internal_dependencies,
             } => {
+                let populator = match type_.is_list_type() {
+                    true => quote! {
+                        ::sauvignon::CarverOrPopulator::PopulatorList(::sauvignon::ValuePopulatorList::new("id".to_owned()).into())
+                    },
+                    false => quote! {
+                        ::sauvignon::CarverOrPopulator::Populator(::sauvignon::ValuePopulator::new("id".to_owned()).into())
+                    },
+                };
                 quote! {
                     ::sauvignon::TypeFieldBuilder::default()
                         .name(#name)
@@ -233,7 +241,7 @@ impl ToTokens for FieldProcessed {
                         .resolver(::sauvignon::FieldResolver::new(
                             vec![],
                             vec![#(#internal_dependencies),*],
-                            ::sauvignon::CarverOrPopulator::Populator(::sauvignon::ValuePopulator::new("id".to_owned()).into()),
+                            #populator,
                         ))
                         .build()
                         .unwrap()
@@ -404,7 +412,6 @@ impl InternalDependency {
         InternalDependencyProcessed {
             name: self.name,
             type_: self.type_.process(field_type_name),
-            field_type_name: field_type_name.to_owned(),
         }
     }
 }
@@ -424,7 +431,6 @@ impl Parse for InternalDependency {
 struct InternalDependencyProcessed {
     pub name: String,
     pub type_: InternalDependencyTypeProcessed,
-    pub field_type_name: String,
 }
 
 impl ToTokens for InternalDependencyProcessed {
@@ -602,6 +608,14 @@ impl TypeFull {
             Self::Type(type_) => type_,
             Self::List(list) => list.name(),
             Self::NonNull(non_null) => non_null.name(),
+        }
+    }
+
+    pub fn is_list_type(&self) -> bool {
+        match self {
+            Self::Type(_) => false,
+            Self::List(_) => true,
+            Self::NonNull(inner_type) => inner_type.is_list_type(),
         }
     }
 }
