@@ -13,6 +13,7 @@ use syn::{
 struct Schema {
     pub types: Vec<Type>,
     pub query: Vec<Field>,
+    pub interfaces: Option<Vec<Interface>>,
 }
 
 impl Schema {
@@ -28,6 +29,7 @@ impl Schema {
                 .into_iter()
                 .map(|field| field.process(None))
                 .collect(),
+            interfaces: self.interfaces,
         }
     }
 }
@@ -36,6 +38,7 @@ impl Parse for Schema {
     fn parse(input: ParseStream) -> Result<Self> {
         let mut types: Option<Vec<Type>> = _d();
         let mut query: Option<Vec<Field>> = _d();
+        let mut interfaces: Option<Vec<Interface>> = _d();
 
         while !input.is_empty() {
             let key: Ident = input.parse()?;
@@ -61,13 +64,24 @@ impl Parse for Schema {
                         query_content.parse::<Option<Token![,]>>()?;
                     }
                 }
-                key => panic!("Unexpected key `{key}`"),
+                "interfaces" => {
+                    assert!(interfaces.is_none(), "Already saw 'interfaces' key");
+                    let interfaces_content;
+                    bracketed!(interfaces_content in input);
+                    let interfaces = interfaces.populate_default();
+                    while !interfaces_content.is_empty() {
+                        interfaces.push(interfaces_content.parse()?);
+                        interfaces_content.parse::<Option<Token![,]>>()?;
+                    }
+                }
+                key => return Err(input.error(format!("Unexpected key `{key}`"))),
             }
         }
 
         Ok(Self {
             types: types.expect("Didn't see `types`"),
             query: query.expect("Didn't see `query`"),
+            interfaces,
         })
     }
 }
@@ -75,11 +89,13 @@ impl Parse for Schema {
 struct SchemaProcessed {
     pub types: Vec<TypeProcessed>,
     pub query: Vec<FieldProcessed>,
+    pub interfaces: Option<Vec<Interface>>,
 }
 
 struct Type {
     pub name: String,
     pub fields: Vec<Field>,
+    pub implements: Option<Vec<String>>,
 }
 
 impl Type {
@@ -91,6 +107,7 @@ impl Type {
                 .into_iter()
                 .map(|field| field.process(Some(&self.name)))
                 .collect(),
+            implements: self.implements,
         }
     }
 }
@@ -102,6 +119,7 @@ impl Parse for Type {
         let type_content;
         braced!(type_content in input);
         let mut fields: Option<Vec<Field>> = _d();
+        let mut implements: Option<Vec<String>> = _d();
         while !type_content.is_empty() {
             let key: Ident = type_content.parse()?;
             type_content.parse::<Token![=>]>()?;
@@ -116,7 +134,17 @@ impl Parse for Type {
                         fields_content.parse::<Option<Token![,]>>()?;
                     }
                 }
-                key => panic!("Unexpected key `{key}`"),
+                "implements" => {
+                    assert!(implements.is_none(), "Already saw 'implements' key");
+                    let implements_content;
+                    bracketed!(implements_content in type_content);
+                    let implements = implements.populate_default();
+                    while !implements_content.is_empty() {
+                        implements.push(implements_content.parse::<Ident>()?.to_string());
+                        implements_content.parse::<Option<Token![,]>>()?;
+                    }
+                }
+                key => return Err(type_content.error(format!("Unexpected key `{key}`"))),
             }
             type_content.parse::<Option<Token![,]>>()?;
         }
@@ -124,6 +152,7 @@ impl Parse for Type {
         Ok(Self {
             name: name.to_string(),
             fields: fields.expect("Didn't see `fields`"),
+            implements,
         })
     }
 }
@@ -131,6 +160,7 @@ impl Parse for Type {
 struct TypeProcessed {
     pub name: String,
     pub fields: Vec<FieldProcessed>,
+    pub implements: Option<Vec<String>>,
 }
 
 struct Field {
@@ -189,13 +219,21 @@ impl ToTokens for FieldProcessed {
                             ::sauvignon::CarverOrPopulator::Carver(::std::boxed::Box::new(::sauvignon::StringCarver::new(#name.to_owned()))),
                         ))
                         .build()
-                        .unwrap(),
+                        .unwrap()
                 }
             }
             FieldValueProcessed::Object {
                 type_,
                 internal_dependencies,
             } => {
+                let populator = match type_.is_list_type() {
+                    true => quote! {
+                        ::sauvignon::CarverOrPopulator::PopulatorList(::sauvignon::ValuePopulatorList::new("id".to_owned()).into())
+                    },
+                    false => quote! {
+                        ::sauvignon::CarverOrPopulator::Populator(::sauvignon::ValuePopulator::new("id".to_owned()).into())
+                    },
+                };
                 quote! {
                     ::sauvignon::TypeFieldBuilder::default()
                         .name(#name)
@@ -203,10 +241,39 @@ impl ToTokens for FieldProcessed {
                         .resolver(::sauvignon::FieldResolver::new(
                             vec![],
                             vec![#(#internal_dependencies),*],
-                            ::sauvignon::CarverOrPopulator::Populator(::sauvignon::ValuePopulator::new("id".to_owned()).into()),
+                            #populator,
                         ))
                         .build()
-                        .unwrap(),
+                        .unwrap()
+                }
+            }
+            FieldValueProcessed::BelongsTo {
+                type_,
+                self_table_name,
+            } => {
+                let self_belongs_to_foreign_key_column_name =
+                    format!("{}_id", name.to_snake_case());
+                quote! {
+                    ::sauvignon::TypeFieldBuilder::default()
+                        .name(#name)
+                        .type_(::sauvignon::TypeFull::Type(#type_.to_owned()))
+                        .resolver(::sauvignon::FieldResolver::new(
+                            vec![::sauvignon::ExternalDependency::new("id".to_owned(), ::sauvignon::DependencyType::Id)],
+                            vec![::sauvignon::InternalDependency::new(
+                                #self_belongs_to_foreign_key_column_name.to_owned(),
+                                ::sauvignon::DependencyType::Id,
+                                ::sauvignon::InternalDependencyResolver::ColumnGetter(::sauvignon::ColumnGetter::new(
+                                    #self_table_name.to_owned(),
+                                    #self_belongs_to_foreign_key_column_name.to_owned(),
+                                )),
+                            )],
+                            ::sauvignon::CarverOrPopulator::Populator(::sauvignon::ValuesPopulator::new([(
+                                #self_belongs_to_foreign_key_column_name.to_owned(),
+                                "id".to_owned(),
+                            )]).into()),
+                        ))
+                        .build()
+                        .unwrap()
                 }
             }
         }
@@ -220,6 +287,9 @@ enum FieldValue {
         type_: TypeFull,
         internal_dependencies: Vec<InternalDependency>,
     },
+    BelongsTo {
+        type_: String,
+    },
 }
 
 impl FieldValue {
@@ -232,8 +302,15 @@ impl FieldValue {
                 type_,
                 internal_dependencies,
             } => FieldValueProcessed::Object {
+                internal_dependencies: internal_dependencies
+                    .into_iter()
+                    .map(|internal_dependency| internal_dependency.process(type_.name()))
+                    .collect(),
                 type_,
-                internal_dependencies,
+            },
+            Self::BelongsTo { type_ } => FieldValueProcessed::BelongsTo {
+                type_,
+                self_table_name: pluralize(&parent_type_name.unwrap().to_snake_case()),
             },
         }
     }
@@ -242,17 +319,27 @@ impl FieldValue {
 impl Parse for FieldValue {
     fn parse(input: ParseStream) -> Result<Self> {
         match input.parse::<Ident>() {
-            Ok(ident) => {
-                if ident.to_string() != "string_column" {
-                    panic!("Expected `string_column`");
+            Ok(ident) => match &*ident.to_string() {
+                "string_column" => {
+                    let arguments_content;
+                    parenthesized!(arguments_content in input);
+                    if !arguments_content.is_empty() {
+                        return Err(arguments_content.error("Not expecting argument values"));
+                    }
+                    Ok(Self::StringColumn)
                 }
-                let arguments_content;
-                parenthesized!(arguments_content in input);
-                if !arguments_content.is_empty() {
-                    panic!("Not expecting argument values");
+                "belongs_to" => {
+                    let arguments_content;
+                    parenthesized!(arguments_content in input);
+                    arguments_content.parse::<Token![type]>()?;
+                    arguments_content.parse::<Token![=>]>()?;
+                    let type_: Ident = arguments_content.parse()?;
+                    Ok(Self::BelongsTo {
+                        type_: type_.to_string(),
+                    })
                 }
-                Ok(Self::StringColumn)
-            }
+                _ => return Err(input.error("Expected known field helper eg `string_column()`")),
+            },
             _ => {
                 let field_value_content;
                 braced!(field_value_content in input);
@@ -285,7 +372,9 @@ impl Parse for FieldValue {
                                 internal_dependencies_content.parse::<Option<Token![,]>>()?;
                             }
                         }
-                        key => panic!("Unexpected key `{key}`"),
+                        key => {
+                            return Err(field_value_content.error(format!("Unexpected key `{key}`")))
+                        }
                     }
                     field_value_content.parse::<Option<Token![,]>>()?;
                 }
@@ -305,13 +394,26 @@ enum FieldValueProcessed {
     },
     Object {
         type_: TypeFull,
-        internal_dependencies: Vec<InternalDependency>,
+        internal_dependencies: Vec<InternalDependencyProcessed>,
+    },
+    BelongsTo {
+        type_: String,
+        self_table_name: String,
     },
 }
 
 struct InternalDependency {
     pub name: String,
     pub type_: InternalDependencyType,
+}
+
+impl InternalDependency {
+    pub fn process(self, field_type_name: &str) -> InternalDependencyProcessed {
+        InternalDependencyProcessed {
+            name: self.name,
+            type_: self.type_.process(field_type_name),
+        }
+    }
 }
 
 impl Parse for InternalDependency {
@@ -326,18 +428,37 @@ impl Parse for InternalDependency {
     }
 }
 
-impl ToTokens for InternalDependency {
+struct InternalDependencyProcessed {
+    pub name: String,
+    pub type_: InternalDependencyTypeProcessed,
+}
+
+impl ToTokens for InternalDependencyProcessed {
     fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
         let name = &self.name;
-        let type_ = quote! {
-            ::sauvignon::DependencyType::Id
+        let type_ = match &self.type_ {
+            InternalDependencyTypeProcessed::LiteralValue(_) => quote! {
+                ::sauvignon::DependencyType::Id
+            },
+            InternalDependencyTypeProcessed::IdColumnList { .. } => quote! {
+                ::sauvignon::DependencyType::ListOfIds
+            },
         };
         let resolver = match &self.type_ {
-            InternalDependencyType::LiteralValue(dependency_value) => quote! {
+            InternalDependencyTypeProcessed::LiteralValue(dependency_value) => quote! {
                 ::sauvignon::InternalDependencyResolver::LiteralValue(
                     ::sauvignon::LiteralValueInternalDependencyResolver(#dependency_value)
                 )
             },
+            InternalDependencyTypeProcessed::IdColumnList { field_type_name } => {
+                let table_name = pluralize(&field_type_name.to_snake_case());
+                quote! {
+                    ::sauvignon::InternalDependencyResolver::ColumnGetterList(::sauvignon::ColumnGetterList::new(
+                        #table_name.to_owned(),
+                        "id".to_owned(),
+                    ))
+                }
+            }
         };
         quote! {
             ::sauvignon::InternalDependency::new(
@@ -352,22 +473,55 @@ impl ToTokens for InternalDependency {
 
 enum InternalDependencyType {
     LiteralValue(DependencyValue),
+    IdColumnList,
+}
+
+impl InternalDependencyType {
+    pub fn process(self, field_type_name: &str) -> InternalDependencyTypeProcessed {
+        match self {
+            Self::LiteralValue(dependency_value) => {
+                InternalDependencyTypeProcessed::LiteralValue(dependency_value)
+            }
+            Self::IdColumnList => InternalDependencyTypeProcessed::IdColumnList {
+                field_type_name: field_type_name.to_owned(),
+            },
+        }
+    }
 }
 
 impl Parse for InternalDependencyType {
     fn parse(input: ParseStream) -> Result<Self> {
         let name: Ident = input.parse()?;
-        if name.to_string() != "literal_value" {
-            panic!("Expected `literal_value`");
+        match &*name.to_string() {
+            "literal_value" => {
+                let arguments_content;
+                parenthesized!(arguments_content in input);
+                let value: DependencyValue = arguments_content.parse()?;
+                if !arguments_content.is_empty() {
+                    return Err(arguments_content.error("Didn't expect more arguments"));
+                }
+                Ok(Self::LiteralValue(value))
+            }
+            "id_column_list" => {
+                let arguments_content;
+                parenthesized!(arguments_content in input);
+                if !arguments_content.is_empty() {
+                    return Err(arguments_content.error("Didn't expect more arguments"));
+                }
+                Ok(Self::IdColumnList)
+            }
+            _ => {
+                return Err(
+                    input.error("Expected known internal dependency helper eg `literal_value()`")
+                )
+            }
         }
-        let arguments_content;
-        parenthesized!(arguments_content in input);
-        let value: DependencyValue = arguments_content.parse()?;
-        if !arguments_content.is_empty() {
-            panic!("Didn't expect more arguments");
-        }
-        Ok(Self::LiteralValue(value))
     }
+}
+
+enum InternalDependencyTypeProcessed {
+    LiteralValue(DependencyValue),
+    IdColumnList { field_type_name: String },
 }
 
 #[proc_macro]
@@ -384,6 +538,19 @@ pub fn schema(input: TokenStream) -> TokenStream {
         let type_field_builders = type_.fields.iter().map(|field| {
             quote! { #field }
         });
+        let implements = match type_.implements.as_ref() {
+            None => quote! {},
+            Some(implements) => {
+                let implements = implements.iter().map(|implement| {
+                    quote! {
+                        #implement.to_owned()
+                    }
+                });
+                quote! {
+                    .implements(vec![#(#implements),*])
+                }
+            }
+        };
         quote! {
             ::sauvignon::Type::Object(
                 ::sauvignon::ObjectTypeBuilder::default()
@@ -391,12 +558,22 @@ pub fn schema(input: TokenStream) -> TokenStream {
                     .fields([
                         #(#type_field_builders),*
                     ])
+                    #implements
                     .build()
                     .unwrap()
             )
         }
     });
 
+    let interfaces = match schema.interfaces.as_ref() {
+        None => quote! { vec![] },
+        Some(interfaces) => {
+            let interfaces = interfaces
+                .into_iter()
+                .map(|interface| quote! { #interface });
+            quote! { vec![#(#interfaces),*] }
+        }
+    };
     quote! {{
         let query_type = ::sauvignon::Type::Object(
             ::sauvignon::ObjectTypeBuilder::default()
@@ -412,7 +589,7 @@ pub fn schema(input: TokenStream) -> TokenStream {
         ::sauvignon::Schema::try_new(
             vec![query_type, #(#types),*],
             vec![],
-            vec![],
+            #interfaces,
         ).unwrap()
     }}
     .into()
@@ -425,12 +602,43 @@ enum TypeFull {
     NonNull(Box<TypeFull>),
 }
 
+impl TypeFull {
+    pub fn name(&self) -> &str {
+        match self {
+            Self::Type(type_) => type_,
+            Self::List(list) => list.name(),
+            Self::NonNull(non_null) => non_null.name(),
+        }
+    }
+
+    pub fn is_list_type(&self) -> bool {
+        match self {
+            Self::Type(_) => false,
+            Self::List(_) => true,
+            Self::NonNull(inner_type) => inner_type.is_list_type(),
+        }
+    }
+}
+
 impl Parse for TypeFull {
     fn parse(input: ParseStream) -> Result<Self> {
-        let type_name: Ident = input.parse()?;
-        match input.parse::<Token![!]>() {
-            Ok(_) => Ok(Self::NonNull(Box::new(Self::Type(type_name.to_string())))),
-            _ => Ok(Self::Type(type_name.to_string())),
+        match input.parse::<Ident>() {
+            Ok(type_name) => match input.parse::<Token![!]>() {
+                Ok(_) => Ok(Self::NonNull(Box::new(Self::Type(type_name.to_string())))),
+                _ => Ok(Self::Type(type_name.to_string())),
+            },
+            _ => {
+                let list_type_content;
+                bracketed!(list_type_content in input);
+                let inner_type: TypeFull = list_type_content.parse()?;
+                if !list_type_content.is_empty() {
+                    return Err(list_type_content.error("Expected only inner type"));
+                }
+                match input.parse::<Token![!]>() {
+                    Ok(_) => Ok(Self::NonNull(Box::new(Self::List(Box::new(inner_type))))),
+                    _ => Ok(Self::List(Box::new(inner_type))),
+                }
+            }
         }
     }
 }
@@ -478,6 +686,93 @@ impl ToTokens for DependencyValue {
                 ::sauvignon::DependencyValue::String(#string)
             },
             _ => unimplemented!(),
+        }
+        .to_tokens(tokens)
+    }
+}
+
+struct Interface {
+    pub name: String,
+    pub fields: Vec<InterfaceField>,
+}
+
+impl Parse for Interface {
+    fn parse(input: ParseStream) -> Result<Self> {
+        let name = input.parse::<Ident>()?.to_string();
+        input.parse::<Token![=>]>()?;
+        let object_content;
+        braced!(object_content in input);
+        let mut fields: Option<Vec<InterfaceField>> = _d();
+        while !object_content.is_empty() {
+            let key: Ident = object_content.parse()?;
+            object_content.parse::<Token![=>]>()?;
+            match &*key.to_string() {
+                "fields" => {
+                    assert!(fields.is_none(), "Already saw 'fields' key");
+                    let fields_content;
+                    bracketed!(fields_content in object_content);
+                    let fields = fields.populate_default();
+                    while !fields_content.is_empty() {
+                        fields.push(fields_content.parse()?);
+                        fields_content.parse::<Option<Token![,]>>()?;
+                    }
+                }
+                key => return Err(object_content.error(format!("Unexpected key `{key}`"))),
+            }
+            object_content.parse::<Option<Token![,]>>()?;
+        }
+
+        Ok(Self {
+            name,
+            fields: fields.expect("Didn't see `fields`"),
+        })
+    }
+}
+
+impl ToTokens for Interface {
+    fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
+        let name = &self.name;
+        let fields = self.fields.iter().map(|field| {
+            quote! { #field }
+        });
+        quote! {
+            ::sauvignon::InterfaceBuilder::default()
+                .name(#name)
+                .fields(vec![#(#fields),*])
+                .build()
+                .unwrap()
+        }
+        .to_tokens(tokens)
+    }
+}
+
+struct InterfaceField {
+    pub name: String,
+    pub type_: TypeFull,
+}
+
+impl Parse for InterfaceField {
+    fn parse(input: ParseStream) -> Result<Self> {
+        let name: Ident = input.parse()?;
+        input.parse::<Token![=>]>()?;
+        let type_: TypeFull = input.parse()?;
+        Ok(Self {
+            name: name.to_string(),
+            type_,
+        })
+    }
+}
+
+impl ToTokens for InterfaceField {
+    fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
+        let name = &self.name;
+        let type_ = &self.type_;
+        quote! {
+            ::sauvignon::InterfaceField::new(
+                #name.to_owned(),
+                #type_,
+                [],
+            )
         }
         .to_tokens(tokens)
     }

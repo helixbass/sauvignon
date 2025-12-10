@@ -18,8 +18,19 @@ async fn test_column_getter() {
         types => [
             Actor => {
                 fields => [
-                    name => string_column(),
+                    name => string_column()
+                    expression => string_column(),
+                    favoriteDesigner => belongs_to(
+                        type => Designer
+                    )
                 ]
+                implements => [HasName]
+            }
+            Designer => {
+                fields => [
+                    name => string_column()
+                ]
+                implements => [HasName]
             }
         ]
         query => [
@@ -27,6 +38,19 @@ async fn test_column_getter() {
                 type => Actor!
                 internal_dependencies => [
                     id => literal_value(1),
+                ]
+            }
+            actors => {
+                type => [Actor!]!
+                internal_dependencies => [
+                    ids => id_column_list()
+                ]
+            }
+        ]
+        interfaces => [
+            HasName => {
+                fields => [
+                    name => String!
                 ]
             }
         ]
@@ -37,6 +61,17 @@ async fn test_column_getter() {
         r#"
             query {
               actorKatie {
+                ... on HasName {
+                  name
+                }
+                expression
+                favoriteDesigner {
+                  ... on HasName {
+                    name
+                  }
+                }
+              }
+              actors {
                 name
               }
             }
@@ -45,8 +80,20 @@ async fn test_column_getter() {
             {
               "data": {
                 "actorKatie": {
-                  "name": "Katie Cassidy"
-                }
+                  "name": "Katie Cassidy",
+                  "expression": "no Serena you can't have the key",
+                  "favoriteDesigner": {
+                    "name": "Proenza Schouler"
+                  }
+                },
+                "actors": [
+                  {
+                    "name": "Katie Cassidy"
+                  },
+                  {
+                    "name": "Jessica Szohr"
+                  }
+                ]
               }
             }
         "#,
