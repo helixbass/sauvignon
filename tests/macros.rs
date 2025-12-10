@@ -5,6 +5,7 @@ mod shared;
 pub use shared::get_schema;
 use shared::{
     get_db_pool, pretty_print_json, ActorsAndDesignersPopulator, ActorsAndDesignersTypePopulator,
+    CanadianCityQuoteCarver,
 };
 
 async fn request_test(schema: &Schema, request: &str, expected: &str) {
@@ -90,6 +91,15 @@ async fn test_column_getter() {
                 internal_dependencies => [
                     value => literal_value("VANCOUVER")
                 ]
+            }
+            canadianCityQuote => {
+                type => String!
+                params => [
+                    city => CanadianCity!
+                ]
+                carver => custom {
+                    CarverOrPopulator::Carver(Box::new(CanadianCityQuoteCarver::default()))
+                }
             }
         ]
         interfaces => [

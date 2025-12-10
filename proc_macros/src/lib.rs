@@ -314,11 +314,11 @@ impl ToTokens for FieldProcessed {
                 internal_dependencies,
                 params,
                 maybe_type_kind,
-                populator,
+                carver_or_populator,
             } => {
-                let populator = match populator {
-                    Some(populator) => quote! {
-                        #populator
+                let carver_or_populator = match carver_or_populator {
+                    Some(carver_or_populator) => quote! {
+                        #carver_or_populator
                     },
                     None => match type_.is_list_type() {
                         true => quote! {
@@ -379,7 +379,7 @@ impl ToTokens for FieldProcessed {
                         .resolver(::sauvignon::FieldResolver::new(
                             vec![],
                             vec![#(#internal_dependencies),*],
-                            #populator,
+                            #carver_or_populator,
                         ))
                         #params
                         .build()
@@ -426,7 +426,7 @@ enum FieldValue {
         type_: TypeFull,
         internal_dependencies: Option<Vec<InternalDependency>>,
         params: Option<Vec<Param>>,
-        populator: Option<Populator>,
+        carver_or_populator: Option<CarverOrPopulator>,
     },
     BelongsTo {
         type_: String,
@@ -448,7 +448,7 @@ impl FieldValue {
                 type_,
                 internal_dependencies,
                 params,
-                populator,
+                carver_or_populator,
             } => FieldValueProcessed::Object {
                 internal_dependencies: internal_dependencies.map(|internal_dependencies| {
                     internal_dependencies
@@ -465,7 +465,7 @@ impl FieldValue {
                 },
                 type_,
                 params,
-                populator,
+                carver_or_populator,
             },
             Self::BelongsTo { type_ } => FieldValueProcessed::BelongsTo {
                 type_,
@@ -505,7 +505,8 @@ impl Parse for FieldValue {
                 let mut type_: Option<TypeFull> = _d();
                 let mut internal_dependencies: Option<Vec<InternalDependency>> = _d();
                 let mut params: Option<Vec<Param>> = _d();
-                let mut populator: Option<Populator> = _d();
+                let mut populator: Option<CarverOrPopulator> = _d();
+                let mut carver: Option<CarverOrPopulator> = _d();
                 while !field_value_content.is_empty() {
                     let key = parse_ident_or_type(&field_value_content)?;
                     field_value_content.parse::<Token![=>]>()?;
@@ -539,7 +540,13 @@ impl Parse for FieldValue {
                         }
                         "populator" => {
                             assert!(populator.is_none(), "Already saw 'populator' key");
+                            assert!(carver.is_none(), "Already saw 'carver' key, can't have both 'carver' and 'populator'");
                             populator = Some(field_value_content.parse()?);
+                        }
+                        "carver" => {
+                            assert!(carver.is_none(), "Already saw 'carver' key");
+                            assert!(populator.is_none(), "Already saw 'populator' key, can't have both 'carver' and 'populator'");
+                            carver = Some(field_value_content.parse()?);
                         }
                         key => {
                             return Err(field_value_content.error(format!("Unexpected key `{key}`")))
@@ -551,7 +558,7 @@ impl Parse for FieldValue {
                     type_: type_.expect("Expected `type`"),
                     internal_dependencies,
                     params,
-                    populator,
+                    carver_or_populator: carver.or(populator),
                 })
             }
         }
@@ -566,7 +573,7 @@ enum FieldValueProcessed {
         type_: TypeFull,
         internal_dependencies: Option<Vec<InternalDependencyProcessed>>,
         params: Option<Vec<Param>>,
-        populator: Option<Populator>,
+        carver_or_populator: Option<CarverOrPopulator>,
         maybe_type_kind: Option<TypeKind>,
     },
     BelongsTo {
@@ -1075,11 +1082,11 @@ impl ToTokens for Union {
     }
 }
 
-enum Populator {
+enum CarverOrPopulator {
     Custom(ExprBlock),
 }
 
-impl Parse for Populator {
+impl Parse for CarverOrPopulator {
     fn parse(input: ParseStream) -> Result<Self> {
         let name: Ident = input.parse()?;
         if name.to_string() != "custom" {
@@ -1089,7 +1096,7 @@ impl Parse for Populator {
     }
 }
 
-impl ToTokens for Populator {
+impl ToTokens for CarverOrPopulator {
     fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
         match self {
             Self::Custom(block) => quote! {
