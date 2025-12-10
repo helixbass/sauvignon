@@ -83,6 +83,9 @@ async fn test_column_getter() {
               actors {
                 name
               }
+              actor(id: 2) {
+                expression
+              }
             }
         "#,
         r#"
@@ -102,7 +105,10 @@ async fn test_column_getter() {
                   {
                     "name": "Jessica Szohr"
                   }
-                ]
+                ],
+                "actor": {
+                  "expression": "Dan where did you go I don't like you"
+                }
               }
             }
         "#,
