@@ -4,10 +4,10 @@ use quote::{quote, ToTokens};
 use squalid::{OptionExtDefault, OptionExtIterator, _d};
 use syn::{
     braced, bracketed, parenthesized,
-    parse::{Parse, ParseStream, Result},
+    parse::{Parse, ParseBuffer, ParseStream, Result},
     parse_macro_input,
     spanned::Spanned,
-    Ident, LitInt, Token,
+    Ident, LitInt, LitStr, Token,
 };
 
 struct Schema {
@@ -377,13 +377,7 @@ impl Parse for FieldValue {
                 let mut internal_dependencies: Option<Vec<InternalDependency>> = _d();
                 let mut params: Option<Vec<Param>> = _d();
                 while !field_value_content.is_empty() {
-                    let key = match field_value_content.parse::<Ident>() {
-                        Ok(key) => key,
-                        _ => {
-                            let key = field_value_content.parse::<Token![type]>()?;
-                            Ident::new("type", key.span())
-                        }
-                    };
+                    let key = parse_ident_or_type(&field_value_content)?;
                     field_value_content.parse::<Token![=>]>()?;
                     match &*key.to_string() {
                         "type" => {
@@ -460,7 +454,7 @@ impl InternalDependency {
 
 impl Parse for InternalDependency {
     fn parse(input: ParseStream) -> Result<Self> {
-        let name: Ident = input.parse()?;
+        let name = parse_ident_or_type(&input)?;
         input.parse::<Token![=>]>()?;
         let type_: InternalDependencyType = input.parse()?;
         Ok(Self {
@@ -735,8 +729,10 @@ enum DependencyValue {
 
 impl Parse for DependencyValue {
     fn parse(input: ParseStream) -> Result<Self> {
-        let id: LitInt = input.parse()?;
-        Ok(Self::Id(id.base10_parse::<Id>()?))
+        Ok(match input.peek(LitInt) {
+            true => Self::Id(input.parse::<LitInt>().unwrap().base10_parse::<Id>()?),
+            false => Self::String(input.parse::<LitStr>()?.value()),
+        })
     }
 }
 
@@ -877,4 +873,14 @@ impl ToTokens for Param {
 // TODO: share this with sauvignon crate?
 fn pluralize(value: &str) -> String {
     format!("{value}s")
+}
+
+fn parse_ident_or_type(input: &ParseBuffer) -> Result<Ident> {
+    Ok(match input.parse::<Ident>() {
+        Ok(key) => key,
+        _ => {
+            let key = input.parse::<Token![type]>()?;
+            Ident::new("type", key.span())
+        }
+    })
 }
