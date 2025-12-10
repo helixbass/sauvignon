@@ -18,11 +18,16 @@ async fn test_column_getter() {
         types => [
             Actor => {
                 fields => [
-                    name => string_column(),
+                    name => string_column()
                     expression => string_column(),
                     favoriteDesigner => belongs_to(
                         type => Designer
                     )
+                ]
+            }
+            Designer => {
+                fields => [
+                    name => string_column()
                 ]
             }
         ]
