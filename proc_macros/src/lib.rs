@@ -13,7 +13,7 @@ use syn::{
 struct Schema {
     pub types: Vec<Type>,
     pub query: Vec<Field>,
-    pub interfaces: Vec<Interface>,
+    pub interfaces: Option<Vec<Interface>>,
 }
 
 impl Schema {
@@ -89,7 +89,7 @@ impl Parse for Schema {
 struct SchemaProcessed {
     pub types: Vec<TypeProcessed>,
     pub query: Vec<FieldProcessed>,
-    pub interfaces: Vec<Interface>,
+    pub interfaces: Option<Vec<Interface>>,
 }
 
 struct Type {
@@ -496,7 +496,9 @@ pub fn schema(input: TokenStream) -> TokenStream {
     let interfaces = match schema.interfaces.as_ref() {
         None => quote! { vec![] },
         Some(interfaces) => {
-            let interfaces = interfaces.into_iter().map(|interface| quote! { interface });
+            let interfaces = interfaces
+                .into_iter()
+                .map(|interface| quote! { #interface });
             quote! { vec![#(#interfaces),*] }
         }
     };
@@ -624,11 +626,54 @@ impl Parse for Interface {
     }
 }
 
+impl ToTokens for Interface {
+    fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
+        let name = &self.name;
+        let fields = self.fields.iter().map(|field| {
+            quote! { #field }
+        });
+        quote! {
+            ::sauvignon::InterfaceBuilder::default()
+                .name(#name)
+                .fields(vec![#(#fields),*])
+                .build()
+                .unwrap()
+        }
+        .to_tokens(tokens)
+    }
+}
+
 struct InterfaceField {
     pub name: String,
     pub type_: TypeFull,
 }
-// let mut type_: Option<TypeFull> = _d();
+
+impl Parse for InterfaceField {
+    fn parse(input: ParseStream) -> Result<Self> {
+        let name: Ident = input.parse()?;
+        input.parse::<Token![=>]>()?;
+        let type_: TypeFull = input.parse()?;
+        Ok(Self {
+            name: name.to_string(),
+            type_,
+        })
+    }
+}
+
+impl ToTokens for InterfaceField {
+    fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
+        let name = &self.name;
+        let type_ = &self.type_;
+        quote! {
+            ::sauvignon::InterfaceField::new(
+                #name.to_owned(),
+                #type_,
+                [],
+            )
+        }
+        .to_tokens(tokens)
+    }
+}
 
 // TODO: share this with sauvignon crate?
 fn pluralize(value: &str) -> String {
