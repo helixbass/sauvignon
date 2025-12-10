@@ -396,6 +396,16 @@ struct InternalDependency {
     pub type_: InternalDependencyType,
 }
 
+impl InternalDependency {
+    pub fn process(self, field_type_name: &str) -> InternalDependencyProcessed {
+        InternalDependencyProcessed {
+            name: self.name,
+            type_: self.type_.process(field_type_name),
+            field_type_name: field_type_name.to_owned(),
+        }
+    }
+}
+
 impl Parse for InternalDependency {
     fn parse(input: ParseStream) -> Result<Self> {
         let name: Ident = input.parse()?;
@@ -408,18 +418,38 @@ impl Parse for InternalDependency {
     }
 }
 
-impl ToTokens for InternalDependency {
+struct InternalDependencyProcessed {
+    pub name: String,
+    pub type_: InternalDependencyTypeProcessed,
+    pub field_type_name: String,
+}
+
+impl ToTokens for InternalDependencyProcessed {
     fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
         let name = &self.name;
-        let type_ = quote! {
-            ::sauvignon::DependencyType::Id
+        let type_ = match &self.type_ {
+            InternalDependencyTypeProcessed::LiteralValue(_) => quote! {
+                ::sauvignon::DependencyType::Id
+            },
+            InternalDependencyTypeProcessed::IdColumnList { .. } => quote! {
+                ::sauvignon::DependencyType::ListOfIds
+            },
         };
         let resolver = match &self.type_ {
-            InternalDependencyType::LiteralValue(dependency_value) => quote! {
+            InternalDependencyTypeProcessed::LiteralValue(dependency_value) => quote! {
                 ::sauvignon::InternalDependencyResolver::LiteralValue(
                     ::sauvignon::LiteralValueInternalDependencyResolver(#dependency_value)
                 )
             },
+            InternalDependencyTypeProcessed::IdColumnList { field_type_name } => {
+                let table_name = pluralize(&field_type_name.to_snake_case());
+                quote! {
+                    ::sauvignon::InternalDependencyResolver::ColumnGetterList(::sauvignon::ColumnGetterList::new(
+                        #table_name.to_owned(),
+                        "id".to_owned(),
+                    ))
+                }
+            }
         };
         quote! {
             ::sauvignon::InternalDependency::new(
@@ -434,22 +464,48 @@ impl ToTokens for InternalDependency {
 
 enum InternalDependencyType {
     LiteralValue(DependencyValue),
+    IdColumnList,
+}
+
+impl InternalDependencyType {
+    pub fn process(self, field_type_name: &str) -> InternalDependencyTypeProcessed {
+        match self {
+            Self::LiteralValue(dependency_value) => {
+                InternalDependencyTypeProcessed::LiteralValue(dependency_value)
+            }
+            Self::IdColumnList => InternalDependencyTypeProcessed::IdColumnList {
+                field_type_name: field_type_name.to_owned(),
+            },
+        }
+    }
 }
 
 impl Parse for InternalDependencyType {
     fn parse(input: ParseStream) -> Result<Self> {
         let name: Ident = input.parse()?;
-        if name.to_string() != "literal_value" {
-            return Err(input.error("Expected `literal_value`"));
+        match &*name.to_string() {
+            "literal_value" => {
+                let arguments_content;
+                parenthesized!(arguments_content in input);
+                let value: DependencyValue = arguments_content.parse()?;
+                if !arguments_content.is_empty() {
+                    return Err(arguments_content.error("Didn't expect more arguments"));
+                }
+                Ok(Self::LiteralValue(value))
+            }
+            "id_column_list" => Ok(Self::IdColumnList),
+            _ => {
+                return Err(
+                    input.error("Expected known internal dependency helper eg `literal_value()`")
+                )
+            }
         }
-        let arguments_content;
-        parenthesized!(arguments_content in input);
-        let value: DependencyValue = arguments_content.parse()?;
-        if !arguments_content.is_empty() {
-            return Err(arguments_content.error("Didn't expect more arguments"));
-        }
-        Ok(Self::LiteralValue(value))
     }
+}
+
+enum InternalDependencyTypeProcessed {
+    LiteralValue(DependencyValue),
+    IdColumnList { field_type_name: String },
 }
 
 #[proc_macro]
