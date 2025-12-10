@@ -1,15 +1,11 @@
-use sauvignon::{json_from_response, schema, CarverOrPopulator, Schema};
+use sauvignon::{json_from_response, Schema};
+use sqlx::{Pool, Postgres};
 
 mod shared;
 
-pub use shared::get_schema;
-use shared::{
-    get_db_pool, pretty_print_json, ActorsAndDesignersPopulator, ActorsAndDesignersTypePopulator,
-    CanadianCityQuoteCarver,
-};
+use shared::{get_db_pool, get_schema, pretty_print_json};
 
-async fn request_test(schema: &Schema, request: &str, expected: &str) {
-    let db_pool = get_db_pool().await.unwrap();
+async fn request_test(schema: &Schema, db_pool: &Pool<Postgres>, request: &str, expected: &str) {
     let response = schema.request(request, &db_pool).await;
     let json = json_from_response(&response);
     assert_eq!(pretty_print_json(&json), pretty_print_json(expected));
@@ -17,108 +13,12 @@ async fn request_test(schema: &Schema, request: &str, expected: &str) {
 
 #[tokio::test]
 async fn test_column_getter() {
-    let schema = schema! {
-        types => [
-            Actor => {
-                fields => [
-                    name => string_column()
-                    expression => string_column(),
-                    favoriteDesigner => belongs_to(
-                        type => Designer
-                    )
-                ]
-                implements => [HasName]
-            }
-            Designer => {
-                fields => [
-                    name => string_column()
-                ]
-                implements => [HasName]
-            }
-        ]
-        query => [
-            actor => {
-                type => Actor!
-                params => [
-                    id => Id!
-                ]
-            }
-            actorKatie => {
-                type => Actor!
-                internal_dependencies => [
-                    id => literal_value(1),
-                ]
-            }
-            actors => {
-                type => [Actor!]!
-                internal_dependencies => [
-                    ids => id_column_list()
-                ]
-            }
-            certainActorOrDesigner => {
-                type => ActorOrDesigner!
-                internal_dependencies => [
-                    type => literal_value("designers")
-                    id => literal_value(1)
-                ]
-            }
-            bestHasName => {
-                type => HasName!
-                internal_dependencies => [
-                    type => literal_value("actors")
-                    id => literal_value(1)
-                ]
-            }
-            actorsAndDesigners => {
-                type => [ActorOrDesigner!]!
-                internal_dependencies => [
-                    actor_ids => id_column_list(
-                        type => Actor
-                    )
-                    designer_ids => id_column_list(
-                        type => Designer
-                    )
-                ]
-                populator => custom {
-                    CarverOrPopulator::UnionOrInterfaceTypePopulatorList(
-                        Box::new(ActorsAndDesignersTypePopulator::new()),
-                        Box::new(ActorsAndDesignersPopulator::new()),
-                    )
-                }
-            }
-            bestCanadianCity => {
-                type => CanadianCity!
-                internal_dependencies => [
-                    value => literal_value("VANCOUVER")
-                ]
-            }
-            canadianCityQuote => {
-                type => String!
-                params => [
-                    city => CanadianCity!
-                ]
-                carver => custom {
-                    CarverOrPopulator::Carver(Box::new(CanadianCityQuoteCarver::default()))
-                }
-            }
-        ]
-        interfaces => [
-            HasName => {
-                fields => [
-                    name => String!
-                ]
-            }
-        ]
-        unions => [
-            ActorOrDesigner => [Actor, Designer]
-        ]
-        enums => [
-            CanadianCity => [VANCOUVER, CORNER_BROOK, QUEBEC, MONTREAL]
-        ]
-    };
+    let db_pool = get_db_pool().await.unwrap();
+    let schema = get_schema(&db_pool).await.unwrap();
 
     request_test(
         &schema,
+        &db_pool,
         r#"
             query {
               actorKatie {
