@@ -854,7 +854,7 @@ pub fn schema(input: TokenStream) -> TokenStream {
     };
 
     let enums = match schema.enums.as_ref() {
-        None => quote! { vec![] },
+        None => quote! {},
         Some(enums) => {
             let enums = enums.into_iter().map(|enum_| quote! { #enum_ });
             quote! { #(#enums),* }
