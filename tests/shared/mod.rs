@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::str::FromStr;
 
 use sqlx::{postgres::PgPoolOptions, Pool, Postgres};
