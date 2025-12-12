@@ -52,7 +52,7 @@ impl Schema {
             .map(|enums| {
                 enums
                     .into_iter()
-                    .map(|enum_| enum_.name.clone())
+                    .map(|enum_| enum_.name.to_string())
                     .collect::<HashSet<_>>()
             })
             .unwrap_or_default();
@@ -854,7 +854,7 @@ pub fn schema(input: TokenStream) -> TokenStream {
     };
 
     let enums = match schema.enums.as_ref() {
-        None => quote! { vec![] },
+        None => quote! {},
         Some(enums) => {
             let enums = enums.into_iter().map(|enum_| quote! { #enum_ });
             quote! { #(#enums),* }
@@ -1185,39 +1185,50 @@ impl ToTokens for CarverOrPopulator {
 }
 
 struct Enum {
-    pub name: String,
-    pub variants: Vec<String>,
+    pub name: Ident,
+    pub variants: Option<Vec<String>>,
 }
 
 impl Parse for Enum {
     fn parse(input: ParseStream) -> Result<Self> {
         let name: Ident = input.parse()?;
-        input.parse::<Token![=>]>()?;
-        let values_content;
-        bracketed!(values_content in input);
-        let mut variants: Vec<String> = _d();
-        while !values_content.is_empty() {
-            variants.push(values_content.parse::<Ident>()?.to_string());
-            values_content.parse::<Option<Token![,]>>()?;
-        }
-        Ok(Self {
-            name: name.to_string(),
-            variants,
-        })
+        let variants = match input.parse::<Token![=>]>() {
+            Ok(_) => {
+                let values_content;
+                bracketed!(values_content in input);
+                let mut variants: Vec<String> = _d();
+                while !values_content.is_empty() {
+                    variants.push(values_content.parse::<Ident>()?.to_string());
+                    values_content.parse::<Option<Token![,]>>()?;
+                }
+                Some(variants)
+            }
+            _ => None,
+        };
+        Ok(Self { name, variants })
     }
 }
 
 impl ToTokens for Enum {
     fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
         let name = &self.name;
-        let variants = self
-            .variants
-            .iter()
-            .map(|variant| quote! { #variant.to_owned() });
+        let name_str = name.to_string();
+        let variants = match self.variants.as_ref() {
+            None => quote! {{
+                use strum::VariantNames;
+                #name::VARIANTS.iter().map(|variant| (*variant).to_owned())
+            }},
+            Some(variants) => {
+                let variants = variants
+                    .iter()
+                    .map(|variant| quote! { #variant.to_owned() });
+                quote! { vec![#(#variants),*] }
+            }
+        };
         quote! {
             ::sauvignon::Type::Enum(::sauvignon::Enum::new(
-                #name.to_owned(),
-                vec![#(#variants),*],
+                #name_str.to_owned(),
+                #variants,
             ))
         }
         .to_tokens(tokens)

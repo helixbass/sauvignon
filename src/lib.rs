@@ -15,6 +15,7 @@ mod string;
 mod types;
 
 pub use indexmap::{IndexMap, IndexSet};
+pub use strum;
 
 pub use crate::any_hash_map::AnyHashMap;
 pub use crate::dependencies::{
