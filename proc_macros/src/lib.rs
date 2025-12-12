@@ -3,6 +3,7 @@ use std::collections::HashSet;
 use heck::ToSnakeCase;
 use proc_macro::TokenStream;
 use quote::{quote, ToTokens};
+use shared::pluralize;
 use squalid::{OptionExtDefault, OptionExtIterator, _d};
 use syn::{
     braced, bracketed, parenthesized,
@@ -1328,11 +1329,6 @@ impl ToTokens for DependencyType {
         }
         .to_tokens(tokens)
     }
-}
-
-// TODO: share this with sauvignon crate?
-fn pluralize(value: &str) -> String {
-    format!("{value}s")
 }
 
 fn parse_ident_or_type(input: &ParseBuffer) -> Result<Ident> {

@@ -17,6 +17,8 @@ mod types;
 pub use indexmap::{IndexMap, IndexSet};
 pub use strum;
 
+pub use shared::pluralize;
+
 pub use crate::any_hash_map::AnyHashMap;
 pub use crate::dependencies::{
     ArgumentInternalDependencyResolver, ColumnGetter, ColumnGetterList, DependencyType,
@@ -47,7 +49,7 @@ pub use crate::response::{
     ResponseValueOrInProgress,
 };
 pub use crate::schema::{Schema, TypeOrUnionOrInterface, ValidationError};
-pub use crate::string::{pluralize, singularize};
+pub use crate::string::singularize;
 pub use crate::types::{
     builtin_types, string_type, BuiltInScalarType, DummyUnionTypenameField, Enum,
     Field as TypeField, FieldBuilder as TypeFieldBuilder, FieldInterface, Interface,
