@@ -766,26 +766,13 @@ impl ToTokens for InternalDependencyProcessed {
                     ::sauvignon::LiteralValueInternalDependencyResolver(#dependency_value)
                 )
             },
-            InternalDependencyTypeProcessed::IdColumnList {
-                field_type_name,
-                where_column_name,
-            } => {
+            InternalDependencyTypeProcessed::IdColumnList { field_type_name } => {
                 let table_name = pluralize(&field_type_name.to_snake_case());
-                // TODO: back out the where_column_name stuff here because
-                // it turned out that has_many() doesn't use this code path
-                let wheres = match where_column_name {
-                    Some(where_column_name) => quote! {
-                        vec![
-                            ::sauvignon::Where::new(#where_column_name.to_owned())
-                        ]
-                    },
-                    None => quote! { vec![] },
-                };
                 quote! {
                     ::sauvignon::InternalDependencyResolver::ColumnGetterList(::sauvignon::ColumnGetterList::new(
                         #table_name.to_owned(),
                         "id".to_owned(),
-                        #wheres,
+                        vec![],
                     ))
                 }
             }
@@ -810,10 +797,7 @@ impl ToTokens for InternalDependencyProcessed {
 
 enum InternalDependencyType {
     LiteralValue(DependencyValue),
-    IdColumnList {
-        type_: Option<String>,
-        where_column_name: Option<String>,
-    },
+    IdColumnList { type_: Option<String> },
 }
 
 impl InternalDependencyType {
@@ -822,12 +806,8 @@ impl InternalDependencyType {
             Self::LiteralValue(dependency_value) => {
                 InternalDependencyTypeProcessed::LiteralValue(dependency_value)
             }
-            Self::IdColumnList {
-                type_,
-                where_column_name,
-            } => InternalDependencyTypeProcessed::IdColumnList {
+            Self::IdColumnList { type_ } => InternalDependencyTypeProcessed::IdColumnList {
                 field_type_name: type_.unwrap_or_else(|| field_type_name.to_owned()),
-                where_column_name,
             },
         }
     }
@@ -863,10 +843,7 @@ impl Parse for InternalDependencyType {
                         }
                     }
                 }
-                Ok(Self::IdColumnList {
-                    type_,
-                    where_column_name: None,
-                })
+                Ok(Self::IdColumnList { type_ })
             }
             _ => {
                 return Err(
@@ -880,10 +857,7 @@ impl Parse for InternalDependencyType {
 #[derive(Clone)]
 enum InternalDependencyTypeProcessed {
     LiteralValue(DependencyValue),
-    IdColumnList {
-        field_type_name: String,
-        where_column_name: Option<String>,
-    },
+    IdColumnList { field_type_name: String },
     Param(DependencyType),
 }
 
