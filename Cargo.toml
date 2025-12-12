@@ -21,6 +21,7 @@ tracing = "0.1.43"
 sql_query_builder = "2.5.2"
 heck = "0.5.0"
 proc_macros = { package = "sauvignon_proc_macros", path = "proc_macros" }
+strum = { version = "0.27.2", features = ["derive"] }
 
 [dev-dependencies]
 futures = "0.3.31"

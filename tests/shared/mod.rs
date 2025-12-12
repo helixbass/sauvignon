@@ -1,6 +1,8 @@
 use std::collections::HashMap;
+use std::str::FromStr;
 
 use sqlx::{postgres::PgPoolOptions, Pool, Postgres};
+use strum::{EnumString, VariantNames};
 
 use sauvignon::{
     schema, Carver, CarverOrPopulator, ExternalDependencyValues, Id, InternalDependencyValues,
@@ -79,30 +81,26 @@ impl PopulatorListInterface for ActorsAndDesignersPopulator {
     }
 }
 
-static CANADIAN_CITIES: [&'static str; 4] = ["VANCOUVER", "CORNER_BROOK", "QUEBEC", "MONTREAL"];
-
-pub struct CanadianCityQuoteCarver {
-    pub quotes: HashMap<&'static str, String>,
+#[derive(Copy, Clone, Debug, PartialEq, Eq, VariantNames, EnumString)]
+#[strum(serialize_all = "SCREAMING_SNAKE_CASE")]
+enum CanadianCity {
+    Vancouver,
+    CornerBrook,
+    Quebec,
+    Montreal,
 }
 
-impl Default for CanadianCityQuoteCarver {
-    fn default() -> Self {
-        Self {
-            quotes: CANADIAN_CITIES
-                .iter()
-                .map(|city| {
-                    (
-                        *city,
-                        match *city {
-                            "VANCOUVER" => "We're the best".to_owned(),
-                            _ => "We're the worst".to_owned(),
-                        },
-                    )
-                })
-                .collect(),
+impl CanadianCity {
+    pub fn quote(&self) -> &'static str {
+        match self {
+            Self::Vancouver => "We're the best",
+            _ => "We're the worst",
         }
     }
 }
+
+#[derive(Default)]
+pub struct CanadianCityQuoteCarver {}
 
 impl Carver for CanadianCityQuoteCarver {
     fn carve(
@@ -111,7 +109,10 @@ impl Carver for CanadianCityQuoteCarver {
         internal_dependencies: &InternalDependencyValues,
     ) -> ResponseValue {
         ResponseValue::EnumValue(
-            self.quotes[&**internal_dependencies.get("city").unwrap().as_string()].clone(),
+            CanadianCity::from_str(internal_dependencies.get("city").unwrap().as_string())
+                .unwrap()
+                .quote()
+                .to_owned(),
         )
     }
 }
@@ -227,7 +228,7 @@ pub async fn get_schema(db_pool: &Pool<Postgres>) -> anyhow::Result<Schema> {
             ActorOrDesigner => [Actor, Designer]
         ]
         enums => [
-            CanadianCity => [VANCOUVER, CORNER_BROOK, QUEBEC, MONTREAL]
+            CanadianCity,
         ]
     })
 }
