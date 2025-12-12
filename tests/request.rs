@@ -615,3 +615,44 @@ async fn test_enum_arguments() {
     )
     .await;
 }
+
+#[tokio::test]
+async fn test_has_many() {
+    request_test(
+        r#"
+            {
+              designers {
+                name
+                favoriteOfActors {
+                  name
+                }
+              }
+            }
+        "#,
+        r#"
+            {
+              "data": {
+                "designers": [
+                  {
+                    "name": "Proenza Schouler",
+                    "favoriteOfActors": [
+                      {
+                        "name": "Katie Cassidy"
+                      }
+                    ]
+                  },
+                  {
+                    "name": "Ralph Lauren",
+                    "favoriteOfActors": [
+                      {
+                        "name": "Jessica Szohr"
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+        "#,
+    )
+    .await;
+}

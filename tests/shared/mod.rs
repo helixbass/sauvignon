@@ -219,6 +219,12 @@ pub async fn get_schema(db_pool: &Pool<Postgres>) -> anyhow::Result<Schema> {
                     CarverOrPopulator::Carver(Box::new(CanadianCityQuoteCarver::default()))
                 }
             }
+            designers => {
+                type => [Designer!]!
+                internal_dependencies => [
+                    ids => id_column_list()
+                ]
+            }
         ]
         interfaces => [
             HasName => {
