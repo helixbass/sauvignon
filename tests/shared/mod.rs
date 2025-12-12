@@ -146,6 +146,10 @@ pub async fn get_schema(db_pool: &Pool<Postgres>) -> anyhow::Result<Schema> {
             Designer => {
                 fields => [
                     name => string_column()
+                    favoriteOfActors => has_many(
+                        type => Actor
+                        foreign_key => favorite_designer_id
+                    )
                 ]
                 implements => [HasName]
             }
@@ -214,6 +218,12 @@ pub async fn get_schema(db_pool: &Pool<Postgres>) -> anyhow::Result<Schema> {
                 carver => custom {
                     CarverOrPopulator::Carver(Box::new(CanadianCityQuoteCarver::default()))
                 }
+            }
+            designers => {
+                type => [Designer!]!
+                internal_dependencies => [
+                    ids => id_column_list()
+                ]
             }
         ]
         interfaces => [

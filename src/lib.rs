@@ -22,7 +22,7 @@ pub use crate::dependencies::{
     ArgumentInternalDependencyResolver, ColumnGetter, ColumnGetterList, DependencyType,
     DependencyValue, ExternalDependency, ExternalDependencyValue, ExternalDependencyValues, Id,
     InternalDependency, InternalDependencyResolver, InternalDependencyValue,
-    InternalDependencyValues, LiteralValueInternalDependencyResolver,
+    InternalDependencyValues, LiteralValueInternalDependencyResolver, Where,
 };
 pub use crate::error::{Error, Result};
 pub use crate::hash::get_hash;
