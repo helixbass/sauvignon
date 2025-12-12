@@ -462,7 +462,6 @@ impl ToTokens for FieldProcessed {
             }
             FieldValueProcessed::HasMany {
                 type_,
-                self_table_name,
                 foreign_key,
             } => {
                 let foreign_key_table_name = pluralize(&type_.to_snake_case());
@@ -550,11 +549,9 @@ impl FieldValue {
                 self_table_name: pluralize(&parent_type_name.unwrap().to_snake_case()),
                 polymorphic,
             },
-            Self::HasMany { type_, foreign_key } => FieldValueProcessed::HasMany {
-                type_,
-                self_table_name: pluralize(&parent_type_name.unwrap().to_snake_case()),
-                foreign_key,
-            },
+            Self::HasMany { type_, foreign_key } => {
+                FieldValueProcessed::HasMany { type_, foreign_key }
+            }
         }
     }
 }
@@ -714,7 +711,6 @@ enum FieldValueProcessed {
     HasMany {
         type_: String,
         foreign_key: String,
-        self_table_name: String,
     },
 }
 
