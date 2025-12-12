@@ -706,6 +706,7 @@ impl ToTokens for InternalDependencyProcessed {
                     ::sauvignon::InternalDependencyResolver::ColumnGetterList(::sauvignon::ColumnGetterList::new(
                         #table_name.to_owned(),
                         "id".to_owned(),
+                        vec![],
                     ))
                 }
             }

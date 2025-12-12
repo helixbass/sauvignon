@@ -585,6 +585,9 @@ fn maybe_list_of_ids_internal_dependencies(
     }
     match &internal_dependency.resolver {
         InternalDependencyResolver::ColumnGetterList(column_getter_list) => {
+            if !column_getter_list.wheres.is_empty() {
+                return None;
+            }
             if pluralize(&column_getter_list.column_name) != internal_dependency.name {
                 return None;
             }
@@ -831,10 +834,36 @@ async fn populate_internal_dependencies(
                 InternalDependencyResolver::ColumnGetterList(column_getter_list) => {
                     // TODO: same as above, sql injection?
                     let query = format!(
-                        "SELECT {} FROM {}",
-                        column_getter_list.column_name, column_getter_list.table_name
+                        "SELECT {} FROM {}{}",
+                        column_getter_list.column_name,
+                        column_getter_list.table_name,
+                        if column_getter_list.wheres.is_empty() {
+                            "".to_owned()
+                        } else {
+                            format!(
+                                " WHERE {}",
+                                column_getter_list
+                                    .wheres
+                                    .iter()
+                                    .enumerate()
+                                    .map(|(index, where_)| {
+                                        format!("{} = ${}", where_.column_name, index + 1)
+                                    })
+                                    .collect::<String>()
+                            )
+                        }
                     );
-                    let rows = sqlx::query_as::<_, (Id,)>(&query)
+                    let mut query = sqlx::query_as::<_, (Id,)>(&query);
+                    for _where in &column_getter_list.wheres {
+                        // TODO: this is punting on where's specifying
+                        // values
+                        query = match external_dependency_values.get("id").unwrap() {
+                            DependencyValue::Id(id) => query.bind(id),
+                            DependencyValue::String(str) => query.bind(str),
+                            _ => unimplemented!(),
+                        };
+                    }
+                    let rows = query
                         .fetch_all(db_pool)
                         .instrument(trace_span!("fetch column list"))
                         .await

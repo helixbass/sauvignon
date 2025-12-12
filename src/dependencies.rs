@@ -75,14 +75,26 @@ impl ArgumentInternalDependencyResolver {
 pub struct ColumnGetterList {
     pub table_name: String,
     pub column_name: String,
+    pub wheres: Vec<Where>,
 }
 
 impl ColumnGetterList {
-    pub fn new(table_name: String, column_name: String) -> Self {
+    pub fn new(table_name: String, column_name: String, wheres: Vec<Where>) -> Self {
         Self {
             table_name,
             column_name,
+            wheres,
         }
+    }
+}
+
+pub struct Where {
+    pub column_name: String,
+}
+
+impl Where {
+    pub fn new(column_name: String) -> Self {
+        Self { column_name }
     }
 }
 
