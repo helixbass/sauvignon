@@ -507,8 +507,8 @@ impl ToTokens for FieldProcessed {
                                         ::sauvignon::DependencyType::ListOfIds,
                                         ::sauvignon::InternalDependencyResolver::ColumnGetterList(::sauvignon::ColumnGetterList::new(
                                             #through.to_owned(),
-                                            #through_self_column_name.to_owned(),
-                                            vec![::sauvignon::Where::new(#through_other_column_name.to_owned())],
+                                            #through_other_column_name.to_owned(),
+                                            vec![::sauvignon::Where::new(#through_self_column_name.to_owned())],
                                         )),
                                     )],
                                     ::sauvignon::CarverOrPopulator::PopulatorList(::sauvignon::ValuePopulatorList::new("id".to_owned()).into())
