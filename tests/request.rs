@@ -287,6 +287,10 @@ async fn test_list_union_and_typename() {
                   {
                     "__typename": "Designer",
                     "name": "Ralph Lauren"
+                  },
+                  {
+                    "__typename": "Designer",
+                    "name": "Oscar de la Renta"
                   }
                 ]
               }
@@ -648,6 +652,10 @@ async fn test_has_many() {
                         "name": "Jessica Szohr"
                       }
                     ]
+                  },
+                  {
+                    "name": "Oscar de la Renta",
+                    "favoriteOfActors": []
                   }
                 ]
               }
