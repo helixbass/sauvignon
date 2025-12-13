@@ -7,7 +7,8 @@ use axum::{
     extract::{FromRequest, Request},
     http::StatusCode,
     response::{Html, IntoResponse, Response as AxumResponse},
-    Extension, Json,
+    routing::{get, post},
+    Extension, Json, Router,
 };
 use sauvignon::{Response, Schema};
 use serde::Deserialize;
@@ -70,4 +71,12 @@ fn graphiql_html(graphql_path: &str) -> String {
             "#
         ),
     )
+}
+
+pub fn simple_app(schema: Arc<Schema>, db_pool: Pool<Postgres>) -> Router<()> {
+    Router::new()
+        .route("/graphql", post(graphql))
+        .route("/graphiql", get(graphiql("/graphql")))
+        .layer(Extension(schema))
+        .layer(Extension(db_pool))
 }
