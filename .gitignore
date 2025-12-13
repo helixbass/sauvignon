@@ -1,5 +1,6 @@
 /target
 /proc_macros/target
+/sauvignon-axum/target
 
 Cargo.lock
 
