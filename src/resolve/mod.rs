@@ -28,7 +28,7 @@ impl FieldResolver {
     }
 }
 
-pub trait Carver {
+pub trait Carver: Send + Sync {
     fn carve(
         &self,
         external_dependencies: &ExternalDependencyValues,
@@ -116,7 +116,7 @@ impl From<ValuesPopulator> for Populator {
     }
 }
 
-pub trait PopulatorInterface {
+pub trait PopulatorInterface: Send + Sync {
     fn populate(
         &self,
         external_dependencies: &ExternalDependencyValues,
@@ -219,7 +219,7 @@ impl From<ValuePopulatorList> for PopulatorList {
     }
 }
 
-pub trait PopulatorListInterface {
+pub trait PopulatorListInterface: Send + Sync {
     fn populate(
         &self,
         external_dependencies: &ExternalDependencyValues,
@@ -261,7 +261,7 @@ impl PopulatorListInterface for ValuePopulatorList {
     }
 }
 
-pub trait UnionOrInterfaceTypePopulator {
+pub trait UnionOrInterfaceTypePopulator: Send + Sync {
     fn populate(
         &self,
         external_dependencies: &ExternalDependencyValues,
@@ -291,7 +291,7 @@ impl UnionOrInterfaceTypePopulator for TypeDepluralizer {
     }
 }
 
-pub trait UnionOrInterfaceTypePopulatorList {
+pub trait UnionOrInterfaceTypePopulatorList: Send + Sync {
     fn populate(
         &self,
         external_dependencies: &ExternalDependencyValues,
