@@ -140,6 +140,10 @@ pub async fn get_schema(db_pool: &Pool<Postgres>) -> anyhow::Result<Schema> {
                         type => ActorOrDesigner
                         polymorphic => true
                     )
+                    favoriteDesigners => has_many(
+                        type => Designer
+                        through => actors_favorite_designers
+                    )
                 ]
                 implements => [HasName]
             }

@@ -108,6 +108,10 @@ async fn test_column_getter() {
                   {
                     "__typename": "Designer",
                     "name": "Ralph Lauren"
+                  },
+                  {
+                    "__typename": "Designer",
+                    "name": "Oscar de la Renta"
                   }
                 ],
                 "bestCanadianCity": "VANCOUVER",

@@ -3,6 +3,7 @@ use std::collections::HashSet;
 use heck::ToSnakeCase;
 use proc_macro::TokenStream;
 use quote::{quote, ToTokens};
+use shared::pluralize;
 use squalid::{OptionExtDefault, OptionExtIterator, _d};
 use syn::{
     braced, bracketed, parenthesized,
@@ -463,28 +464,60 @@ impl ToTokens for FieldProcessed {
             FieldValueProcessed::HasMany {
                 type_,
                 foreign_key,
+                through,
+                through_self_column_name,
+                through_other_column_name,
             } => {
-                let foreign_key_table_name = pluralize(&type_.to_snake_case());
+                match (foreign_key, through) {
+                    (Some(foreign_key), None) => {
+                        let foreign_key_table_name = pluralize(&type_.to_snake_case());
 
-                quote! {
-                    ::sauvignon::TypeFieldBuilder::default()
-                        .name(#name)
-                        .type_(::sauvignon::TypeFull::List(::std::boxed::Box::new(::sauvignon::TypeFull::Type(#type_.to_owned()))))
-                        .resolver(::sauvignon::FieldResolver::new(
-                            vec![::sauvignon::ExternalDependency::new("id".to_owned(), ::sauvignon::DependencyType::Id)],
-                            vec![::sauvignon::InternalDependency::new(
-                                "ids".to_owned(),
-                                ::sauvignon::DependencyType::ListOfIds,
-                                ::sauvignon::InternalDependencyResolver::ColumnGetterList(::sauvignon::ColumnGetterList::new(
-                                    #foreign_key_table_name.to_owned(),
-                                    "id".to_owned(),
-                                    vec![::sauvignon::Where::new(#foreign_key.to_owned())],
-                                )),
-                            )],
-                            ::sauvignon::CarverOrPopulator::PopulatorList(::sauvignon::ValuePopulatorList::new("id".to_owned()).into())
-                        ))
-                        .build()
-                        .unwrap()
+                        quote! {
+                            ::sauvignon::TypeFieldBuilder::default()
+                                .name(#name)
+                                .type_(::sauvignon::TypeFull::List(::std::boxed::Box::new(::sauvignon::TypeFull::Type(#type_.to_owned()))))
+                                .resolver(::sauvignon::FieldResolver::new(
+                                    vec![::sauvignon::ExternalDependency::new("id".to_owned(), ::sauvignon::DependencyType::Id)],
+                                    vec![::sauvignon::InternalDependency::new(
+                                        "ids".to_owned(),
+                                        ::sauvignon::DependencyType::ListOfIds,
+                                        ::sauvignon::InternalDependencyResolver::ColumnGetterList(::sauvignon::ColumnGetterList::new(
+                                            #foreign_key_table_name.to_owned(),
+                                            "id".to_owned(),
+                                            vec![::sauvignon::Where::new(#foreign_key.to_owned())],
+                                        )),
+                                    )],
+                                    ::sauvignon::CarverOrPopulator::PopulatorList(::sauvignon::ValuePopulatorList::new("id".to_owned()).into())
+                                ))
+                                .build()
+                                .unwrap()
+                        }
+                    }
+                    (None, Some(through)) => {
+                        let through_self_column_name = through_self_column_name.as_ref().unwrap();
+                        let through_other_column_name = through_other_column_name.as_ref().unwrap();
+                        quote! {
+                            ::sauvignon::TypeFieldBuilder::default()
+                                .name(#name)
+                                .type_(::sauvignon::TypeFull::List(::std::boxed::Box::new(::sauvignon::TypeFull::Type(#type_.to_owned()))))
+                                .resolver(::sauvignon::FieldResolver::new(
+                                    vec![::sauvignon::ExternalDependency::new("id".to_owned(), ::sauvignon::DependencyType::Id)],
+                                    vec![::sauvignon::InternalDependency::new(
+                                        "ids".to_owned(),
+                                        ::sauvignon::DependencyType::ListOfIds,
+                                        ::sauvignon::InternalDependencyResolver::ColumnGetterList(::sauvignon::ColumnGetterList::new(
+                                            #through.to_owned(),
+                                            #through_other_column_name.to_owned(),
+                                            vec![::sauvignon::Where::new(#through_self_column_name.to_owned())],
+                                        )),
+                                    )],
+                                    ::sauvignon::CarverOrPopulator::PopulatorList(::sauvignon::ValuePopulatorList::new("id".to_owned()).into())
+                                ))
+                                .build()
+                                .unwrap()
+                        }
+                    }
+                    _ => unreachable!()
                 }
             }
         }
@@ -506,7 +539,8 @@ enum FieldValue {
     },
     HasMany {
         type_: String,
-        foreign_key: String,
+        foreign_key: Option<String>,
+        through: Option<String>,
     },
 }
 
@@ -549,8 +583,24 @@ impl FieldValue {
                 self_table_name: pluralize(&parent_type_name.unwrap().to_snake_case()),
                 polymorphic,
             },
-            Self::HasMany { type_, foreign_key } => {
-                FieldValueProcessed::HasMany { type_, foreign_key }
+            Self::HasMany {
+                type_,
+                foreign_key,
+                through,
+            } => {
+                let through_self_column_name = through
+                    .is_some()
+                    .then(|| format!("{}_id", parent_type_name.unwrap().to_snake_case()));
+                let through_other_column_name = through
+                    .is_some()
+                    .then(|| format!("{}_id", type_.to_snake_case()));
+                FieldValueProcessed::HasMany {
+                    type_,
+                    foreign_key,
+                    through,
+                    through_self_column_name,
+                    through_other_column_name,
+                }
             }
         }
     }
@@ -601,6 +651,7 @@ impl Parse for FieldValue {
                     parenthesized!(arguments_content in input);
                     let mut type_: Option<String> = _d();
                     let mut foreign_key: Option<String> = _d();
+                    let mut through: Option<String> = _d();
                     while !arguments_content.is_empty() {
                         let key = parse_ident_or_type(&arguments_content)?;
                         arguments_content.parse::<Token![=>]>()?;
@@ -611,6 +662,9 @@ impl Parse for FieldValue {
                             "foreign_key" => {
                                 foreign_key = Some(arguments_content.parse::<Ident>()?.to_string());
                             }
+                            "through" => {
+                                through = Some(arguments_content.parse::<Ident>()?.to_string());
+                            }
                             key => {
                                 return Err(
                                     arguments_content.error(format!("Unexpected key `{key}`"))
@@ -619,9 +673,21 @@ impl Parse for FieldValue {
                         }
                         arguments_content.parse::<Option<Token![,]>>()?;
                     }
+                    // TODO: figure this out
+                    if foreign_key.is_some() && through.is_some() {
+                        return Err(arguments_content.error(
+                            "Currently not supporting combination of `foreign_key` and `through`",
+                        ));
+                    }
+                    if foreign_key.is_none() && through.is_none() {
+                        return Err(arguments_content.error(
+                            "Currently expecting exactly one of `foreign_key` and `through`",
+                        ));
+                    }
                     Ok(Self::HasMany {
                         type_: type_.expect("Expected `type`"),
-                        foreign_key: foreign_key.expect("Expected `foreign_key`"),
+                        foreign_key,
+                        through,
                     })
                 }
                 _ => return Err(input.error("Expected known field helper eg `string_column()`")),
@@ -710,7 +776,10 @@ enum FieldValueProcessed {
     },
     HasMany {
         type_: String,
-        foreign_key: String,
+        foreign_key: Option<String>,
+        through: Option<String>,
+        through_self_column_name: Option<String>,
+        through_other_column_name: Option<String>,
     },
 }
 
@@ -1328,11 +1397,6 @@ impl ToTokens for DependencyType {
         }
         .to_tokens(tokens)
     }
-}
-
-// TODO: share this with sauvignon crate?
-fn pluralize(value: &str) -> String {
-    format!("{value}s")
 }
 
 fn parse_ident_or_type(input: &ParseBuffer) -> Result<Ident> {
