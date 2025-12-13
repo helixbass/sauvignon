@@ -67,6 +67,35 @@ impl Carver for StringCarver {
     }
 }
 
+pub struct OptionalFloatCarver {
+    pub name: String,
+}
+
+impl OptionalFloatCarver {
+    pub fn new(name: String) -> Self {
+        Self { name }
+    }
+}
+
+impl Carver for OptionalFloatCarver {
+    #[instrument(
+        level = "trace",
+        skip(self, external_dependencies, internal_dependencies)
+    )]
+    fn carve(
+        &self,
+        external_dependencies: &ExternalDependencyValues,
+        internal_dependencies: &InternalDependencyValues,
+    ) -> ResponseValue {
+        internal_dependencies
+            .get(&self.name)
+            .or_else(|| external_dependencies.get(&self.name))
+            .unwrap()
+            .as_optional_float()
+            .into()
+    }
+}
+
 pub enum CarverOrPopulator {
     Carver(Box<dyn Carver>),
     Populator(Populator),

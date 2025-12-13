@@ -72,9 +72,36 @@ impl From<FieldsInProgress<'_>> for ResponseValue {
     }
 }
 
-impl From<Vec<FieldsInProgress<'_>>> for ResponseValue {
-    fn from(fields_in_progress: Vec<FieldsInProgress>) -> Self {
-        Self::List(fields_in_progress.into_iter().map(Into::into).collect())
+impl From<bool> for ResponseValue {
+    fn from(value: bool) -> Self {
+        Self::Boolean(value)
+    }
+}
+
+impl From<i32> for ResponseValue {
+    fn from(value: i32) -> Self {
+        Self::Int(value)
+    }
+}
+
+impl From<f64> for ResponseValue {
+    fn from(value: f64) -> Self {
+        Self::Float(value)
+    }
+}
+
+impl<TInner: Into<ResponseValue>> From<Option<TInner>> for ResponseValue {
+    fn from(value: Option<TInner>) -> Self {
+        match value {
+            None => Self::Null,
+            Some(value) => value.into(),
+        }
+    }
+}
+
+impl<TInner: Into<ResponseValue>> From<Vec<TInner>> for ResponseValue {
+    fn from(value: Vec<TInner>) -> Self {
+        Self::List(value.into_iter().map(Into::into).collect())
     }
 }
 

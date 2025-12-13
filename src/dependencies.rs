@@ -10,6 +10,7 @@ pub enum DependencyType {
     String,
     ListOfIds,
     ListOfStrings,
+    OptionalFloat,
 }
 
 pub struct ExternalDependency {
@@ -112,6 +113,8 @@ pub enum DependencyValue {
     Id(Id),
     String(String),
     List(Vec<DependencyValue>),
+    Float(f64),
+    OptionalFloat(Option<f64>),
 }
 
 impl DependencyValue {
@@ -133,6 +136,20 @@ impl DependencyValue {
         match self {
             Self::List(values) => values,
             _ => panic!("Expected list"),
+        }
+    }
+
+    pub fn as_float(&self) -> f64 {
+        match self {
+            Self::Float(value) => *value,
+            _ => panic!("Expected float"),
+        }
+    }
+
+    pub fn as_optional_float(&self) -> Option<f64> {
+        match self {
+            Self::OptionalFloat(value) => *value,
+            _ => panic!("Expected optional float"),
         }
     }
 }

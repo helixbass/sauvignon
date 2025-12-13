@@ -39,9 +39,10 @@ pub use crate::request::{
     OperationDefinition, OperationDefinitionBuilder, Request, Selection, Value,
 };
 pub use crate::resolve::{
-    Carver, CarverOrPopulator, FieldResolver, Populator, PopulatorInterface, PopulatorList,
-    PopulatorListInterface, StringCarver, TypeDepluralizer, UnionOrInterfaceTypePopulator,
-    UnionOrInterfaceTypePopulatorList, ValuePopulator, ValuePopulatorList, ValuesPopulator,
+    Carver, CarverOrPopulator, FieldResolver, OptionalFloatCarver, Populator, PopulatorInterface,
+    PopulatorList, PopulatorListInterface, StringCarver, TypeDepluralizer,
+    UnionOrInterfaceTypePopulator, UnionOrInterfaceTypePopulatorList, ValuePopulator,
+    ValuePopulatorList, ValuesPopulator,
 };
 pub use crate::response::{
     fields_in_progress_new, FieldsInProgress, InProgress, InProgressRecursing,
@@ -51,7 +52,7 @@ pub use crate::response::{
 pub use crate::schema::{Schema, TypeOrUnionOrInterface, ValidationError};
 pub use crate::string::singularize;
 pub use crate::types::{
-    builtin_types, string_type, BuiltInScalarType, DummyUnionTypenameField, Enum,
+    builtin_types, float_type, string_type, BuiltInScalarType, DummyUnionTypenameField, Enum,
     Field as TypeField, FieldBuilder as TypeFieldBuilder, FieldInterface, Interface,
     InterfaceBuilder, InterfaceField, ObjectType, ObjectTypeBuilder, Param, ScalarType, StringType,
     Type, TypeFull, TypeInterface, TypeOrInterfaceField, Union,

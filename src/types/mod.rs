@@ -148,6 +148,7 @@ impl TypeInterface for ScalarType {
 
 pub enum BuiltInScalarType {
     String(StringType),
+    Float(FloatType),
 }
 
 impl TypeInterface for BuiltInScalarType {
@@ -169,6 +170,20 @@ impl StringType {
 impl TypeInterface for StringType {
     fn name(&self) -> &str {
         "String"
+    }
+}
+
+pub struct FloatType {}
+
+impl FloatType {
+    pub fn new() -> Self {
+        Self {}
+    }
+}
+
+impl TypeInterface for FloatType {
+    fn name(&self) -> &str {
+        "Float"
     }
 }
 
@@ -264,6 +279,7 @@ pub trait FieldInterface {
 pub fn builtin_types() -> HashMap<String, Type> {
     [
         ("String".to_owned(), string_type()),
+        ("Float".to_owned(), float_type()),
         ("__Type".to_owned(), introspection_type_type()),
     ]
     .into_iter()
@@ -273,6 +289,12 @@ pub fn builtin_types() -> HashMap<String, Type> {
 pub fn string_type() -> Type {
     Type::Scalar(ScalarType::BuiltIn(BuiltInScalarType::String(
         StringType::new(),
+    )))
+}
+
+pub fn float_type() -> Type {
+    Type::Scalar(ScalarType::BuiltIn(BuiltInScalarType::Float(
+        FloatType::new(),
     )))
 }
 
