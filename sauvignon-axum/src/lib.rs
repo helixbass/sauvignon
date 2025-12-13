@@ -1,3 +1,4 @@
+use std::future;
 use std::sync::Arc;
 
 pub use axum;
@@ -5,7 +6,7 @@ pub use axum;
 use axum::{
     extract::{FromRequest, Request},
     http::StatusCode,
-    response::{IntoResponse, Response as AxumResponse},
+    response::{Html, IntoResponse, Response as AxumResponse},
     Extension, Json,
 };
 use sauvignon::{Response, Schema};
@@ -52,4 +53,21 @@ impl IntoResponse for GraphQLResponse {
     fn into_response(self) -> AxumResponse {
         Json(self.0).into_response()
     }
+}
+
+pub fn graphiql(graphql_path: &str) -> impl FnOnce() -> future::Ready<Html<String>> + Clone + Send {
+    let html = Html(graphiql_html(graphql_path));
+
+    || future::ready(html)
+}
+
+fn graphiql_html(graphql_path: &str) -> String {
+    include_str!("../graphiql.html").replace(
+        "<!-- inject -->",
+        &format!(
+            r#"
+    const GRAPHQL_PATH = '{graphql_path}';
+            "#
+        ),
+    )
 }
