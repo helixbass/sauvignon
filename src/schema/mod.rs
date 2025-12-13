@@ -605,7 +605,7 @@ fn progress_fields<'a>(
     fields_in_progress: FieldsInProgress<'a>,
     db_pool: &'a Pool<Postgres>,
     schema: &'a Schema,
-) -> Pin<Box<dyn Future<Output = (bool, FieldsInProgress<'a>)> + 'a>> {
+) -> Pin<Box<dyn Future<Output = (bool, FieldsInProgress<'a>)> + 'a + Send>> {
     Box::pin(async move {
         let is_done = fields_in_progress
             .values()
