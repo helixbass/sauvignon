@@ -828,7 +828,7 @@ async fn populate_internal_dependencies(
                             DependencyValue::String(column_value)
                         }
                         // TODO: add test (in this repo vs in swapi-sauvignon)
-                        // for optional float column
+                        // for optional int column
                         DependencyType::OptionalInt => {
                             // TODO: should check that table names and column names can never be SQL injection?
                             let query = format!(
@@ -858,6 +858,22 @@ async fn populate_internal_dependencies(
                                 .await
                                 .unwrap();
                             DependencyValue::OptionalFloat(column_value)
+                        }
+                        // TODO: add test (in this repo vs in swapi-sauvignon)
+                        // for optional string column
+                        DependencyType::OptionalString => {
+                            // TODO: should check that table names and column names can never be SQL injection?
+                            let query = format!(
+                                "SELECT {} FROM {} WHERE id = $1",
+                                column_getter.column_name, column_getter.table_name
+                            );
+                            let (column_value,): (Option<String>,) = sqlx::query_as(&query)
+                                .bind(row_id)
+                                .fetch_one(db_pool)
+                                .instrument(trace_span!("fetch optional string column"))
+                                .await
+                                .unwrap();
+                            DependencyValue::OptionalString(column_value)
                         }
                         _ => unimplemented!(),
                     }

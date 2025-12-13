@@ -12,6 +12,7 @@ pub enum DependencyType {
     ListOfStrings,
     OptionalInt,
     OptionalFloat,
+    OptionalString,
 }
 
 pub struct ExternalDependency {
@@ -117,6 +118,7 @@ pub enum DependencyValue {
     Float(f64),
     OptionalInt(Option<i32>),
     OptionalFloat(Option<f64>),
+    OptionalString(Option<String>),
 }
 
 impl DependencyValue {
@@ -159,6 +161,13 @@ impl DependencyValue {
         match self {
             Self::OptionalFloat(value) => *value,
             _ => panic!("Expected optional float"),
+        }
+    }
+
+    pub fn as_optional_string(&self) -> Option<&str> {
+        match self {
+            Self::OptionalString(value) => value.as_deref(),
+            _ => panic!("Expected optional string"),
         }
     }
 }

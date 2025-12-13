@@ -14,6 +14,7 @@ mod schema;
 mod string;
 mod types;
 
+pub use heck;
 pub use indexmap::{IndexMap, IndexSet};
 pub use strum;
 
@@ -39,10 +40,10 @@ pub use crate::request::{
     OperationDefinition, OperationDefinitionBuilder, Request, Selection, Value,
 };
 pub use crate::resolve::{
-    Carver, CarverOrPopulator, FieldResolver, OptionalFloatCarver, OptionalIntCarver, Populator,
-    PopulatorInterface, PopulatorList, PopulatorListInterface, StringCarver, TypeDepluralizer,
-    UnionOrInterfaceTypePopulator, UnionOrInterfaceTypePopulatorList, ValuePopulator,
-    ValuePopulatorList, ValuesPopulator,
+    Carver, CarverOrPopulator, FieldResolver, OptionalEnumValueCarver, OptionalFloatCarver,
+    OptionalIntCarver, Populator, PopulatorInterface, PopulatorList, PopulatorListInterface,
+    StringCarver, TypeDepluralizer, UnionOrInterfaceTypePopulator,
+    UnionOrInterfaceTypePopulatorList, ValuePopulator, ValuePopulatorList, ValuesPopulator,
 };
 pub use crate::response::{
     fields_in_progress_new, FieldsInProgress, InProgress, InProgressRecursing,

@@ -359,6 +359,31 @@ impl ToTokens for FieldProcessed {
                         .unwrap()
                 }
             }
+            FieldValueProcessed::OptionalEnumColumn {
+                table_name,
+                type_,
+            } => {
+                let self_column_name = name.to_snake_case();
+                quote! {
+                    ::sauvignon::TypeFieldBuilder::default()
+                        .name(#name)
+                        .type_(::sauvignon::TypeFull::Type(#type_.to_owned()))
+                        .resolver(::sauvignon::FieldResolver::new(
+                            vec![::sauvignon::ExternalDependency::new("id".to_owned(), ::sauvignon::DependencyType::Id)],
+                            vec![::sauvignon::InternalDependency::new(
+                                #self_column_name.to_owned(),
+                                ::sauvignon::DependencyType::OptionalString,
+                                ::sauvignon::InternalDependencyResolver::ColumnGetter(::sauvignon::ColumnGetter::new(
+                                    #table_name.to_owned(),
+                                    #self_column_name.to_owned(),
+                                )),
+                            )],
+                            ::sauvignon::CarverOrPopulator::Carver(::std::boxed::Box::new(::sauvignon::OptionalEnumValueCarver::new(#self_column_name.to_owned()))),
+                        ))
+                        .build()
+                        .unwrap()
+                }
+            }
             FieldValueProcessed::Object {
                 type_,
                 internal_dependencies,
@@ -578,6 +603,9 @@ enum FieldValue {
     StringColumn,
     OptionalIntColumn,
     OptionalFloatColumn,
+    OptionalEnumColumn {
+        type_: String,
+    },
     Object {
         type_: TypeFull,
         internal_dependencies: Option<Vec<InternalDependency>>,
@@ -611,6 +639,10 @@ impl FieldValue {
             },
             Self::OptionalFloatColumn => FieldValueProcessed::OptionalFloatColumn {
                 table_name: pluralize(&parent_type_name.unwrap().to_snake_case()),
+            },
+            Self::OptionalEnumColumn { type_ } => FieldValueProcessed::OptionalEnumColumn {
+                table_name: pluralize(&parent_type_name.unwrap().to_snake_case()),
+                type_,
             },
             Self::Object {
                 type_,
@@ -690,6 +722,29 @@ impl Parse for FieldValue {
                         return Err(arguments_content.error("Not expecting argument values"));
                     }
                     Ok(Self::OptionalFloatColumn)
+                }
+                "optional_enum_column" => {
+                    let arguments_content;
+                    parenthesized!(arguments_content in input);
+                    let mut type_: Option<String> = _d();
+                    while !arguments_content.is_empty() {
+                        let key = parse_ident_or_type(&arguments_content)?;
+                        arguments_content.parse::<Token![=>]>()?;
+                        match &*key.to_string() {
+                            "type" => {
+                                type_ = Some(arguments_content.parse::<Ident>()?.to_string());
+                            }
+                            key => {
+                                return Err(
+                                    arguments_content.error(format!("Unexpected key `{key}`"))
+                                )
+                            }
+                        }
+                        arguments_content.parse::<Option<Token![,]>>()?;
+                    }
+                    Ok(Self::OptionalEnumColumn {
+                        type_: type_.expect("Expected `type`"),
+                    })
                 }
                 "belongs_to" => {
                     let arguments_content;
@@ -839,6 +894,10 @@ enum FieldValueProcessed {
         table_name: String,
     },
     OptionalFloatColumn {
+        table_name: String,
+    },
+    OptionalEnumColumn {
+        type_: String,
         table_name: String,
     },
     Object {
@@ -1429,9 +1488,14 @@ impl ToTokens for Enum {
         let name = &self.name;
         let name_str = name.to_string();
         let variants = match self.variants.as_ref() {
+            // TODO: seems weird whether to use ::sauvignon::strum::... vs
+            // ::strum::... here, I think I had to not use sauvignon::strum
+            // only on swapi-sauvignon because maybe the strum enum macros
+            // were generating something weird or something?
             None => quote! {{
-                use strum::VariantNames;
-                #name::VARIANTS.iter().map(|variant| (*variant).to_owned())
+                use ::strum::VariantNames;
+                use ::sauvignon::heck::ToShoutySnakeCase;
+                #name::VARIANTS.iter().map(|variant| variant.to_shouty_snake_case())
             }},
             Some(variants) => {
                 let variants = variants
