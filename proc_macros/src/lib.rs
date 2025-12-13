@@ -290,6 +290,7 @@ impl ToTokens for FieldProcessed {
             FieldValueProcessed::StringColumn {
                 table_name,
             } => {
+                let self_column_name = name.to_snake_case();
                 quote! {
                     ::sauvignon::TypeFieldBuilder::default()
                         .name(#name)
@@ -297,14 +298,14 @@ impl ToTokens for FieldProcessed {
                         .resolver(::sauvignon::FieldResolver::new(
                             vec![::sauvignon::ExternalDependency::new("id".to_owned(), ::sauvignon::DependencyType::Id)],
                             vec![::sauvignon::InternalDependency::new(
-                                #name.to_owned(),
+                                #self_column_name.to_owned(),
                                 ::sauvignon::DependencyType::String,
                                 ::sauvignon::InternalDependencyResolver::ColumnGetter(::sauvignon::ColumnGetter::new(
                                     #table_name.to_owned(),
-                                    #name.to_owned(),
+                                    #self_column_name.to_owned(),
                                 )),
                             )],
-                            ::sauvignon::CarverOrPopulator::Carver(::std::boxed::Box::new(::sauvignon::StringCarver::new(#name.to_owned()))),
+                            ::sauvignon::CarverOrPopulator::Carver(::std::boxed::Box::new(::sauvignon::StringCarver::new(#self_column_name.to_owned()))),
                         ))
                         .build()
                         .unwrap()
@@ -313,6 +314,7 @@ impl ToTokens for FieldProcessed {
             FieldValueProcessed::OptionalFloatColumn {
                 table_name,
             } => {
+                let self_column_name = name.to_snake_case();
                 quote! {
                     ::sauvignon::TypeFieldBuilder::default()
                         .name(#name)
@@ -320,14 +322,14 @@ impl ToTokens for FieldProcessed {
                         .resolver(::sauvignon::FieldResolver::new(
                             vec![::sauvignon::ExternalDependency::new("id".to_owned(), ::sauvignon::DependencyType::Id)],
                             vec![::sauvignon::InternalDependency::new(
-                                #name.to_owned(),
+                                #self_column_name.to_owned(),
                                 ::sauvignon::DependencyType::OptionalFloat,
                                 ::sauvignon::InternalDependencyResolver::ColumnGetter(::sauvignon::ColumnGetter::new(
                                     #table_name.to_owned(),
-                                    #name.to_owned(),
+                                    #self_column_name.to_owned(),
                                 )),
                             )],
-                            ::sauvignon::CarverOrPopulator::Carver(::std::boxed::Box::new(::sauvignon::OptionalFloatCarver::new(#name.to_owned()))),
+                            ::sauvignon::CarverOrPopulator::Carver(::std::boxed::Box::new(::sauvignon::OptionalFloatCarver::new(#self_column_name.to_owned()))),
                         ))
                         .build()
                         .unwrap()
