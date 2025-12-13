@@ -827,6 +827,8 @@ async fn populate_internal_dependencies(
                                 .unwrap();
                             DependencyValue::String(column_value)
                         }
+                        // TODO: add test (in this repo vs in swapi-sauvignon)
+                        // for optional float column
                         DependencyType::OptionalFloat => {
                             // TODO: should check that table names and column names can never be SQL injection?
                             let query = format!(
@@ -839,10 +841,7 @@ async fn populate_internal_dependencies(
                                 .instrument(trace_span!("fetch string column"))
                                 .await
                                 .unwrap();
-                            match column_value {
-                                None => DependencyValue::Null,
-                                Some(column_value) => DependencyValue::Float(column_value),
-                            }
+                            DependencyValue::OptionalFloat(column_value)
                         }
                         _ => unimplemented!(),
                     }

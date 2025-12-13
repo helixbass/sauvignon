@@ -155,6 +155,7 @@ impl TypeInterface for BuiltInScalarType {
     fn name(&self) -> &str {
         match self {
             Self::String(type_) => type_.name(),
+            Self::Float(type_) => type_.name(),
         }
     }
 }
