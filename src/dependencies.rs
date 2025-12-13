@@ -10,6 +10,7 @@ pub enum DependencyType {
     String,
     ListOfIds,
     ListOfStrings,
+    OptionalInt,
     OptionalFloat,
 }
 
@@ -114,6 +115,7 @@ pub enum DependencyValue {
     String(String),
     List(Vec<DependencyValue>),
     Float(f64),
+    OptionalInt(Option<i32>),
     OptionalFloat(Option<f64>),
 }
 
@@ -143,6 +145,13 @@ impl DependencyValue {
         match self {
             Self::Float(value) => *value,
             _ => panic!("Expected float"),
+        }
+    }
+
+    pub fn as_optional_int(&self) -> Option<i32> {
+        match self {
+            Self::OptionalInt(value) => *value,
+            _ => panic!("Expected optional int"),
         }
     }
 

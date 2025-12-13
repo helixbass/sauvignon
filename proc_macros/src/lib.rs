@@ -311,6 +311,30 @@ impl ToTokens for FieldProcessed {
                         .unwrap()
                 }
             }
+            FieldValueProcessed::OptionalIntColumn {
+                table_name,
+            } => {
+                let self_column_name = name.to_snake_case();
+                quote! {
+                    ::sauvignon::TypeFieldBuilder::default()
+                        .name(#name)
+                        .type_(::sauvignon::TypeFull::Type("Int".to_owned()))
+                        .resolver(::sauvignon::FieldResolver::new(
+                            vec![::sauvignon::ExternalDependency::new("id".to_owned(), ::sauvignon::DependencyType::Id)],
+                            vec![::sauvignon::InternalDependency::new(
+                                #self_column_name.to_owned(),
+                                ::sauvignon::DependencyType::OptionalInt,
+                                ::sauvignon::InternalDependencyResolver::ColumnGetter(::sauvignon::ColumnGetter::new(
+                                    #table_name.to_owned(),
+                                    #self_column_name.to_owned(),
+                                )),
+                            )],
+                            ::sauvignon::CarverOrPopulator::Carver(::std::boxed::Box::new(::sauvignon::OptionalIntCarver::new(#self_column_name.to_owned()))),
+                        ))
+                        .build()
+                        .unwrap()
+                }
+            }
             FieldValueProcessed::OptionalFloatColumn {
                 table_name,
             } => {
@@ -552,6 +576,7 @@ impl ToTokens for FieldProcessed {
 
 enum FieldValue {
     StringColumn,
+    OptionalIntColumn,
     OptionalFloatColumn,
     Object {
         type_: TypeFull,
@@ -579,6 +604,9 @@ impl FieldValue {
     ) -> FieldValueProcessed {
         match self {
             Self::StringColumn => FieldValueProcessed::StringColumn {
+                table_name: pluralize(&parent_type_name.unwrap().to_snake_case()),
+            },
+            Self::OptionalIntColumn => FieldValueProcessed::OptionalIntColumn {
                 table_name: pluralize(&parent_type_name.unwrap().to_snake_case()),
             },
             Self::OptionalFloatColumn => FieldValueProcessed::OptionalFloatColumn {
@@ -646,6 +674,14 @@ impl Parse for FieldValue {
                         return Err(arguments_content.error("Not expecting argument values"));
                     }
                     Ok(Self::StringColumn)
+                }
+                "optional_int_column" => {
+                    let arguments_content;
+                    parenthesized!(arguments_content in input);
+                    if !arguments_content.is_empty() {
+                        return Err(arguments_content.error("Not expecting argument values"));
+                    }
+                    Ok(Self::OptionalIntColumn)
                 }
                 "optional_float_column" => {
                     let arguments_content;
@@ -797,6 +833,9 @@ impl Parse for FieldValue {
 
 enum FieldValueProcessed {
     StringColumn {
+        table_name: String,
+    },
+    OptionalIntColumn {
         table_name: String,
     },
     OptionalFloatColumn {
