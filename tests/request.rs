@@ -664,3 +664,35 @@ async fn test_has_many() {
     )
     .await;
 }
+
+#[tokio::test]
+async fn test_has_many_through() {
+    request_test(
+        r#"
+            {
+              actorKatie {
+                favoriteDesigners {
+                  name
+                }
+              }
+            }
+        "#,
+        r#"
+            {
+              "data": {
+                "actorKatie": {
+                  "favoriteDesigners": [
+                    {
+                      "name": "Proenza Schouler"
+                    },
+                    {
+                      "name": "Oscar de la Renta"
+                    }
+                  ]
+                }
+              }
+            }
+        "#,
+    )
+    .await;
+}
