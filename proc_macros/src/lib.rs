@@ -353,6 +353,7 @@ impl ToTokens for FieldProcessed {
                                 ::sauvignon::InternalDependencyResolver::ColumnGetter(::sauvignon::ColumnGetter::new(
                                     #table_name.to_owned(),
                                     #self_column_name.to_owned(),
+                                    None,
                                 )),
                             )],
                             ::sauvignon::CarverOrPopulator::Carver(::std::boxed::Box::new(::sauvignon::OptionalFloatCarver::new(#self_column_name.to_owned()))),
@@ -391,15 +392,18 @@ impl ToTokens for FieldProcessed {
                                             fn massage(
                                                 &self,
                                                 value: ::sqlx::postgres::PgValueRef<'_>,
-                                            ) -> Result<Option<String>, Box<dyn error::Error + Sync + Send>> {
-                                                <#type_ as ::sqlx::Decode>::decode(value).map(|enum_value| {
-                                                    use ::sauvignon::heck::ToShoutySnakeCase;
-                                                    format!("{enum_value}").to_shouty_snake_case()
-                                                })
+                                            ) -> Result<Option<String>, Box<dyn ::std::error::Error + Sync + Send>> {
+                                                <::std::option::Option<#type_> as ::sqlx::Decode<::sqlx::Postgres>>::decode(value)
+                                                    .map(|option_enum_value| {
+                                                        option_enum_value.map(|enum_value| {
+                                                            use ::sauvignon::heck::ToShoutySnakeCase;
+                                                            format!("{enum_value}").to_shouty_snake_case()
+                                                        })
+                                                    })
                                             }
                                         }
-                                    }
-                                    Some(::sauvignon::ColumnValueMassager::OptionalString(::std::boxed::Box::new(#massager_struct_name)))
+                                        Some(::sauvignon::ColumnValueMassager::OptionalString(::std::boxed::Box::new(#massager_struct_name)))
+                                    },
                                 )),
                             )],
                             ::sauvignon::CarverOrPopulator::Carver(::std::boxed::Box::new(::sauvignon::OptionalEnumValueCarver::new(#self_column_name.to_owned()))),
