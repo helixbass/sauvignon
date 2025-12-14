@@ -1061,6 +1061,9 @@ async fn populate_internal_dependencies(
                                             .collect(),
                                     )
                                 }
+                                // TODO: add test (in this repo vs in swapi-sauvignon)
+                                // for has_many(through => ...) of scalar enum type
+                                // (eg planet_climates in swapi-sauvignon)
                                 Some(massager) => {
                                     let massager = massager.as_string();
                                     let mut query = sqlx::query(&query);
