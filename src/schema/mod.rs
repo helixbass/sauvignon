@@ -14,10 +14,10 @@ use crate::{
     DependencyType, DependencyValue, Document, DummyUnionTypenameField, Error,
     ExternalDependencyValues, FieldPlan, FieldResolver, FieldsInProgress, Id, InProgress,
     InProgressRecursing, InProgressRecursingList, IndexMap, Interface, InternalDependency,
-    InternalDependencyResolver, InternalDependencyValues, OperationType, Populator,
-    PopulatorInterface, PopulatorList, PopulatorListInterface, PositionsTracker, QueryPlan,
-    Request, Response, ResponseValue, ResponseValueOrInProgress, Result as SauvignonResult, Type,
-    TypeInterface, Union, Value,
+    InternalDependencyResolver, InternalDependencyValues, OperationType, OptionalPopulator,
+    OptionalPopulatorInterface, Populator, PopulatorInterface, PopulatorList,
+    PopulatorListInterface, PositionsTracker, QueryPlan, Request, Response, ResponseValue,
+    ResponseValueOrInProgress, Result as SauvignonResult, Type, TypeInterface, Union, Value,
 };
 
 mod validation;
@@ -723,6 +723,15 @@ fn progress_fields<'a>(
                                     ),
                                 )
                             }
+                            CarverOrPopulator::OptionalPopulator(populator) => {
+                                to_recursing_after_optionally_populating(
+                                    &external_dependency_values,
+                                    &internal_dependency_values,
+                                    populator,
+                                    field_plan.field_type.type_.name(),
+                                    field_plan,
+                                )
+                            }
                         }
                     }
                     ResponseValueOrInProgress::InProgressRecursing(InProgressRecursing {
@@ -1094,6 +1103,38 @@ fn to_recursing_after_populating<'a>(
     field_plan: &'a FieldPlan<'a>,
 ) -> ResponseValueOrInProgress<'a> {
     let populated = populator.populate(&external_dependency_values, &internal_dependency_values);
+    let fields_in_progress = fields_in_progress_new(
+        &field_plan.selection_set_by_type.as_ref().unwrap()[resolved_concrete_type_name],
+        &populated,
+    );
+    ResponseValueOrInProgress::InProgressRecursing(InProgressRecursing::new(
+        field_plan,
+        populated,
+        fields_in_progress,
+    ))
+}
+
+#[instrument(
+    level = "trace",
+    skip(
+        external_dependency_values,
+        internal_dependency_values,
+        populator,
+        field_plan
+    )
+)]
+fn to_recursing_after_optionally_populating<'a>(
+    external_dependency_values: &ExternalDependencyValues,
+    internal_dependency_values: &InternalDependencyValues,
+    populator: &OptionalPopulator,
+    resolved_concrete_type_name: &str,
+    field_plan: &'a FieldPlan<'a>,
+) -> ResponseValueOrInProgress<'a> {
+    let Some(populated) =
+        populator.populate(&external_dependency_values, &internal_dependency_values)
+    else {
+        return ResponseValueOrInProgress::ResponseValue(ResponseValue::Null);
+    };
     let fields_in_progress = fields_in_progress_new(
         &field_plan.selection_set_by_type.as_ref().unwrap()[resolved_concrete_type_name],
         &populated,
