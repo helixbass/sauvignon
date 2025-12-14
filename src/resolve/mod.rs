@@ -237,13 +237,13 @@ impl Carver for IdCarver {
         external_dependencies: &ExternalDependencyValues,
         internal_dependencies: &InternalDependencyValues,
     ) -> ResponseValue {
-        ResponseValue::Int(
+        ResponseValue::String(
             internal_dependencies
                 .get(&self.name)
                 .or_else(|| external_dependencies.get(&self.name))
                 .unwrap()
                 .as_id()
-                .clone(),
+                .to_string(),
         )
     }
 }
