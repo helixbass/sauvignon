@@ -590,6 +590,9 @@ fn maybe_list_of_ids_internal_dependencies(
             if !column_getter_list.wheres.is_empty() {
                 return None;
             }
+            if !column_getter_list.massager.is_none() {
+                return None;
+            }
             if pluralize(&column_getter_list.column_name) != internal_dependency.name {
                 return None;
             }
@@ -964,48 +967,139 @@ async fn populate_internal_dependencies(
                     }
                 }
                 InternalDependencyResolver::LiteralValue(literal_value) => literal_value.0.clone(),
+                // TODO: figure out whether to update any other branches here to use massager
                 InternalDependencyResolver::ColumnGetterList(column_getter_list) => {
-                    // TODO: same as above, sql injection?
-                    let query = format!(
-                        "SELECT {} FROM {}{}",
-                        column_getter_list.column_name,
-                        column_getter_list.table_name,
-                        if column_getter_list.wheres.is_empty() {
-                            "".to_owned()
-                        } else {
-                            format!(
-                                " WHERE {}",
-                                column_getter_list
-                                    .wheres
-                                    .iter()
-                                    .enumerate()
-                                    .map(|(index, where_)| {
-                                        format!("{} = ${}", where_.column_name, index + 1)
-                                    })
-                                    .collect::<String>()
+                    match internal_dependency.type_ {
+                        DependencyType::ListOfIds => {
+                            // TODO: same as above, sql injection?
+                            let query = format!(
+                                "SELECT {} FROM {}{}",
+                                column_getter_list.column_name,
+                                column_getter_list.table_name,
+                                if column_getter_list.wheres.is_empty() {
+                                    "".to_owned()
+                                } else {
+                                    format!(
+                                        " WHERE {}",
+                                        column_getter_list
+                                            .wheres
+                                            .iter()
+                                            .enumerate()
+                                            .map(|(index, where_)| {
+                                                format!("{} = ${}", where_.column_name, index + 1)
+                                            })
+                                            .collect::<String>()
+                                    )
+                                }
+                            );
+                            let mut query = sqlx::query_as::<_, (Id,)>(&query);
+                            for _where in &column_getter_list.wheres {
+                                // TODO: this is punting on where's specifying
+                                // values
+                                query = match external_dependency_values.get("id").unwrap() {
+                                    DependencyValue::Id(id) => query.bind(id),
+                                    DependencyValue::String(str) => query.bind(str),
+                                    _ => unimplemented!(),
+                                };
+                            }
+                            let rows = query
+                                .fetch_all(db_pool)
+                                .instrument(trace_span!("fetch id column list"))
+                                .await
+                                .unwrap();
+                            DependencyValue::List(
+                                rows.into_iter()
+                                    .map(|(column_value,)| DependencyValue::Id(column_value))
+                                    .collect(),
                             )
                         }
-                    );
-                    let mut query = sqlx::query_as::<_, (Id,)>(&query);
-                    for _where in &column_getter_list.wheres {
-                        // TODO: this is punting on where's specifying
-                        // values
-                        query = match external_dependency_values.get("id").unwrap() {
-                            DependencyValue::Id(id) => query.bind(id),
-                            DependencyValue::String(str) => query.bind(str),
-                            _ => unimplemented!(),
-                        };
+                        DependencyType::ListOfStrings => {
+                            // TODO: same as above, sql injection?
+                            let query = format!(
+                                "SELECT {} FROM {}{}",
+                                column_getter_list.column_name,
+                                column_getter_list.table_name,
+                                if column_getter_list.wheres.is_empty() {
+                                    "".to_owned()
+                                } else {
+                                    format!(
+                                        " WHERE {}",
+                                        column_getter_list
+                                            .wheres
+                                            .iter()
+                                            .enumerate()
+                                            .map(|(index, where_)| {
+                                                format!("{} = ${}", where_.column_name, index + 1)
+                                            })
+                                            .collect::<String>()
+                                    )
+                                }
+                            );
+                            match column_getter_list.massager.as_ref() {
+                                None => {
+                                    let mut query = sqlx::query_as::<_, (String,)>(&query);
+                                    for _where in &column_getter_list.wheres {
+                                        // TODO: this is punting on where's specifying
+                                        // values
+                                        query = match external_dependency_values.get("id").unwrap()
+                                        {
+                                            DependencyValue::Id(id) => query.bind(id),
+                                            DependencyValue::String(str) => query.bind(str),
+                                            _ => unimplemented!(),
+                                        };
+                                    }
+                                    let rows = query
+                                        .fetch_all(db_pool)
+                                        .instrument(trace_span!("fetch string column list"))
+                                        .await
+                                        .unwrap();
+                                    DependencyValue::List(
+                                        rows.into_iter()
+                                            .map(|(column_value,)| {
+                                                DependencyValue::String(column_value)
+                                            })
+                                            .collect(),
+                                    )
+                                }
+                                Some(massager) => {
+                                    let massager = massager.as_string();
+                                    let mut query = sqlx::query(&query);
+                                    for _where in &column_getter_list.wheres {
+                                        // TODO: this is punting on where's specifying
+                                        // values
+                                        query = match external_dependency_values.get("id").unwrap()
+                                        {
+                                            DependencyValue::Id(id) => query.bind(id),
+                                            DependencyValue::String(str) => query.bind(str),
+                                            _ => unimplemented!(),
+                                        };
+                                    }
+                                    let rows = query
+                                        .fetch_all(db_pool)
+                                        .instrument(trace_span!("fetch string column list"))
+                                        .await
+                                        .unwrap();
+                                    DependencyValue::List(
+                                        rows.into_iter()
+                                            .map(|row| {
+                                                DependencyValue::String(
+                                                    massager
+                                                        .massage(
+                                                            row.try_get_raw(
+                                                                &*column_getter_list.column_name,
+                                                            )
+                                                            .unwrap(),
+                                                        )
+                                                        .unwrap(),
+                                                )
+                                            })
+                                            .collect(),
+                                    )
+                                }
+                            }
+                        }
+                        _ => unreachable!(),
                     }
-                    let rows = query
-                        .fetch_all(db_pool)
-                        .instrument(trace_span!("fetch column list"))
-                        .await
-                        .unwrap();
-                    DependencyValue::List(
-                        rows.into_iter()
-                            .map(|(column_value,)| DependencyValue::Id(column_value))
-                            .collect(),
-                    )
                 }
                 InternalDependencyResolver::IntrospectionTypeInterfaces => {
                     let _ = trace_span!("resolve introspection type interfaces").entered();

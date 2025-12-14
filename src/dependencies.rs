@@ -118,14 +118,21 @@ pub struct ColumnGetterList {
     pub table_name: String,
     pub column_name: String,
     pub wheres: Vec<Where>,
+    pub massager: Option<ColumnValueMassager>,
 }
 
 impl ColumnGetterList {
-    pub fn new(table_name: String, column_name: String, wheres: Vec<Where>) -> Self {
+    pub fn new(
+        table_name: String,
+        column_name: String,
+        wheres: Vec<Where>,
+        massager: Option<ColumnValueMassager>,
+    ) -> Self {
         Self {
             table_name,
             column_name,
             wheres,
+            massager,
         }
     }
 }
