@@ -811,6 +811,8 @@ async fn populate_internal_dependencies(
                         _ => unreachable!(),
                     };
                     match internal_dependency.type_ {
+                        // TODO: add test (in this repo vs in swapi-sauvignon)
+                        // for id_column()
                         DependencyType::Id => {
                             // TODO: should check that table names and column names can never be SQL injection?
                             let query = format!(

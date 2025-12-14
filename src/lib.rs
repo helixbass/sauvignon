@@ -41,7 +41,7 @@ pub use crate::request::{
     OperationDefinition, OperationDefinitionBuilder, Request, Selection, Value,
 };
 pub use crate::resolve::{
-    Carver, CarverOrPopulator, EnumValueCarver, FieldResolver, OptionalEnumValueCarver,
+    Carver, CarverOrPopulator, EnumValueCarver, FieldResolver, IdCarver, OptionalEnumValueCarver,
     OptionalFloatCarver, OptionalIntCarver, OptionalPopulator, OptionalPopulatorInterface,
     OptionalValuePopulator, OptionalValuesPopulator, Populator, PopulatorInterface, PopulatorList,
     PopulatorListInterface, StringCarver, TimestampCarver, TypeDepluralizer,
@@ -56,8 +56,8 @@ pub use crate::response::{
 pub use crate::schema::{Schema, TypeOrUnionOrInterface, ValidationError};
 pub use crate::string::singularize;
 pub use crate::types::{
-    builtin_types, float_type, string_type, BuiltInScalarType, DummyUnionTypenameField, Enum,
-    Field as TypeField, FieldBuilder as TypeFieldBuilder, FieldInterface, Interface,
+    builtin_types, float_type, id_type, string_type, BuiltInScalarType, DummyUnionTypenameField,
+    Enum, Field as TypeField, FieldBuilder as TypeFieldBuilder, FieldInterface, Interface,
     InterfaceBuilder, InterfaceField, ObjectType, ObjectTypeBuilder, Param, ScalarType, StringType,
     Type, TypeFull, TypeInterface, TypeOrInterfaceField, Union,
 };

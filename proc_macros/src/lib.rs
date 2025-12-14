@@ -485,6 +485,31 @@ impl ToTokens for FieldProcessed {
                         .unwrap()
                 }
             }
+            FieldValueProcessed::IdColumn {
+                table_name,
+            } => {
+                let self_column_name = name.to_snake_case();
+                quote! {
+                    ::sauvignon::TypeFieldBuilder::default()
+                        .name(#name)
+                        .type_(::sauvignon::TypeFull::Type("ID".to_owned()))
+                        .resolver(::sauvignon::FieldResolver::new(
+                            vec![::sauvignon::ExternalDependency::new("id".to_owned(), ::sauvignon::DependencyType::Id)],
+                            vec![::sauvignon::InternalDependency::new(
+                                #self_column_name.to_owned(),
+                                ::sauvignon::DependencyType::Id,
+                                ::sauvignon::InternalDependencyResolver::ColumnGetter(::sauvignon::ColumnGetter::new(
+                                    #table_name.to_owned(),
+                                    #self_column_name.to_owned(),
+                                    None,
+                                )),
+                            )],
+                            ::sauvignon::CarverOrPopulator::Carver(::std::boxed::Box::new(::sauvignon::IdCarver::new(#self_column_name.to_owned()))),
+                        ))
+                        .build()
+                        .unwrap()
+                }
+            }
             FieldValueProcessed::Object {
                 type_,
                 internal_dependencies,
@@ -743,6 +768,7 @@ enum FieldValue {
         type_: Ident,
     },
     TimestampColumn,
+    IdColumn,
     Object {
         type_: TypeFull,
         internal_dependencies: Option<Vec<InternalDependency>>,
@@ -787,6 +813,9 @@ impl FieldValue {
                 type_,
             },
             Self::TimestampColumn => FieldValueProcessed::TimestampColumn {
+                table_name: pluralize(&parent_type_name.unwrap().to_snake_case()),
+            },
+            Self::IdColumn => FieldValueProcessed::IdColumn {
                 table_name: pluralize(&parent_type_name.unwrap().to_snake_case()),
             },
             Self::Object {
@@ -926,6 +955,14 @@ impl Parse for FieldValue {
                         return Err(arguments_content.error("Not expecting argument values"));
                     }
                     Ok(Self::TimestampColumn)
+                }
+                "id_column" => {
+                    let arguments_content;
+                    parenthesized!(arguments_content in input);
+                    if !arguments_content.is_empty() {
+                        return Err(arguments_content.error("Not expecting argument values"));
+                    }
+                    Ok(Self::IdColumn)
                 }
                 // TODO: add tests for belongs_to optional: true
                 "belongs_to" => {
@@ -1092,6 +1129,9 @@ enum FieldValueProcessed {
         table_name: String,
     },
     TimestampColumn {
+        table_name: String,
+    },
+    IdColumn {
         table_name: String,
     },
     Object {

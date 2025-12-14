@@ -217,6 +217,37 @@ impl Carver for TimestampCarver {
     }
 }
 
+pub struct IdCarver {
+    pub name: String,
+}
+
+impl IdCarver {
+    pub fn new(name: String) -> Self {
+        Self { name }
+    }
+}
+
+impl Carver for IdCarver {
+    #[instrument(
+        level = "trace",
+        skip(self, external_dependencies, internal_dependencies)
+    )]
+    fn carve(
+        &self,
+        external_dependencies: &ExternalDependencyValues,
+        internal_dependencies: &InternalDependencyValues,
+    ) -> ResponseValue {
+        ResponseValue::Int(
+            internal_dependencies
+                .get(&self.name)
+                .or_else(|| external_dependencies.get(&self.name))
+                .unwrap()
+                .as_id()
+                .clone(),
+        )
+    }
+}
+
 pub enum CarverOrPopulator {
     Carver(Box<dyn Carver>),
     Populator(Populator),
