@@ -17,6 +17,7 @@ pub enum DependencyType {
     OptionalFloat,
     OptionalString,
     Timestamp,
+    OptionalId,
 }
 
 pub struct ExternalDependency {

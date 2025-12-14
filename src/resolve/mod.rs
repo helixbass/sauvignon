@@ -464,8 +464,12 @@ impl OptionalPopulatorInterface for OptionalValuesPopulator {
             })
             .collect::<Vec<_>>();
         assert!(
-            internal_dependency_values.iter().all(|(_, value)| value.is_none()) ||
-            internal_dependency_values.iter().all(|(_, value)| value.is_some())
+            internal_dependency_values
+                .iter()
+                .all(|(_, value)| value.is_none())
+                || internal_dependency_values
+                    .iter()
+                    .all(|(_, value)| value.is_some()),
             "Currently expecting all present or all missing"
         );
         if internal_dependency_values[0].1.is_none() {
@@ -481,7 +485,7 @@ impl OptionalPopulatorInterface for OptionalValuesPopulator {
             ret.insert(populated_key.clone(), internal_dependency_value)
                 .unwrap();
         }
-        ret
+        Some(ret)
     }
 }
 

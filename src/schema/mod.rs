@@ -943,6 +943,20 @@ async fn populate_internal_dependencies(
                                 .unwrap();
                             DependencyValue::Timestamp(column_value.to_jiff())
                         }
+                        DependencyType::OptionalId => {
+                            // TODO: should check that table names and column names can never be SQL injection?
+                            let query = format!(
+                                "SELECT {} FROM {} WHERE id = $1",
+                                column_getter.column_name, column_getter.table_name
+                            );
+                            let (column_value,): (Option<Id>,) = sqlx::query_as(&query)
+                                .bind(row_id)
+                                .fetch_one(db_pool)
+                                .instrument(trace_span!("fetch optional ID column"))
+                                .await
+                                .unwrap();
+                            DependencyValue::OptionalId(column_value)
+                        }
                         _ => unimplemented!(),
                     }
                 }

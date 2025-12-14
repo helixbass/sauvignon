@@ -570,34 +570,63 @@ impl ToTokens for FieldProcessed {
                 type_,
                 self_table_name,
                 polymorphic,
+                optional,
             } => {
                 let self_belongs_to_foreign_key_column_name =
                     format!("{}_id", name.to_snake_case());
                 match polymorphic {
-                    false => quote! {
-                        ::sauvignon::TypeFieldBuilder::default()
-                            .name(#name)
-                            .type_(::sauvignon::TypeFull::Type(#type_.to_owned()))
-                            .resolver(::sauvignon::FieldResolver::new(
-                                vec![::sauvignon::ExternalDependency::new("id".to_owned(), ::sauvignon::DependencyType::Id)],
-                                vec![::sauvignon::InternalDependency::new(
-                                    #self_belongs_to_foreign_key_column_name.to_owned(),
-                                    ::sauvignon::DependencyType::Id,
-                                    ::sauvignon::InternalDependencyResolver::ColumnGetter(::sauvignon::ColumnGetter::new(
-                                        #self_table_name.to_owned(),
-                                        #self_belongs_to_foreign_key_column_name.to_owned(),
-                                        None,
-                                    )),
-                                )],
-                                ::sauvignon::CarverOrPopulator::Populator(::sauvignon::ValuesPopulator::new([(
-                                    #self_belongs_to_foreign_key_column_name.to_owned(),
-                                    "id".to_owned(),
-                                )]).into()),
-                            ))
-                            .build()
-                            .unwrap()
+                    false => {
+                        match optional {
+                            false => quote! {
+                                ::sauvignon::TypeFieldBuilder::default()
+                                    .name(#name)
+                                    .type_(::sauvignon::TypeFull::NonNull(::std::boxed::Box::new(::sauvignon::TypeFull::Type(#type_.to_owned()))))
+                                    .resolver(::sauvignon::FieldResolver::new(
+                                        vec![::sauvignon::ExternalDependency::new("id".to_owned(), ::sauvignon::DependencyType::Id)],
+                                        vec![::sauvignon::InternalDependency::new(
+                                            #self_belongs_to_foreign_key_column_name.to_owned(),
+                                            ::sauvignon::DependencyType::Id,
+                                            ::sauvignon::InternalDependencyResolver::ColumnGetter(::sauvignon::ColumnGetter::new(
+                                                #self_table_name.to_owned(),
+                                                #self_belongs_to_foreign_key_column_name.to_owned(),
+                                                None,
+                                            )),
+                                        )],
+                                        ::sauvignon::CarverOrPopulator::Populator(::sauvignon::ValuesPopulator::new([(
+                                            #self_belongs_to_foreign_key_column_name.to_owned(),
+                                            "id".to_owned(),
+                                        )]).into()),
+                                    ))
+                                    .build()
+                                    .unwrap()
+                            },
+                            true => quote! {
+                                ::sauvignon::TypeFieldBuilder::default()
+                                    .name(#name)
+                                    .type_(::sauvignon::TypeFull::Type(#type_.to_owned()))
+                                    .resolver(::sauvignon::FieldResolver::new(
+                                        vec![::sauvignon::ExternalDependency::new("id".to_owned(), ::sauvignon::DependencyType::Id)],
+                                        vec![::sauvignon::InternalDependency::new(
+                                            #self_belongs_to_foreign_key_column_name.to_owned(),
+                                            ::sauvignon::DependencyType::OptionalId,
+                                            ::sauvignon::InternalDependencyResolver::ColumnGetter(::sauvignon::ColumnGetter::new(
+                                                #self_table_name.to_owned(),
+                                                #self_belongs_to_foreign_key_column_name.to_owned(),
+                                                None,
+                                            )),
+                                        )],
+                                        ::sauvignon::CarverOrPopulator::OptionalPopulator(::sauvignon::OptionalValuesPopulator::new([(
+                                            #self_belongs_to_foreign_key_column_name.to_owned(),
+                                            "id".to_owned(),
+                                        )]).into()),
+                                    ))
+                                    .build()
+                                    .unwrap()
+                            },
+                        }
                     },
                     true => {
+                        assert!(!optional, "Don't support polymorphic + optional yet");
                         let self_belongs_to_foreign_key_type_column_name =
                             format!("{}_type", name.to_snake_case());
                         quote! {
@@ -723,6 +752,7 @@ enum FieldValue {
     BelongsTo {
         type_: String,
         polymorphic: bool,
+        optional: bool,
     },
     HasMany {
         type_: String,
@@ -782,10 +812,15 @@ impl FieldValue {
                 params,
                 carver_or_populator,
             },
-            Self::BelongsTo { type_, polymorphic } => FieldValueProcessed::BelongsTo {
+            Self::BelongsTo {
+                type_,
+                polymorphic,
+                optional,
+            } => FieldValueProcessed::BelongsTo {
                 type_,
                 self_table_name: pluralize(&parent_type_name.unwrap().to_snake_case()),
                 polymorphic,
+                optional,
             },
             Self::HasMany {
                 type_,
@@ -892,10 +927,12 @@ impl Parse for FieldValue {
                     }
                     Ok(Self::TimestampColumn)
                 }
+                // TODO: add tests for belongs_to optional: true
                 "belongs_to" => {
                     let arguments_content;
                     parenthesized!(arguments_content in input);
                     let mut type_: Option<String> = _d();
+                    let mut optional: Option<bool> = _d();
                     let mut polymorphic: Option<bool> = _d();
                     while !arguments_content.is_empty() {
                         let key = parse_ident_or_type(&arguments_content)?;
@@ -906,6 +943,9 @@ impl Parse for FieldValue {
                             }
                             "polymorphic" => {
                                 polymorphic = Some(arguments_content.parse::<LitBool>()?.value);
+                            }
+                            "optional" => {
+                                optional = Some(arguments_content.parse::<LitBool>()?.value);
                             }
                             key => {
                                 return Err(
@@ -918,6 +958,7 @@ impl Parse for FieldValue {
                     Ok(Self::BelongsTo {
                         type_: type_.expect("Expected `type`"),
                         polymorphic: polymorphic.unwrap_or(false),
+                        optional: optional.unwrap_or(false),
                     })
                 }
                 "has_many" => {
@@ -1064,6 +1105,7 @@ enum FieldValueProcessed {
         type_: String,
         self_table_name: String,
         polymorphic: bool,
+        optional: bool,
     },
     HasMany {
         type_: String,
