@@ -1,5 +1,7 @@
 use std::collections::HashMap;
+use std::error;
 
+use sqlx::postgres::PgValueRef;
 use squalid::OptionExt;
 
 use crate::{AnyHashMap, Error};
@@ -54,15 +56,40 @@ pub enum InternalDependencyResolver {
 pub struct ColumnGetter {
     pub table_name: String,
     pub column_name: String,
+    pub massager: Option<ColumnValueMassager>,
 }
 
 impl ColumnGetter {
-    pub fn new(table_name: String, column_name: String) -> Self {
+    pub fn new(
+        table_name: String,
+        column_name: String,
+        massager: Option<ColumnValueMassager>,
+    ) -> Self {
         Self {
             table_name,
             column_name,
+            massager,
         }
     }
+}
+
+pub enum ColumnValueMassager {
+    OptionalString(Box<dyn ColumnValueMassagerInterface<Option<String>>>),
+}
+
+impl ColumnValueMassager {
+    pub fn as_optional_string(&self) -> &Box<dyn ColumnValueMassagerInterface<Option<String>>> {
+        match self {
+            Self::OptionalString(value) => value,
+        }
+    }
+}
+
+pub trait ColumnValueMassagerInterface<TMassaged>: Send + Sync {
+    fn massage(
+        &self,
+        value: PgValueRef<'_>,
+    ) -> Result<TMassaged, Box<dyn error::Error + Sync + Send>>;
 }
 
 pub struct ArgumentInternalDependencyResolver {

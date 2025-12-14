@@ -513,6 +513,7 @@ fn maybe_column_getter_internal_dependency_bootstrap_table_name<'a>(
         return None;
     }
     match &internal_dependency.resolver {
+        // TODO: figure out whether to update to use massager
         InternalDependencyResolver::ColumnGetter(column_getter) => {
             Some((&column_getter.table_name, &column_getter.column_name))
         }
@@ -534,6 +535,7 @@ fn maybe_column_getter_internal_dependency<'a>(
         return None;
     }
     match &internal_dependency.resolver {
+        // TODO: figure out whether to update to use massager
         InternalDependencyResolver::ColumnGetter(column_getter)
             if column_getter.table_name == table_name =>
         {
@@ -793,6 +795,7 @@ async fn populate_internal_dependencies(
         ret.insert(
             internal_dependency.name.clone(),
             match &internal_dependency.resolver {
+                // TODO: figure out whether to update any other branches here to use massager
                 InternalDependencyResolver::ColumnGetter(column_getter) => {
                     let row_id = match external_dependency_values.get("id").unwrap() {
                         DependencyValue::Id(id) => id,
@@ -867,13 +870,32 @@ async fn populate_internal_dependencies(
                                 "SELECT {} FROM {} WHERE id = $1",
                                 column_getter.column_name, column_getter.table_name
                             );
-                            let (column_value,): (Option<String>,) = sqlx::query_as(&query)
-                                .bind(row_id)
-                                .fetch_one(db_pool)
-                                .instrument(trace_span!("fetch optional string column"))
-                                .await
-                                .unwrap();
-                            DependencyValue::OptionalString(column_value)
+                            match column_getter.massager.as_ref() {
+                                None => {
+                                    let (column_value,): (Option<String>,) = sqlx::query_as(&query)
+                                        .bind(row_id)
+                                        .fetch_one(db_pool)
+                                        .instrument(trace_span!("fetch optional string column"))
+                                        .await
+                                        .unwrap();
+                                    DependencyValue::OptionalString(column_value)
+                                }
+                                Some(massager) => {
+                                    let massager = massager.as_optional_string();
+                                    let row = sqlx::query(&query)
+                                        .bind(row_id)
+                                        .fetch_one(db_pool)
+                                        .instrument(trace_span!("fetch optional string column"))
+                                        .await
+                                        .unwrap();
+                                    let massaged = massager
+                                        .massage(
+                                            row.try_get_raw(&*column_getter.column_name).unwrap(),
+                                        )
+                                        .unwrap();
+                                    DependencyValue::OptionalString(massaged)
+                                }
+                            }
                         }
                         _ => unimplemented!(),
                     }

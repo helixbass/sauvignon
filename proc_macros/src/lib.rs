@@ -2,7 +2,7 @@ use std::collections::HashSet;
 
 use heck::ToSnakeCase;
 use proc_macro::TokenStream;
-use quote::{quote, ToTokens};
+use quote::{format_ident, quote, ToTokens};
 use shared::pluralize;
 use squalid::{OptionExtDefault, OptionExtIterator, _d};
 use syn::{
@@ -303,6 +303,7 @@ impl ToTokens for FieldProcessed {
                                 ::sauvignon::InternalDependencyResolver::ColumnGetter(::sauvignon::ColumnGetter::new(
                                     #table_name.to_owned(),
                                     #self_column_name.to_owned(),
+                                    None,
                                 )),
                             )],
                             ::sauvignon::CarverOrPopulator::Carver(::std::boxed::Box::new(::sauvignon::StringCarver::new(#self_column_name.to_owned()))),
@@ -327,6 +328,7 @@ impl ToTokens for FieldProcessed {
                                 ::sauvignon::InternalDependencyResolver::ColumnGetter(::sauvignon::ColumnGetter::new(
                                     #table_name.to_owned(),
                                     #self_column_name.to_owned(),
+                                    None,
                                 )),
                             )],
                             ::sauvignon::CarverOrPopulator::Carver(::std::boxed::Box::new(::sauvignon::OptionalIntCarver::new(#self_column_name.to_owned()))),
@@ -364,10 +366,12 @@ impl ToTokens for FieldProcessed {
                 type_,
             } => {
                 let self_column_name = name.to_snake_case();
+                let massager_struct_name = format_ident!("{}Massager", type_);
+                let type_str = type_.to_string();
                 quote! {
                     ::sauvignon::TypeFieldBuilder::default()
                         .name(#name)
-                        .type_(::sauvignon::TypeFull::Type(#type_.to_owned()))
+                        .type_(::sauvignon::TypeFull::Type(#type_str.to_owned()))
                         .resolver(::sauvignon::FieldResolver::new(
                             vec![::sauvignon::ExternalDependency::new("id".to_owned(), ::sauvignon::DependencyType::Id)],
                             vec![::sauvignon::InternalDependency::new(
@@ -376,6 +380,26 @@ impl ToTokens for FieldProcessed {
                                 ::sauvignon::InternalDependencyResolver::ColumnGetter(::sauvignon::ColumnGetter::new(
                                     #table_name.to_owned(),
                                     #self_column_name.to_owned(),
+                                    {
+                                        struct #massager_struct_name;
+
+                                        impl ::sauvignon::ColumnValueMassagerInterface<Option<String>> for #massager_struct_name {
+                                            #[::tracing::instrument(
+                                                level = "trace",
+                                                skip(self, value)
+                                            )]
+                                            fn massage(
+                                                &self,
+                                                value: ::sqlx::postgres::PgValueRef<'_>,
+                                            ) -> Result<Option<String>, Box<dyn error::Error + Sync + Send>> {
+                                                <#type_ as ::sqlx::Decode>::decode(value).map(|enum_value| {
+                                                    use ::sauvignon::heck::ToShoutySnakeCase;
+                                                    format!("{enum_value}").to_shouty_snake_case()
+                                                })
+                                            }
+                                        }
+                                    }
+                                    Some(::sauvignon::ColumnValueMassager::OptionalString(::std::boxed::Box::new(#massager_struct_name)))
                                 )),
                             )],
                             ::sauvignon::CarverOrPopulator::Carver(::std::boxed::Box::new(::sauvignon::OptionalEnumValueCarver::new(#self_column_name.to_owned()))),
@@ -485,6 +509,7 @@ impl ToTokens for FieldProcessed {
                                     ::sauvignon::InternalDependencyResolver::ColumnGetter(::sauvignon::ColumnGetter::new(
                                         #self_table_name.to_owned(),
                                         #self_belongs_to_foreign_key_column_name.to_owned(),
+                                        None,
                                     )),
                                 )],
                                 ::sauvignon::CarverOrPopulator::Populator(::sauvignon::ValuesPopulator::new([(
@@ -511,6 +536,7 @@ impl ToTokens for FieldProcessed {
                                             ::sauvignon::InternalDependencyResolver::ColumnGetter(::sauvignon::ColumnGetter::new(
                                                 #self_table_name.to_owned(),
                                                 #self_belongs_to_foreign_key_type_column_name.to_owned(),
+                                                None,
                                             )),
                                         ),
                                         ::sauvignon::InternalDependency::new(
@@ -519,6 +545,7 @@ impl ToTokens for FieldProcessed {
                                             ::sauvignon::InternalDependencyResolver::ColumnGetter(::sauvignon::ColumnGetter::new(
                                                 #self_table_name.to_owned(),
                                                 #self_belongs_to_foreign_key_column_name.to_owned(),
+                                                None,
                                             )),
                                         ),
                                     ],
@@ -897,7 +924,7 @@ enum FieldValueProcessed {
         table_name: String,
     },
     OptionalEnumColumn {
-        type_: String,
+        type_: Ident,
         table_name: String,
     },
     Object {

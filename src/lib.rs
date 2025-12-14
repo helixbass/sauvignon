@@ -22,10 +22,11 @@ pub use shared::pluralize;
 
 pub use crate::any_hash_map::AnyHashMap;
 pub use crate::dependencies::{
-    ArgumentInternalDependencyResolver, ColumnGetter, ColumnGetterList, DependencyType,
-    DependencyValue, ExternalDependency, ExternalDependencyValue, ExternalDependencyValues, Id,
-    InternalDependency, InternalDependencyResolver, InternalDependencyValue,
-    InternalDependencyValues, LiteralValueInternalDependencyResolver, Where,
+    ArgumentInternalDependencyResolver, ColumnGetter, ColumnGetterList, ColumnValueMassager,
+    ColumnValueMassagerInterface, DependencyType, DependencyValue, ExternalDependency,
+    ExternalDependencyValue, ExternalDependencyValues, Id, InternalDependency,
+    InternalDependencyResolver, InternalDependencyValue, InternalDependencyValues,
+    LiteralValueInternalDependencyResolver, Where,
 };
 pub use crate::error::{Error, Result};
 pub use crate::hash::get_hash;
