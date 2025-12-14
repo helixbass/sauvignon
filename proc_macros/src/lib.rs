@@ -796,7 +796,7 @@ impl ToTokens for FieldProcessed {
                                                     }
                                                 )),
                                             )],
-                                            ::sauvignon::CarverOrPopulator::CarverList(::sauvignon::EnumValueCarverList::new(#through_other_column_name.to_owned()).into())
+                                            ::sauvignon::CarverOrPopulator::CarverList(::std::boxed::Box::new(::sauvignon::EnumValueCarverList::new(#through_other_column_name.to_owned())))
                                         ))
                                         .build()
                                         .unwrap()
