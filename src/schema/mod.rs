@@ -678,6 +678,14 @@ fn progress_fields<'a>(
                                     &internal_dependency_values,
                                 ))
                             }
+                            CarverOrPopulator::CarverList(carver) => {
+                                ResponseValueOrInProgress::ResponseValue(ResponseValue::List(
+                                    carver.carve(
+                                        &external_dependency_values,
+                                        &internal_dependency_values,
+                                    ),
+                                ))
+                            }
                             CarverOrPopulator::UnionOrInterfaceTypePopulator(
                                 type_populator,
                                 populator,

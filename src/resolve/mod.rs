@@ -28,6 +28,19 @@ impl FieldResolver {
     }
 }
 
+pub enum CarverOrPopulator {
+    Carver(Box<dyn Carver>),
+    CarverList(Box<dyn CarverList>),
+    Populator(Populator),
+    PopulatorList(PopulatorList),
+    UnionOrInterfaceTypePopulator(Box<dyn UnionOrInterfaceTypePopulator>, Populator),
+    UnionOrInterfaceTypePopulatorList(
+        Box<dyn UnionOrInterfaceTypePopulatorList>,
+        Box<dyn PopulatorListInterface>,
+    ),
+    OptionalPopulator(OptionalPopulator),
+}
+
 pub trait Carver: Send + Sync {
     fn carve(
         &self,
@@ -278,16 +291,42 @@ impl Carver for OptionalStringCarver {
     }
 }
 
-pub enum CarverOrPopulator {
-    Carver(Box<dyn Carver>),
-    Populator(Populator),
-    PopulatorList(PopulatorList),
-    UnionOrInterfaceTypePopulator(Box<dyn UnionOrInterfaceTypePopulator>, Populator),
-    UnionOrInterfaceTypePopulatorList(
-        Box<dyn UnionOrInterfaceTypePopulatorList>,
-        Box<dyn PopulatorListInterface>,
-    ),
-    OptionalPopulator(OptionalPopulator),
+pub trait CarverList: Send + Sync {
+    fn carve(
+        &self,
+        external_dependencies: &ExternalDependencyValues,
+        internal_dependencies: &InternalDependencyValues,
+    ) -> Vec<ResponseValue>;
+}
+
+pub struct EnumValueCarverList {
+    pub singular: String,
+}
+
+impl EnumValueCarverList {
+    pub fn new(singular: String) -> Self {
+        Self { singular }
+    }
+}
+
+impl CarverList for EnumValueCarverList {
+    #[instrument(
+        level = "trace",
+        skip(self, _external_dependencies, internal_dependencies)
+    )]
+    fn carve(
+        &self,
+        _external_dependencies: &ExternalDependencyValues,
+        internal_dependencies: &InternalDependencyValues,
+    ) -> Vec<ResponseValue> {
+        internal_dependencies
+            .get(&pluralize(&self.singular))
+            .unwrap()
+            .as_list()
+            .into_iter()
+            .map(|value| ResponseValue::EnumValue(value.as_string().to_owned()))
+            .collect()
+    }
 }
 
 pub enum Populator {
