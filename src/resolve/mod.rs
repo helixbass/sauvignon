@@ -157,6 +157,37 @@ impl Carver for OptionalEnumValueCarver {
     }
 }
 
+pub struct EnumValueCarver {
+    pub name: String,
+}
+
+impl EnumValueCarver {
+    pub fn new(name: String) -> Self {
+        Self { name }
+    }
+}
+
+impl Carver for EnumValueCarver {
+    #[instrument(
+        level = "trace",
+        skip(self, external_dependencies, internal_dependencies)
+    )]
+    fn carve(
+        &self,
+        external_dependencies: &ExternalDependencyValues,
+        internal_dependencies: &InternalDependencyValues,
+    ) -> ResponseValue {
+        ResponseValue::EnumValue(
+            internal_dependencies
+                .get(&self.name)
+                .or_else(|| external_dependencies.get(&self.name))
+                .unwrap()
+                .as_string()
+                .to_owned(),
+        )
+    }
+}
+
 pub struct TimestampCarver {
     pub name: String,
 }

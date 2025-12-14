@@ -41,10 +41,11 @@ pub use crate::request::{
     OperationDefinition, OperationDefinitionBuilder, Request, Selection, Value,
 };
 pub use crate::resolve::{
-    Carver, CarverOrPopulator, FieldResolver, OptionalEnumValueCarver, OptionalFloatCarver,
-    OptionalIntCarver, Populator, PopulatorInterface, PopulatorList, PopulatorListInterface,
-    StringCarver, TimestampCarver, TypeDepluralizer, UnionOrInterfaceTypePopulator,
-    UnionOrInterfaceTypePopulatorList, ValuePopulator, ValuePopulatorList, ValuesPopulator,
+    Carver, CarverOrPopulator, EnumValueCarver, FieldResolver, OptionalEnumValueCarver,
+    OptionalFloatCarver, OptionalIntCarver, Populator, PopulatorInterface, PopulatorList,
+    PopulatorListInterface, StringCarver, TimestampCarver, TypeDepluralizer,
+    UnionOrInterfaceTypePopulator, UnionOrInterfaceTypePopulatorList, ValuePopulator,
+    ValuePopulatorList, ValuesPopulator,
 };
 pub use crate::response::{
     fields_in_progress_new, FieldsInProgress, InProgress, InProgressRecursing,

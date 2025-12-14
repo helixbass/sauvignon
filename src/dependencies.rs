@@ -77,12 +77,21 @@ impl ColumnGetter {
 
 pub enum ColumnValueMassager {
     OptionalString(Box<dyn ColumnValueMassagerInterface<Option<String>>>),
+    String(Box<dyn ColumnValueMassagerInterface<String>>),
 }
 
 impl ColumnValueMassager {
     pub fn as_optional_string(&self) -> &Box<dyn ColumnValueMassagerInterface<Option<String>>> {
         match self {
             Self::OptionalString(value) => value,
+            _ => panic!("Expected optional string"),
+        }
+    }
+
+    pub fn as_string(&self) -> &Box<dyn ColumnValueMassagerInterface<String>> {
+        match self {
+            Self::String(value) => value,
+            _ => panic!("Expected string"),
         }
     }
 }

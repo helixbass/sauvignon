@@ -412,6 +412,54 @@ impl ToTokens for FieldProcessed {
                         .unwrap()
                 }
             }
+            FieldValueProcessed::EnumColumn {
+                table_name,
+                type_,
+            } => {
+                let self_column_name = name.to_snake_case();
+                let massager_struct_name = format_ident!("{}Massager", type_);
+                let type_str = type_.to_string();
+                quote! {
+                    ::sauvignon::TypeFieldBuilder::default()
+                        .name(#name)
+                        .type_(::sauvignon::TypeFull::Type(#type_str.to_owned()))
+                        .resolver(::sauvignon::FieldResolver::new(
+                            vec![::sauvignon::ExternalDependency::new("id".to_owned(), ::sauvignon::DependencyType::Id)],
+                            vec![::sauvignon::InternalDependency::new(
+                                #self_column_name.to_owned(),
+                                ::sauvignon::DependencyType::String,
+                                ::sauvignon::InternalDependencyResolver::ColumnGetter(::sauvignon::ColumnGetter::new(
+                                    #table_name.to_owned(),
+                                    #self_column_name.to_owned(),
+                                    {
+                                        struct #massager_struct_name;
+
+                                        impl ::sauvignon::ColumnValueMassagerInterface<String> for #massager_struct_name {
+                                            #[::tracing::instrument(
+                                                level = "trace",
+                                                skip(self, value)
+                                            )]
+                                            fn massage(
+                                                &self,
+                                                value: ::sqlx::postgres::PgValueRef<'_>,
+                                            ) -> Result<String, Box<dyn ::std::error::Error + Sync + Send>> {
+                                                <#type_ as ::sqlx::Decode<::sqlx::Postgres>>::decode(value)
+                                                    .map(|enum_value| {
+                                                        use ::sauvignon::heck::ToShoutySnakeCase;
+                                                        format!("{enum_value}").to_shouty_snake_case()
+                                                    })
+                                            }
+                                        }
+                                        Some(::sauvignon::ColumnValueMassager::String(::std::boxed::Box::new(#massager_struct_name)))
+                                    },
+                                )),
+                            )],
+                            ::sauvignon::CarverOrPopulator::Carver(::std::boxed::Box::new(::sauvignon::EnumValueCarver::new(#self_column_name.to_owned()))),
+                        ))
+                        .build()
+                        .unwrap()
+                }
+            }
             FieldValueProcessed::TimestampColumn {
                 table_name,
             } => {
@@ -662,6 +710,9 @@ enum FieldValue {
     OptionalEnumColumn {
         type_: Ident,
     },
+    EnumColumn {
+        type_: Ident,
+    },
     TimestampColumn,
     Object {
         type_: TypeFull,
@@ -698,6 +749,10 @@ impl FieldValue {
                 table_name: pluralize(&parent_type_name.unwrap().to_snake_case()),
             },
             Self::OptionalEnumColumn { type_ } => FieldValueProcessed::OptionalEnumColumn {
+                table_name: pluralize(&parent_type_name.unwrap().to_snake_case()),
+                type_,
+            },
+            Self::EnumColumn { type_ } => FieldValueProcessed::EnumColumn {
                 table_name: pluralize(&parent_type_name.unwrap().to_snake_case()),
                 type_,
             },
@@ -803,6 +858,29 @@ impl Parse for FieldValue {
                         arguments_content.parse::<Option<Token![,]>>()?;
                     }
                     Ok(Self::OptionalEnumColumn {
+                        type_: type_.expect("Expected `type`"),
+                    })
+                }
+                "enum_column" => {
+                    let arguments_content;
+                    parenthesized!(arguments_content in input);
+                    let mut type_: Option<Ident> = _d();
+                    while !arguments_content.is_empty() {
+                        let key = parse_ident_or_type(&arguments_content)?;
+                        arguments_content.parse::<Token![=>]>()?;
+                        match &*key.to_string() {
+                            "type" => {
+                                type_ = Some(arguments_content.parse::<Ident>()?);
+                            }
+                            key => {
+                                return Err(
+                                    arguments_content.error(format!("Unexpected key `{key}`"))
+                                )
+                            }
+                        }
+                        arguments_content.parse::<Option<Token![,]>>()?;
+                    }
+                    Ok(Self::EnumColumn {
                         type_: type_.expect("Expected `type`"),
                     })
                 }
@@ -965,6 +1043,10 @@ enum FieldValueProcessed {
         table_name: String,
     },
     OptionalEnumColumn {
+        type_: Ident,
+        table_name: String,
+    },
+    EnumColumn {
         type_: Ident,
         table_name: String,
     },

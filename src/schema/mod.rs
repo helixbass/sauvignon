@@ -816,19 +816,40 @@ async fn populate_internal_dependencies(
                                 .unwrap();
                             DependencyValue::Id(column_value)
                         }
+                        // TODO: add test (in this repo vs in swapi-sauvignon)
+                        // for enum_column()
                         DependencyType::String => {
                             // TODO: should check that table names and column names can never be SQL injection?
                             let query = format!(
                                 "SELECT {} FROM {} WHERE id = $1",
                                 column_getter.column_name, column_getter.table_name
                             );
-                            let (column_value,): (String,) = sqlx::query_as(&query)
-                                .bind(row_id)
-                                .fetch_one(db_pool)
-                                .instrument(trace_span!("fetch string column"))
-                                .await
-                                .unwrap();
-                            DependencyValue::String(column_value)
+                            match column_getter.massager.as_ref() {
+                                None => {
+                                    let (column_value,): (String,) = sqlx::query_as(&query)
+                                        .bind(row_id)
+                                        .fetch_one(db_pool)
+                                        .instrument(trace_span!("fetch string column"))
+                                        .await
+                                        .unwrap();
+                                    DependencyValue::String(column_value)
+                                }
+                                Some(massager) => {
+                                    let massager = massager.as_string();
+                                    let row = sqlx::query(&query)
+                                        .bind(row_id)
+                                        .fetch_one(db_pool)
+                                        .instrument(trace_span!("fetch string column"))
+                                        .await
+                                        .unwrap();
+                                    let massaged = massager
+                                        .massage(
+                                            row.try_get_raw(&*column_getter.column_name).unwrap(),
+                                        )
+                                        .unwrap();
+                                    DependencyValue::String(massaged)
+                                }
+                            }
                         }
                         // TODO: add test (in this repo vs in swapi-sauvignon)
                         // for optional int column
@@ -863,7 +884,7 @@ async fn populate_internal_dependencies(
                             DependencyValue::OptionalFloat(column_value)
                         }
                         // TODO: add test (in this repo vs in swapi-sauvignon)
-                        // for optional string column (including for optional_enum_column()
+                        // for optional string column (including for optional_enum_column())
                         DependencyType::OptionalString => {
                             // TODO: should check that table names and column names can never be SQL injection?
                             let query = format!(
