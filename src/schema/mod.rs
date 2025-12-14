@@ -895,7 +895,8 @@ async fn populate_internal_dependencies(
                             DependencyValue::OptionalFloat(column_value)
                         }
                         // TODO: add test (in this repo vs in swapi-sauvignon)
-                        // for optional string column (including for optional_enum_column())
+                        // for optional string column (including for optional_enum_column()
+                        // and optional_string_column())
                         DependencyType::OptionalString => {
                             // TODO: should check that table names and column names can never be SQL injection?
                             let query = format!(

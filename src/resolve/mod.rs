@@ -248,6 +248,36 @@ impl Carver for IdCarver {
     }
 }
 
+pub struct OptionalStringCarver {
+    pub name: String,
+}
+
+impl OptionalStringCarver {
+    pub fn new(name: String) -> Self {
+        Self { name }
+    }
+}
+
+impl Carver for OptionalStringCarver {
+    #[instrument(
+        level = "trace",
+        skip(self, external_dependencies, internal_dependencies)
+    )]
+    fn carve(
+        &self,
+        external_dependencies: &ExternalDependencyValues,
+        internal_dependencies: &InternalDependencyValues,
+    ) -> ResponseValue {
+        internal_dependencies
+            .get(&self.name)
+            .or_else(|| external_dependencies.get(&self.name))
+            .unwrap()
+            .as_optional_string()
+            .map(|str| ResponseValue::String(str.to_owned()))
+            .unwrap_or_else(|| ResponseValue::Null)
+    }
+}
+
 pub enum CarverOrPopulator {
     Carver(Box<dyn Carver>),
     Populator(Populator),
