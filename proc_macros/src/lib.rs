@@ -294,7 +294,7 @@ impl ToTokens for FieldProcessed {
                 quote! {
                     ::sauvignon::TypeFieldBuilder::default()
                         .name(#name)
-                        .type_(::sauvignon::TypeFull::Type("String".to_owned()))
+                        .type_(::sauvignon::TypeFull::NonNull(::std::boxed::Box::new(::sauvignon::TypeFull::Type("String".to_owned()))))
                         .resolver(::sauvignon::FieldResolver::new(
                             vec![::sauvignon::ExternalDependency::new("id".to_owned(), ::sauvignon::DependencyType::Id)],
                             vec![::sauvignon::InternalDependency::new(
@@ -422,7 +422,7 @@ impl ToTokens for FieldProcessed {
                 quote! {
                     ::sauvignon::TypeFieldBuilder::default()
                         .name(#name)
-                        .type_(::sauvignon::TypeFull::Type(#type_str.to_owned()))
+                        .type_(::sauvignon::TypeFull::NonNull(::std::boxed::Box::new(::sauvignon::TypeFull::Type(#type_str.to_owned()))))
                         .resolver(::sauvignon::FieldResolver::new(
                             vec![::sauvignon::ExternalDependency::new("id".to_owned(), ::sauvignon::DependencyType::Id)],
                             vec![::sauvignon::InternalDependency::new(
@@ -467,7 +467,7 @@ impl ToTokens for FieldProcessed {
                 quote! {
                     ::sauvignon::TypeFieldBuilder::default()
                         .name(#name)
-                        .type_(::sauvignon::TypeFull::Type("String".to_owned()))
+                        .type_(::sauvignon::TypeFull::NonNull(::std::boxed::Box::new(::sauvignon::TypeFull::Type("String".to_owned()))))
                         .resolver(::sauvignon::FieldResolver::new(
                             vec![::sauvignon::ExternalDependency::new("id".to_owned(), ::sauvignon::DependencyType::Id)],
                             vec![::sauvignon::InternalDependency::new(
@@ -492,7 +492,7 @@ impl ToTokens for FieldProcessed {
                 quote! {
                     ::sauvignon::TypeFieldBuilder::default()
                         .name(#name)
-                        .type_(::sauvignon::TypeFull::Type("ID".to_owned()))
+                        .type_(::sauvignon::TypeFull::NonNull(::std::boxed::Box::new(::sauvignon::TypeFull::Type("ID".to_owned()))))
                         .resolver(::sauvignon::FieldResolver::new(
                             vec![::sauvignon::ExternalDependency::new("id".to_owned(), ::sauvignon::DependencyType::Id)],
                             vec![::sauvignon::InternalDependency::new(
@@ -657,7 +657,7 @@ impl ToTokens for FieldProcessed {
                         quote! {
                             ::sauvignon::TypeFieldBuilder::default()
                                 .name(#name)
-                                .type_(::sauvignon::TypeFull::Type(#type_.to_owned()))
+                                .type_(::sauvignon::TypeFull::NonNull(::std::boxed::Box::new(::sauvignon::TypeFull::Type(#type_.to_owned()))))
                                 .resolver(::sauvignon::FieldResolver::new(
                                     vec![::sauvignon::ExternalDependency::new("id".to_owned(), ::sauvignon::DependencyType::Id)],
                                     vec![
@@ -707,7 +707,7 @@ impl ToTokens for FieldProcessed {
                         quote! {
                             ::sauvignon::TypeFieldBuilder::default()
                                 .name(#name)
-                                .type_(::sauvignon::TypeFull::List(::std::boxed::Box::new(::sauvignon::TypeFull::Type(#type_.to_owned()))))
+                                .type_(::sauvignon::TypeFull::NonNull(::std::boxed::Box::new(::sauvignon::TypeFull::List(::std::boxed::Box::new(::sauvignon::TypeFull::NonNull(::std::boxed::Box::new(::sauvignon::TypeFull::Type(#type_.to_owned()))))))))
                                 .resolver(::sauvignon::FieldResolver::new(
                                     vec![::sauvignon::ExternalDependency::new("id".to_owned(), ::sauvignon::DependencyType::Id)],
                                     vec![::sauvignon::InternalDependency::new(
@@ -731,7 +731,7 @@ impl ToTokens for FieldProcessed {
                         quote! {
                             ::sauvignon::TypeFieldBuilder::default()
                                 .name(#name)
-                                .type_(::sauvignon::TypeFull::List(::std::boxed::Box::new(::sauvignon::TypeFull::Type(#type_.to_owned()))))
+                                .type_(::sauvignon::TypeFull::NonNull(::std::boxed::Box::new(::sauvignon::TypeFull::List(::std::boxed::Box::new(::sauvignon::TypeFull::NonNull(::std::boxed::Box::new(::sauvignon::TypeFull::Type(#type_.to_owned()))))))))
                                 .resolver(::sauvignon::FieldResolver::new(
                                     vec![::sauvignon::ExternalDependency::new("id".to_owned(), ::sauvignon::DependencyType::Id)],
                                     vec![::sauvignon::InternalDependency::new(
