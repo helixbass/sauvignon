@@ -631,7 +631,7 @@ enum FieldValue {
     OptionalIntColumn,
     OptionalFloatColumn,
     OptionalEnumColumn {
-        type_: String,
+        type_: Ident,
     },
     Object {
         type_: TypeFull,
@@ -753,13 +753,13 @@ impl Parse for FieldValue {
                 "optional_enum_column" => {
                     let arguments_content;
                     parenthesized!(arguments_content in input);
-                    let mut type_: Option<String> = _d();
+                    let mut type_: Option<Ident> = _d();
                     while !arguments_content.is_empty() {
                         let key = parse_ident_or_type(&arguments_content)?;
                         arguments_content.parse::<Token![=>]>()?;
                         match &*key.to_string() {
                             "type" => {
-                                type_ = Some(arguments_content.parse::<Ident>()?.to_string());
+                                type_ = Some(arguments_content.parse::<Ident>()?);
                             }
                             key => {
                                 return Err(
