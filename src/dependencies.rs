@@ -157,6 +157,7 @@ pub enum DependencyValue {
     OptionalInt(Option<i32>),
     OptionalFloat(Option<f64>),
     OptionalString(Option<String>),
+    OptionalId(Option<Id>),
     Timestamp(Timestamp),
 }
 
@@ -214,6 +215,18 @@ impl DependencyValue {
         match self {
             Self::Timestamp(value) => *value,
             _ => panic!("Expected timestamp"),
+        }
+    }
+
+    pub fn maybe_non_optional(&self) -> Option<Self> {
+        match self {
+            Self::OptionalId(value) => value.map(|value| Self::Id(value)),
+            Self::OptionalString(value) => value.as_ref().map(|value| Self::String(value.clone())),
+            Self::OptionalFloat(value) => value.map(|value| Self::Float(value)),
+            Self::OptionalInt(_value) => {
+                unimplemented!("TODO DependencyValue::Int doesn't exist yet")
+            }
+            _ => panic!("Expected optional type"),
         }
     }
 }

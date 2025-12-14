@@ -226,6 +226,7 @@ pub enum CarverOrPopulator {
         Box<dyn UnionOrInterfaceTypePopulatorList>,
         Box<dyn PopulatorListInterface>,
     ),
+    OptionalPopulator(OptionalPopulator),
 }
 
 pub enum Populator {
@@ -336,6 +337,149 @@ impl PopulatorInterface for ValuesPopulator {
                     .clone(),
             )
             .unwrap();
+        }
+        ret
+    }
+}
+
+pub enum OptionalPopulator {
+    Value(OptionalValuePopulator),
+    Values(OptionalValuesPopulator),
+    Dyn(Box<dyn OptionalPopulatorInterface>),
+}
+
+impl OptionalPopulatorInterface for OptionalPopulator {
+    fn populate(
+        &self,
+        external_dependencies: &ExternalDependencyValues,
+        internal_dependencies: &InternalDependencyValues,
+    ) -> Option<ExternalDependencyValues> {
+        match self {
+            Self::Value(populator) => {
+                populator.populate(external_dependencies, internal_dependencies)
+            }
+            Self::Values(populator) => {
+                populator.populate(external_dependencies, internal_dependencies)
+            }
+            Self::Dyn(populator) => {
+                populator.populate(external_dependencies, internal_dependencies)
+            }
+        }
+    }
+}
+
+impl From<OptionalValuePopulator> for OptionalPopulator {
+    fn from(value: OptionalValuePopulator) -> Self {
+        Self::Value(value)
+    }
+}
+
+impl From<OptionalValuesPopulator> for OptionalPopulator {
+    fn from(value: OptionalValuesPopulator) -> Self {
+        Self::Values(value)
+    }
+}
+
+pub trait OptionalPopulatorInterface: Send + Sync {
+    fn populate(
+        &self,
+        external_dependencies: &ExternalDependencyValues,
+        internal_dependencies: &InternalDependencyValues,
+    ) -> Option<ExternalDependencyValues>;
+}
+
+pub struct OptionalValuePopulator {
+    pub key: String,
+}
+
+impl OptionalValuePopulator {
+    pub fn new(key: String) -> Self {
+        Self { key }
+    }
+}
+
+impl OptionalPopulatorInterface for OptionalValuePopulator {
+    #[instrument(
+        level = "trace",
+        skip(self, _external_dependencies, internal_dependencies)
+    )]
+    fn populate(
+        &self,
+        _external_dependencies: &ExternalDependencyValues,
+        internal_dependencies: &InternalDependencyValues,
+    ) -> Option<ExternalDependencyValues> {
+        internal_dependencies
+            .get(&self.key)
+            .unwrap()
+            .maybe_non_optional()
+            .map(|internal_dependency_value| {
+                let mut ret = ExternalDependencyValues::default();
+                ret.insert(self.key.clone(), internal_dependency_value)
+                    .unwrap();
+                ret
+            })
+    }
+}
+
+pub struct OptionalValuesPopulator {
+    pub keys: HashMap<String, String>,
+}
+
+impl OptionalValuesPopulator {
+    pub fn new(keys: impl IntoIterator<Item = (String, String)>) -> Self {
+        Self {
+            keys: keys.into_iter().collect(),
+        }
+    }
+}
+
+impl OptionalPopulatorInterface for OptionalValuesPopulator {
+    #[instrument(
+        level = "trace",
+        skip(self, _external_dependencies, internal_dependencies)
+    )]
+    fn populate(
+        &self,
+        _external_dependencies: &ExternalDependencyValues,
+        internal_dependencies: &InternalDependencyValues,
+    ) -> Option<ExternalDependencyValues> {
+        // TODO: this is an opinionated algorithm in that it says
+        // "all internal dependency values must be optional", could
+        // imagine (if there are multiple internal dependencies in
+        // an instance of this type) eg only wanting to make the
+        // population conditional on the optional-ness of one of them?
+        // In that case could extend the signature/fields of
+        // OptionalValuesPopulator to support that?
+        let internal_dependency_values = self
+            .keys
+            .iter()
+            .map(|(internal_dependency_key, populated_key)| {
+                (
+                    populated_key,
+                    internal_dependencies
+                        .get(internal_dependency_key)
+                        .unwrap()
+                        .maybe_non_optional(),
+                )
+            })
+            .collect::<Vec<_>>();
+        assert!(
+            internal_dependency_values.iter().all(|(_, value)| value.is_none()) ||
+            internal_dependency_values.iter().all(|(_, value)| value.is_some())
+            "Currently expecting all present or all missing"
+        );
+        if internal_dependency_values[0].1.is_none() {
+            return None;
+        }
+        let internal_dependency_values = internal_dependency_values.into_iter().map(
+            |(populated_key, internal_dependency_value)| {
+                (populated_key, internal_dependency_value.unwrap())
+            },
+        );
+        let mut ret = ExternalDependencyValues::default();
+        for (populated_key, internal_dependency_value) in internal_dependency_values {
+            ret.insert(populated_key.clone(), internal_dependency_value)
+                .unwrap();
         }
         ret
     }
