@@ -1,3 +1,4 @@
+use jiff::Timestamp;
 use serde::Serialize;
 use squalid::_d;
 use tracing::instrument;
@@ -87,6 +88,12 @@ impl From<i32> for ResponseValue {
 impl From<f64> for ResponseValue {
     fn from(value: f64) -> Self {
         Self::Float(value)
+    }
+}
+
+impl From<Timestamp> for ResponseValue {
+    fn from(value: Timestamp) -> Self {
+        Self::String(value.to_string())
     }
 }
 

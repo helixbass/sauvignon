@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::error;
 
+use jiff::Timestamp;
 use sqlx::postgres::PgValueRef;
 use squalid::OptionExt;
 
@@ -15,6 +16,7 @@ pub enum DependencyType {
     OptionalInt,
     OptionalFloat,
     OptionalString,
+    Timestamp,
 }
 
 pub struct ExternalDependency {
@@ -146,6 +148,7 @@ pub enum DependencyValue {
     OptionalInt(Option<i32>),
     OptionalFloat(Option<f64>),
     OptionalString(Option<String>),
+    Timestamp(Timestamp),
 }
 
 impl DependencyValue {
@@ -195,6 +198,13 @@ impl DependencyValue {
         match self {
             Self::OptionalString(value) => value.as_deref(),
             _ => panic!("Expected optional string"),
+        }
+    }
+
+    pub fn as_timestamp(&self) -> Timestamp {
+        match self {
+            Self::Timestamp(value) => *value,
+            _ => panic!("Expected timestamp"),
         }
     }
 }
