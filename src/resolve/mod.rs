@@ -291,6 +291,37 @@ impl Carver for OptionalStringCarver {
     }
 }
 
+pub struct IntCarver {
+    pub name: String,
+}
+
+impl IntCarver {
+    pub fn new(name: String) -> Self {
+        Self { name }
+    }
+}
+
+impl Carver for IntCarver {
+    #[instrument(
+        level = "trace",
+        skip(self, external_dependencies, internal_dependencies)
+    )]
+    fn carve(
+        &self,
+        external_dependencies: &ExternalDependencyValues,
+        internal_dependencies: &InternalDependencyValues,
+    ) -> ResponseValue {
+        ResponseValue::Int(
+            internal_dependencies
+                .get(&self.name)
+                .or_else(|| external_dependencies.get(&self.name))
+                .unwrap()
+                .as_int()
+                .clone(),
+        )
+    }
+}
+
 pub trait CarverList: Send + Sync {
     fn carve(
         &self,

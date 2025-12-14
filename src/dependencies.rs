@@ -18,6 +18,7 @@ pub enum DependencyType {
     OptionalString,
     Timestamp,
     OptionalId,
+    Int,
 }
 
 pub struct ExternalDependency {
@@ -167,6 +168,7 @@ pub enum DependencyValue {
     OptionalString(Option<String>),
     OptionalId(Option<Id>),
     Timestamp(Timestamp),
+    Int(i32),
 }
 
 impl DependencyValue {
@@ -226,14 +228,19 @@ impl DependencyValue {
         }
     }
 
+    pub fn as_int(&self) -> i32 {
+        match self {
+            Self::Int(value) => *value,
+            _ => panic!("Expected int"),
+        }
+    }
+
     pub fn maybe_non_optional(&self) -> Option<Self> {
         match self {
             Self::OptionalId(value) => value.map(|value| Self::Id(value)),
             Self::OptionalString(value) => value.as_ref().map(|value| Self::String(value.clone())),
             Self::OptionalFloat(value) => value.map(|value| Self::Float(value)),
-            Self::OptionalInt(_value) => {
-                unimplemented!("TODO DependencyValue::Int doesn't exist yet")
-            }
+            Self::OptionalInt(value) => value.map(|value| Self::Int(value)),
             _ => panic!("Expected optional type"),
         }
     }

@@ -971,6 +971,22 @@ async fn populate_internal_dependencies(
                                 .unwrap();
                             DependencyValue::OptionalId(column_value)
                         }
+                        // TODO: add test (in this repo vs in swapi-sauvignon)
+                        // for int_column()
+                        DependencyType::Int => {
+                            // TODO: should check that table names and column names can never be SQL injection?
+                            let query = format!(
+                                "SELECT {} FROM {} WHERE id = $1",
+                                column_getter.column_name, column_getter.table_name
+                            );
+                            let (column_value,): (i32,) = sqlx::query_as(&query)
+                                .bind(row_id)
+                                .fetch_one(db_pool)
+                                .instrument(trace_span!("fetch ID column"))
+                                .await
+                                .unwrap();
+                            DependencyValue::Int(column_value)
+                        }
                         _ => unimplemented!(),
                     }
                 }

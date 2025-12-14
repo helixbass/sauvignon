@@ -535,6 +535,31 @@ impl ToTokens for FieldProcessed {
                         .unwrap()
                 }
             }
+            FieldValueProcessed::IntColumn {
+                table_name,
+            } => {
+                let self_column_name = name.to_snake_case();
+                quote! {
+                    ::sauvignon::TypeFieldBuilder::default()
+                        .name(#name)
+                        .type_(::sauvignon::TypeFull::NonNull(::std::boxed::Box::new(::sauvignon::TypeFull::Type("Int".to_owned()))))
+                        .resolver(::sauvignon::FieldResolver::new(
+                            vec![::sauvignon::ExternalDependency::new("id".to_owned(), ::sauvignon::DependencyType::Id)],
+                            vec![::sauvignon::InternalDependency::new(
+                                #self_column_name.to_owned(),
+                                ::sauvignon::DependencyType::Int,
+                                ::sauvignon::InternalDependencyResolver::ColumnGetter(::sauvignon::ColumnGetter::new(
+                                    #table_name.to_owned(),
+                                    #self_column_name.to_owned(),
+                                    None,
+                                )),
+                            )],
+                            ::sauvignon::CarverOrPopulator::Carver(::std::boxed::Box::new(::sauvignon::IntCarver::new(#self_column_name.to_owned()))),
+                        ))
+                        .build()
+                        .unwrap()
+                }
+            }
             FieldValueProcessed::Object {
                 type_,
                 internal_dependencies,
@@ -849,6 +874,7 @@ enum FieldValue {
     TimestampColumn,
     IdColumn,
     OptionalStringColumn,
+    IntColumn,
     Object {
         type_: TypeFull,
         internal_dependencies: Option<Vec<InternalDependency>>,
@@ -899,6 +925,9 @@ impl FieldValue {
                 table_name: pluralize(&parent_type_name.unwrap().to_snake_case()),
             },
             Self::OptionalStringColumn => FieldValueProcessed::OptionalStringColumn {
+                table_name: pluralize(&parent_type_name.unwrap().to_snake_case()),
+            },
+            Self::IntColumn => FieldValueProcessed::IntColumn {
                 table_name: pluralize(&parent_type_name.unwrap().to_snake_case()),
             },
             Self::Object {
@@ -1064,6 +1093,14 @@ impl Parse for FieldValue {
                         return Err(arguments_content.error("Not expecting argument values"));
                     }
                     Ok(Self::OptionalStringColumn)
+                }
+                "int_column" => {
+                    let arguments_content;
+                    parenthesized!(arguments_content in input);
+                    if !arguments_content.is_empty() {
+                        return Err(arguments_content.error("Not expecting argument values"));
+                    }
+                    Ok(Self::IntColumn)
                 }
                 // TODO: add tests for belongs_to optional: true
                 "belongs_to" => {
@@ -1236,6 +1273,9 @@ enum FieldValueProcessed {
         table_name: String,
     },
     OptionalStringColumn {
+        table_name: String,
+    },
+    IntColumn {
         table_name: String,
     },
     Object {
