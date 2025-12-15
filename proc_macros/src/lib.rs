@@ -255,12 +255,13 @@ impl Field {
         all_enum_names: &HashSet<String>,
     ) -> FieldProcessed {
         FieldProcessed {
-            name: self.name,
             value: self.value.process(
                 parent_type_name,
                 all_union_or_interface_type_names,
                 all_enum_names,
+                &self.name,
             ),
+            name: self.name,
         }
     }
 }
@@ -922,6 +923,7 @@ impl FieldValue {
         parent_type_name: Option<&str>,
         all_union_or_interface_type_names: &HashSet<String>,
         all_enum_names: &HashSet<String>,
+        field_name: &str,
     ) -> FieldValueProcessed {
         match self {
             Self::StringColumn => FieldValueProcessed::StringColumn {
@@ -989,7 +991,9 @@ impl FieldValue {
                 internal_dependencies: internal_dependencies.map(|internal_dependencies| {
                     internal_dependencies
                         .into_iter()
-                        .map(|internal_dependency| internal_dependency.process(type_.name()))
+                        .map(|internal_dependency| {
+                            internal_dependency.process(type_.name(), parent_type_name, field_name)
+                        })
                         .collect()
                 }),
                 maybe_type_kind: if all_union_or_interface_type_names.contains(type_.name()) {
@@ -1399,10 +1403,17 @@ struct InternalDependency {
 }
 
 impl InternalDependency {
-    pub fn process(self, field_type_name: &str) -> InternalDependencyProcessed {
+    pub fn process(
+        self,
+        field_type_name: &str,
+        parent_type_name: Option<&str>,
+        field_name: &str,
+    ) -> InternalDependencyProcessed {
         InternalDependencyProcessed {
             name: self.name,
-            type_: self.type_.process(field_type_name),
+            type_: self
+                .type_
+                .process(field_type_name, parent_type_name, field_name),
         }
     }
 }
@@ -1438,6 +1449,9 @@ impl ToTokens for InternalDependencyProcessed {
             InternalDependencyTypeProcessed::IdColumnList { .. } => quote! {
                 ::sauvignon::DependencyType::ListOfIds
             },
+            InternalDependencyTypeProcessed::OptionalIntColumn { .. } => quote! {
+                ::sauvignon::DependencyType::OptionalInt
+            },
         };
         let resolver = match &self.type_ {
             InternalDependencyTypeProcessed::LiteralValue(dependency_value) => quote! {
@@ -1463,6 +1477,19 @@ impl ToTokens for InternalDependencyProcessed {
                     )
                 }
             }
+            InternalDependencyTypeProcessed::OptionalIntColumn {
+                table_name,
+                column_name,
+            } => {
+                quote! {
+                    ::sauvignon::InternalDependencyResolver::ColumnGetter(::sauvignon::ColumnGetter::new(
+                        #table_name.to_owned(),
+                        #column_name.to_owned(),
+                        vec![],
+                        None,
+                    ))
+                }
+            }
         };
         quote! {
             ::sauvignon::InternalDependency::new(
@@ -1478,16 +1505,26 @@ impl ToTokens for InternalDependencyProcessed {
 enum InternalDependencyType {
     LiteralValue(DependencyValue),
     IdColumnList { type_: Option<String> },
+    OptionalIntColumn,
 }
 
 impl InternalDependencyType {
-    pub fn process(self, field_type_name: &str) -> InternalDependencyTypeProcessed {
+    pub fn process(
+        self,
+        field_type_name: &str,
+        parent_type_name: Option<&str>,
+        field_name: &str,
+    ) -> InternalDependencyTypeProcessed {
         match self {
             Self::LiteralValue(dependency_value) => {
                 InternalDependencyTypeProcessed::LiteralValue(dependency_value)
             }
             Self::IdColumnList { type_ } => InternalDependencyTypeProcessed::IdColumnList {
                 field_type_name: type_.unwrap_or_else(|| field_type_name.to_owned()),
+            },
+            Self::OptionalIntColumn => InternalDependencyTypeProcessed::OptionalIntColumn {
+                table_name: pluralize(&parent_type_name.unwrap().to_snake_case()),
+                column_name: field_name.to_owned(),
             },
         }
     }
@@ -1525,6 +1562,14 @@ impl Parse for InternalDependencyType {
                 }
                 Ok(Self::IdColumnList { type_ })
             }
+            "optional_int_column" => {
+                let arguments_content;
+                parenthesized!(arguments_content in input);
+                if !arguments_content.is_empty() {
+                    return Err(arguments_content.error("Not expecting argument values"));
+                }
+                Ok(Self::OptionalIntColumn)
+            }
             _ => {
                 return Err(
                     input.error("Expected known internal dependency helper eg `literal_value()`")
@@ -1537,8 +1582,14 @@ impl Parse for InternalDependencyType {
 #[derive(Clone)]
 enum InternalDependencyTypeProcessed {
     LiteralValue(DependencyValue),
-    IdColumnList { field_type_name: String },
+    IdColumnList {
+        field_type_name: String,
+    },
     Param(DependencyType),
+    OptionalIntColumn {
+        table_name: String,
+        column_name: String,
+    },
 }
 
 #[proc_macro]
