@@ -209,6 +209,8 @@ impl Parse for Type {
                     bracketed!(fields_content in type_content);
                     let fields = fields.populate_default();
                     while !fields_content.is_empty() {
+                        // TODO: should check somewhere for duplicate field
+                        // name definitions
                         fields.push(fields_content.parse()?);
                         fields_content.parse::<Option<Token![,]>>()?;
                     }
