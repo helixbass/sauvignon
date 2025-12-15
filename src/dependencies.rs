@@ -61,6 +61,7 @@ pub struct ColumnGetter {
     pub table_name: String,
     pub column_name: String,
     pub massager: Option<ColumnValueMassager>,
+    pub id_column_name: String,
 }
 
 impl ColumnGetter {
@@ -68,11 +69,13 @@ impl ColumnGetter {
         table_name: String,
         column_name: String,
         massager: Option<ColumnValueMassager>,
+        id_column_name: String,
     ) -> Self {
         Self {
             table_name,
             column_name,
             massager,
+            id_column_name,
         }
     }
 }

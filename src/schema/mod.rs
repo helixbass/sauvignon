@@ -827,8 +827,10 @@ async fn populate_internal_dependencies(
                         DependencyType::Id => {
                             // TODO: should check that table names and column names can never be SQL injection?
                             let query = format!(
-                                "SELECT {} FROM {} WHERE id = $1",
-                                column_getter.column_name, column_getter.table_name
+                                "SELECT {} FROM {} WHERE {} = $1",
+                                column_getter.column_name,
+                                column_getter.table_name,
+                                column_getter.id_column_name,
                             );
                             let (column_value,): (Id,) = sqlx::query_as(&query)
                                 .bind(row_id)
@@ -843,8 +845,10 @@ async fn populate_internal_dependencies(
                         DependencyType::String => {
                             // TODO: should check that table names and column names can never be SQL injection?
                             let query = format!(
-                                "SELECT {} FROM {} WHERE id = $1",
-                                column_getter.column_name, column_getter.table_name
+                                "SELECT {} FROM {} WHERE {} = $1",
+                                column_getter.column_name,
+                                column_getter.table_name,
+                                column_getter.id_column_name,
                             );
                             match column_getter.massager.as_ref() {
                                 None => {
@@ -878,8 +882,10 @@ async fn populate_internal_dependencies(
                         DependencyType::OptionalInt => {
                             // TODO: should check that table names and column names can never be SQL injection?
                             let query = format!(
-                                "SELECT {} FROM {} WHERE id = $1",
-                                column_getter.column_name, column_getter.table_name
+                                "SELECT {} FROM {} WHERE {} = $1",
+                                column_getter.column_name,
+                                column_getter.table_name,
+                                column_getter.id_column_name,
                             );
                             let (column_value,): (Option<i32>,) = sqlx::query_as(&query)
                                 .bind(row_id)
@@ -894,8 +900,10 @@ async fn populate_internal_dependencies(
                         DependencyType::OptionalFloat => {
                             // TODO: should check that table names and column names can never be SQL injection?
                             let query = format!(
-                                "SELECT {} FROM {} WHERE id = $1",
-                                column_getter.column_name, column_getter.table_name
+                                "SELECT {} FROM {} WHERE {} = $1",
+                                column_getter.column_name,
+                                column_getter.table_name,
+                                column_getter.id_column_name,
                             );
                             let (column_value,): (Option<f64>,) = sqlx::query_as(&query)
                                 .bind(row_id)
@@ -911,8 +919,10 @@ async fn populate_internal_dependencies(
                         DependencyType::OptionalString => {
                             // TODO: should check that table names and column names can never be SQL injection?
                             let query = format!(
-                                "SELECT {} FROM {} WHERE id = $1",
-                                column_getter.column_name, column_getter.table_name
+                                "SELECT {} FROM {} WHERE {} = $1",
+                                column_getter.column_name,
+                                column_getter.table_name,
+                                column_getter.id_column_name,
                             );
                             match column_getter.massager.as_ref() {
                                 None => {
@@ -946,8 +956,10 @@ async fn populate_internal_dependencies(
                         DependencyType::Timestamp => {
                             // TODO: should check that table names and column names can never be SQL injection?
                             let query = format!(
-                                "SELECT {} FROM {} WHERE id = $1",
-                                column_getter.column_name, column_getter.table_name
+                                "SELECT {} FROM {} WHERE {} = $1",
+                                column_getter.column_name,
+                                column_getter.table_name,
+                                column_getter.id_column_name,
                             );
                             let (column_value,): (jiff_sqlx::Timestamp,) = sqlx::query_as(&query)
                                 .bind(row_id)
@@ -960,8 +972,10 @@ async fn populate_internal_dependencies(
                         DependencyType::OptionalId => {
                             // TODO: should check that table names and column names can never be SQL injection?
                             let query = format!(
-                                "SELECT {} FROM {} WHERE id = $1",
-                                column_getter.column_name, column_getter.table_name
+                                "SELECT {} FROM {} WHERE {} = $1",
+                                column_getter.column_name,
+                                column_getter.table_name,
+                                column_getter.id_column_name,
                             );
                             let (column_value,): (Option<Id>,) = sqlx::query_as(&query)
                                 .bind(row_id)
@@ -976,8 +990,10 @@ async fn populate_internal_dependencies(
                         DependencyType::Int => {
                             // TODO: should check that table names and column names can never be SQL injection?
                             let query = format!(
-                                "SELECT {} FROM {} WHERE id = $1",
-                                column_getter.column_name, column_getter.table_name
+                                "SELECT {} FROM {} WHERE {} = $1",
+                                column_getter.column_name,
+                                column_getter.table_name,
+                                column_getter.id_column_name,
                             );
                             let (column_value,): (i32,) = sqlx::query_as(&query)
                                 .bind(row_id)
