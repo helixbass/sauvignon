@@ -1105,48 +1105,7 @@ impl Parse for FieldValue {
                         arguments_content.parse::<Token![=>]>()?;
                         match &*key.to_string() {
                             "via_nested" => {
-                                via_nested = Some(match arguments_content.peek(Ident) {
-                                    true => {
-                                        let table_name =
-                                            arguments_content.parse::<Ident>().unwrap().to_string();
-                                        ViaNested::new(table_name, None)
-                                    }
-                                    false => {
-                                        let via_nested_contents;
-                                        braced!(via_nested_contents in arguments_content);
-                                        let mut table_name: Option<String> = _d();
-                                        let mut foreign_key: Option<String> = _d();
-                                        while !via_nested_contents.is_empty() {
-                                            let key = parse_ident_or_type(&via_nested_contents)?;
-                                            via_nested_contents.parse::<Token![=>]>()?;
-                                            match &*key.to_string() {
-                                                "table_name" => {
-                                                    table_name = Some(
-                                                        via_nested_contents
-                                                            .parse::<Ident>()?
-                                                            .to_string(),
-                                                    );
-                                                }
-                                                "foreign_key" => {
-                                                    foreign_key = Some(
-                                                        via_nested_contents
-                                                            .parse::<Ident>()?
-                                                            .to_string(),
-                                                    );
-                                                }
-                                                key => {
-                                                    return Err(via_nested_contents
-                                                        .error(format!("Unexpected key `{key}`")))
-                                                }
-                                            }
-                                            via_nested_contents.parse::<Option<Token![,]>>()?;
-                                        }
-                                        ViaNested::new(
-                                            table_name.expect("Expected `table_name`"),
-                                            foreign_key,
-                                        )
-                                    }
-                                });
+                                via_nested = Some(arguments_content.parse()?);
                             }
                             key => {
                                 return Err(
@@ -2015,6 +1974,40 @@ impl ViaNested {
             table_name,
             foreign_key,
         }
+    }
+}
+
+impl Parse for ViaNested {
+    fn parse(input: ParseStream) -> Result<Self> {
+        Ok(match input.peek(Ident) {
+            true => {
+                let table_name = input.parse::<Ident>().unwrap().to_string();
+                Self::new(table_name, None)
+            }
+            false => {
+                let via_nested_contents;
+                braced!(via_nested_contents in input);
+                let mut table_name: Option<String> = _d();
+                let mut foreign_key: Option<String> = _d();
+                while !via_nested_contents.is_empty() {
+                    let key = parse_ident_or_type(&via_nested_contents)?;
+                    via_nested_contents.parse::<Token![=>]>()?;
+                    match &*key.to_string() {
+                        "table_name" => {
+                            table_name = Some(via_nested_contents.parse::<Ident>()?.to_string());
+                        }
+                        "foreign_key" => {
+                            foreign_key = Some(via_nested_contents.parse::<Ident>()?.to_string());
+                        }
+                        key => {
+                            return Err(via_nested_contents.error(format!("Unexpected key `{key}`")))
+                        }
+                    }
+                    via_nested_contents.parse::<Option<Token![,]>>()?;
+                }
+                Self::new(table_name.expect("Expected `table_name`"), foreign_key)
+            }
+        })
     }
 }
 
