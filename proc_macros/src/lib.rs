@@ -259,7 +259,6 @@ impl Field {
                 parent_type_name,
                 all_union_or_interface_type_names,
                 all_enum_names,
-                &self.name,
             ),
             name: self.name,
         }
@@ -923,7 +922,6 @@ impl FieldValue {
         parent_type_name: Option<&str>,
         all_union_or_interface_type_names: &HashSet<String>,
         all_enum_names: &HashSet<String>,
-        field_name: &str,
     ) -> FieldValueProcessed {
         match self {
             Self::StringColumn => FieldValueProcessed::StringColumn {
@@ -992,7 +990,7 @@ impl FieldValue {
                     internal_dependencies
                         .into_iter()
                         .map(|internal_dependency| {
-                            internal_dependency.process(type_.name(), parent_type_name, field_name)
+                            internal_dependency.process(type_.name(), parent_type_name)
                         })
                         .collect()
                 }),
@@ -1407,13 +1405,12 @@ impl InternalDependency {
         self,
         field_type_name: &str,
         parent_type_name: Option<&str>,
-        field_name: &str,
     ) -> InternalDependencyProcessed {
         InternalDependencyProcessed {
-            name: self.name,
             type_: self
                 .type_
-                .process(field_type_name, parent_type_name, field_name),
+                .process(field_type_name, parent_type_name, &self.name),
+            name: self.name,
         }
     }
 }
@@ -1513,7 +1510,7 @@ impl InternalDependencyType {
         self,
         field_type_name: &str,
         parent_type_name: Option<&str>,
-        field_name: &str,
+        internal_dependency_name: &str,
     ) -> InternalDependencyTypeProcessed {
         match self {
             Self::LiteralValue(dependency_value) => {
@@ -1524,7 +1521,7 @@ impl InternalDependencyType {
             },
             Self::OptionalIntColumn => InternalDependencyTypeProcessed::OptionalIntColumn {
                 table_name: pluralize(&parent_type_name.unwrap().to_snake_case()),
-                column_name: field_name.to_owned(),
+                column_name: internal_dependency_name.to_owned(),
             },
         }
     }
