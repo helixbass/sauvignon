@@ -1477,13 +1477,14 @@ impl ToTokens for InternalDependencyProcessed {
             InternalDependencyTypeProcessed::OptionalIntColumn {
                 table_name,
                 column_name,
+                self_id_column_name,
             } => {
                 quote! {
                     ::sauvignon::InternalDependencyResolver::ColumnGetter(::sauvignon::ColumnGetter::new(
                         #table_name.to_owned(),
                         #column_name.to_owned(),
                         None,
-                        "id".to_owned(),
+                        #self_id_column_name.to_owned(),
                     ))
                 }
             }
@@ -1502,7 +1503,7 @@ impl ToTokens for InternalDependencyProcessed {
 enum InternalDependencyType {
     LiteralValue(DependencyValue),
     IdColumnList { type_: Option<String> },
-    OptionalIntColumn,
+    OptionalIntColumn { via_nested: Option<ViaNested> },
 }
 
 impl InternalDependencyType {
@@ -1519,9 +1520,19 @@ impl InternalDependencyType {
             Self::IdColumnList { type_ } => InternalDependencyTypeProcessed::IdColumnList {
                 field_type_name: type_.unwrap_or_else(|| field_type_name.to_owned()),
             },
-            Self::OptionalIntColumn => InternalDependencyTypeProcessed::OptionalIntColumn {
-                table_name: pluralize(&parent_type_name.unwrap().to_snake_case()),
-                column_name: internal_dependency_name.to_owned(),
+            Self::OptionalIntColumn { via_nested } => match via_nested {
+                Some(via_nested) => InternalDependencyTypeProcessed::OptionalIntColumn {
+                    table_name: via_nested.table_name,
+                    column_name: internal_dependency_name.to_owned(),
+                    self_id_column_name: via_nested.foreign_key.unwrap_or_else(|| {
+                        format!("{}_id", parent_type_name.unwrap().to_snake_case())
+                    }),
+                },
+                None => InternalDependencyTypeProcessed::OptionalIntColumn {
+                    table_name: pluralize(&parent_type_name.unwrap().to_snake_case()),
+                    column_name: internal_dependency_name.to_owned(),
+                    self_id_column_name: "id".to_owned(),
+                },
             },
         }
     }
@@ -1562,10 +1573,21 @@ impl Parse for InternalDependencyType {
             "optional_int_column" => {
                 let arguments_content;
                 parenthesized!(arguments_content in input);
-                if !arguments_content.is_empty() {
-                    return Err(arguments_content.error("Not expecting argument values"));
+                let mut via_nested: Option<ViaNested> = _d();
+                while !arguments_content.is_empty() {
+                    let key = parse_ident_or_type(&arguments_content)?;
+                    arguments_content.parse::<Token![=>]>()?;
+                    match &*key.to_string() {
+                        "via_nested" => {
+                            via_nested = Some(arguments_content.parse()?);
+                        }
+                        key => {
+                            return Err(arguments_content.error(format!("Unexpected key `{key}`")))
+                        }
+                    }
+                    arguments_content.parse::<Option<Token![,]>>()?;
                 }
-                Ok(Self::OptionalIntColumn)
+                Ok(Self::OptionalIntColumn { via_nested })
             }
             _ => {
                 return Err(
@@ -1586,6 +1608,7 @@ enum InternalDependencyTypeProcessed {
     OptionalIntColumn {
         table_name: String,
         column_name: String,
+        self_id_column_name: String,
     },
 }
 
