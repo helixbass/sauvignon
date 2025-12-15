@@ -938,7 +938,7 @@ impl FieldValue {
             Self::TimestampColumn { via_nested } => match via_nested {
                 Some(via_nested) => FieldValueProcessed::TimestampColumn {
                     table_name: via_nested.table_name,
-                    self_id_column_name: via_nested.id_column_name.unwrap_or_else(|| {
+                    self_id_column_name: via_nested.foreign_key.unwrap_or_else(|| {
                         format!("{}_id", parent_type_name.unwrap().to_snake_case())
                     }),
                 },
@@ -1115,7 +1115,7 @@ impl Parse for FieldValue {
                                         let via_nested_contents;
                                         braced!(via_nested_contents in arguments_content);
                                         let mut table_name: Option<String> = _d();
-                                        let mut id_column_name: Option<String> = _d();
+                                        let mut foreign_key: Option<String> = _d();
                                         while !via_nested_contents.is_empty() {
                                             let key = parse_ident_or_type(&via_nested_contents)?;
                                             via_nested_contents.parse::<Token![=>]>()?;
@@ -1127,8 +1127,8 @@ impl Parse for FieldValue {
                                                             .to_string(),
                                                     );
                                                 }
-                                                "id_column_name" => {
-                                                    id_column_name = Some(
+                                                "foreign_key" => {
+                                                    foreign_key = Some(
                                                         via_nested_contents
                                                             .parse::<Ident>()?
                                                             .to_string(),
@@ -1143,7 +1143,7 @@ impl Parse for FieldValue {
                                         }
                                         ViaNested::new(
                                             table_name.expect("Expected `table_name`"),
-                                            id_column_name,
+                                            foreign_key,
                                         )
                                     }
                                 });
@@ -2006,14 +2006,14 @@ impl ToTokens for DependencyType {
 
 struct ViaNested {
     pub table_name: String,
-    pub id_column_name: Option<String>,
+    pub foreign_key: Option<String>,
 }
 
 impl ViaNested {
-    pub fn new(table_name: String, id_column_name: Option<String>) -> Self {
+    pub fn new(table_name: String, foreign_key: Option<String>) -> Self {
         Self {
             table_name,
-            id_column_name,
+            foreign_key,
         }
     }
 }
