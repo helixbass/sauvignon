@@ -315,6 +315,7 @@ impl ToTokens for FieldProcessed {
             }
             FieldValueProcessed::OptionalIntColumn {
                 table_name,
+                self_id_column_name,
             } => {
                 let self_column_name = name.to_snake_case();
                 quote! {
@@ -330,7 +331,7 @@ impl ToTokens for FieldProcessed {
                                     #table_name.to_owned(),
                                     #self_column_name.to_owned(),
                                     None,
-                                    "id".to_owned(),
+                                    #self_id_column_name.to_owned(),
                                 )),
                             )],
                             ::sauvignon::CarverOrPopulator::Carver(::std::boxed::Box::new(::sauvignon::OptionalIntCarver::new(#self_column_name.to_owned()))),
@@ -879,7 +880,9 @@ impl ToTokens for FieldProcessed {
 
 enum FieldValue {
     StringColumn,
-    OptionalIntColumn,
+    OptionalIntColumn {
+        via_nested: Option<ViaNested>,
+    },
     OptionalFloatColumn {
         via_nested: Option<ViaNested>,
     },
@@ -927,8 +930,17 @@ impl FieldValue {
             Self::StringColumn => FieldValueProcessed::StringColumn {
                 table_name: pluralize(&parent_type_name.unwrap().to_snake_case()),
             },
-            Self::OptionalIntColumn => FieldValueProcessed::OptionalIntColumn {
-                table_name: pluralize(&parent_type_name.unwrap().to_snake_case()),
+            Self::OptionalIntColumn { via_nested } => match via_nested {
+                Some(via_nested) => FieldValueProcessed::OptionalIntColumn {
+                    table_name: via_nested.table_name,
+                    self_id_column_name: via_nested.foreign_key.unwrap_or_else(|| {
+                        format!("{}_id", parent_type_name.unwrap().to_snake_case())
+                    }),
+                },
+                None => FieldValueProcessed::OptionalIntColumn {
+                    table_name: pluralize(&parent_type_name.unwrap().to_snake_case()),
+                    self_id_column_name: "id".to_owned(),
+                },
             },
             Self::OptionalFloatColumn { via_nested } => match via_nested {
                 Some(via_nested) => FieldValueProcessed::OptionalFloatColumn {
@@ -1063,10 +1075,23 @@ impl Parse for FieldValue {
                 "optional_int_column" => {
                     let arguments_content;
                     parenthesized!(arguments_content in input);
-                    if !arguments_content.is_empty() {
-                        return Err(arguments_content.error("Not expecting argument values"));
+                    let mut via_nested: Option<ViaNested> = _d();
+                    while !arguments_content.is_empty() {
+                        let key = parse_ident_or_type(&arguments_content)?;
+                        arguments_content.parse::<Token![=>]>()?;
+                        match &*key.to_string() {
+                            "via_nested" => {
+                                via_nested = Some(arguments_content.parse()?);
+                            }
+                            key => {
+                                return Err(
+                                    arguments_content.error(format!("Unexpected key `{key}`"))
+                                )
+                            }
+                        }
+                        arguments_content.parse::<Option<Token![,]>>()?;
                     }
-                    Ok(Self::OptionalIntColumn)
+                    Ok(Self::OptionalIntColumn { via_nested })
                 }
                 "optional_float_column" => {
                     let arguments_content;
@@ -1345,6 +1370,7 @@ enum FieldValueProcessed {
     },
     OptionalIntColumn {
         table_name: String,
+        self_id_column_name: String,
     },
     OptionalFloatColumn {
         table_name: String,
