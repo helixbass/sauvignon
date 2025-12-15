@@ -887,7 +887,7 @@ enum FieldValue {
     },
     TimestampColumn {
         // TODO: add tests for via_nested here (vs in swapi-sauvignon)
-        via_nested: Option<String>,
+        via_nested: Option<ViaNested>,
     },
     IdColumn,
     OptionalStringColumn,
@@ -937,11 +937,10 @@ impl FieldValue {
             },
             Self::TimestampColumn { via_nested } => match via_nested {
                 Some(via_nested) => FieldValueProcessed::TimestampColumn {
-                    table_name: via_nested,
-                    self_id_column_name: format!(
-                        "{}_id",
-                        parent_type_name.unwrap().to_snake_case()
-                    ),
+                    table_name: via_nested.table_name,
+                    self_id_column_name: via_nested.id_column_name.unwrap_or_else(|| {
+                        format!("{}_id", parent_type_name.unwrap().to_snake_case())
+                    }),
                 },
                 None => FieldValueProcessed::TimestampColumn {
                     table_name: pluralize(&parent_type_name.unwrap().to_snake_case()),
@@ -1100,13 +1099,54 @@ impl Parse for FieldValue {
                 "timestamp_column" => {
                     let arguments_content;
                     parenthesized!(arguments_content in input);
-                    let mut via_nested: Option<String> = _d();
+                    let mut via_nested: Option<ViaNested> = _d();
                     while !arguments_content.is_empty() {
                         let key = parse_ident_or_type(&arguments_content)?;
                         arguments_content.parse::<Token![=>]>()?;
                         match &*key.to_string() {
                             "via_nested" => {
-                                via_nested = Some(arguments_content.parse::<Ident>()?.to_string());
+                                via_nested = Some(match arguments_content.peek(Ident) {
+                                    true => {
+                                        let table_name =
+                                            arguments_content.parse::<Ident>().unwrap().to_string();
+                                        ViaNested::new(table_name, None)
+                                    }
+                                    false => {
+                                        let via_nested_contents;
+                                        braced!(via_nested_contents in arguments_content);
+                                        let mut table_name: Option<String> = _d();
+                                        let mut id_column_name: Option<String> = _d();
+                                        while !via_nested_contents.is_empty() {
+                                            let key = parse_ident_or_type(&via_nested_contents)?;
+                                            via_nested_contents.parse::<Token![=>]>()?;
+                                            match &*key.to_string() {
+                                                "table_name" => {
+                                                    table_name = Some(
+                                                        via_nested_contents
+                                                            .parse::<Ident>()?
+                                                            .to_string(),
+                                                    );
+                                                }
+                                                "id_column_name" => {
+                                                    id_column_name = Some(
+                                                        via_nested_contents
+                                                            .parse::<Ident>()?
+                                                            .to_string(),
+                                                    );
+                                                }
+                                                key => {
+                                                    return Err(via_nested_contents
+                                                        .error(format!("Unexpected key `{key}`")))
+                                                }
+                                            }
+                                            via_nested_contents.parse::<Option<Token![,]>>()?;
+                                        }
+                                        ViaNested::new(
+                                            table_name.expect("Expected `table_name`"),
+                                            id_column_name,
+                                        )
+                                    }
+                                });
                             }
                             key => {
                                 return Err(
@@ -1961,6 +2001,20 @@ impl ToTokens for DependencyType {
             },
         }
         .to_tokens(tokens)
+    }
+}
+
+struct ViaNested {
+    pub table_name: String,
+    pub id_column_name: Option<String>,
+}
+
+impl ViaNested {
+    pub fn new(table_name: String, id_column_name: Option<String>) -> Self {
+        Self {
+            table_name,
+            id_column_name,
+        }
     }
 }
 
