@@ -1485,8 +1485,8 @@ impl ToTokens for InternalDependencyProcessed {
                     ::sauvignon::InternalDependencyResolver::ColumnGetter(::sauvignon::ColumnGetter::new(
                         #table_name.to_owned(),
                         #column_name.to_owned(),
-                        vec![],
                         None,
+                        "id".to_owned(),
                     ))
                 }
             }
