@@ -39,6 +39,10 @@ pub enum CarverOrPopulator {
         Box<dyn PopulatorListInterface>,
     ),
     OptionalPopulator(OptionalPopulator),
+    OptionalUnionOrInterfaceTypePopulator(
+        Box<dyn OptionalUnionOrInterfaceTypePopulator>,
+        Populator,
+    ),
 }
 
 pub trait Carver: Send + Sync {
@@ -718,6 +722,14 @@ impl UnionOrInterfaceTypePopulator for TypeDepluralizer {
     ) -> String {
         singularize(internal_dependencies.get("type").unwrap().as_string()).to_pascal_case()
     }
+}
+
+pub trait OptionalUnionOrInterfaceTypePopulator: Send + Sync {
+    fn populate(
+        &self,
+        external_dependencies: &ExternalDependencyValues,
+        internal_dependencies: &InternalDependencyValues,
+    ) -> Option<String>;
 }
 
 pub trait UnionOrInterfaceTypePopulatorList: Send + Sync {

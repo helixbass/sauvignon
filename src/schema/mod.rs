@@ -743,6 +743,26 @@ fn progress_fields<'a>(
                                     field_plan,
                                 )
                             }
+                            CarverOrPopulator::OptionalUnionOrInterfaceTypePopulator(
+                                type_populator,
+                                populator,
+                            ) => {
+                                match type_populator.populate(
+                                    &external_dependency_values,
+                                    &internal_dependency_values,
+                                ) {
+                                    None => ResponseValueOrInProgress::ResponseValue(
+                                        ResponseValue::Null,
+                                    ),
+                                    Some(type_name) => to_recursing_after_populating(
+                                        &external_dependency_values,
+                                        &internal_dependency_values,
+                                        populator,
+                                        &type_name,
+                                        field_plan,
+                                    ),
+                                }
+                            }
                         }
                     }
                     ResponseValueOrInProgress::InProgressRecursing(InProgressRecursing {

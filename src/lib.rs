@@ -43,9 +43,10 @@ pub use crate::request::{
 pub use crate::resolve::{
     Carver, CarverList, CarverOrPopulator, EnumValueCarver, EnumValueCarverList, FieldResolver,
     IdCarver, IntCarver, OptionalEnumValueCarver, OptionalFloatCarver, OptionalIntCarver,
-    OptionalPopulator, OptionalPopulatorInterface, OptionalStringCarver, OptionalValuePopulator,
-    OptionalValuesPopulator, Populator, PopulatorInterface, PopulatorList, PopulatorListInterface,
-    StringCarver, TimestampCarver, TypeDepluralizer, UnionOrInterfaceTypePopulator,
+    OptionalPopulator, OptionalPopulatorInterface, OptionalStringCarver,
+    OptionalUnionOrInterfaceTypePopulator, OptionalValuePopulator, OptionalValuesPopulator,
+    Populator, PopulatorInterface, PopulatorList, PopulatorListInterface, StringCarver,
+    TimestampCarver, TypeDepluralizer, UnionOrInterfaceTypePopulator,
     UnionOrInterfaceTypePopulatorList, ValuePopulator, ValuePopulatorList, ValuesPopulator,
 };
 pub use crate::response::{
