@@ -1774,7 +1774,7 @@ impl ToTokens for DependencyValue {
                 ::sauvignon::DependencyValue::String(#string.to_owned())
             },
             Self::IdentId(ident) => quote! {
-                ::sauvignon::DependencyValue::Id(#ident)
+                ::sauvignon::DependencyValue::Id(#ident.clone())
             },
             _ => unimplemented!(),
         }
