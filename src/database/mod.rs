@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use sqlx::{Pool, Postgres, Row};
 use squalid::_d;
-use tracing::{trace_span, Instrument};
+use tracing::{instrument, trace_span, Instrument};
 
 use crate::{ColumnValueMassager, DependencyType, DependencyValue, Id, IndexMap, WhereResolved};
 
@@ -51,6 +51,7 @@ impl PostgresDatabase {
 
 #[async_trait]
 impl Database for PostgresDatabase {
+    #[instrument(level = "trace", skip(self))]
     async fn get_column(
         &self,
         table_name: &str,
@@ -233,6 +234,7 @@ impl Database for PostgresDatabase {
         }
     }
 
+    #[instrument(level = "trace", skip(self))]
     async fn get_column_list(
         &self,
         table_name: &str,
@@ -302,22 +304,55 @@ impl Database for PostgresDatabase {
                         )
                     }
                 );
-                let mut query = sqlx::query_as::<_, (String,)>(&query);
-                for where_ in wheres {
-                    query = match &where_.value {
-                        DependencyValue::Id(id) => query.bind(id.parse::<i32>().unwrap()),
-                        DependencyValue::String(str) => query.bind(str),
-                        _ => unimplemented!(),
-                    };
+                match self
+                    .massagers
+                    .get(table_name)
+                    .and_then(|table| table.get(column_name))
+                {
+                    None => {
+                        let mut query = sqlx::query_as::<_, (String,)>(&query);
+                        for where_ in wheres {
+                            query = match &where_.value {
+                                DependencyValue::Id(id) => query.bind(id.parse::<i32>().unwrap()),
+                                DependencyValue::String(str) => query.bind(str),
+                                _ => unimplemented!(),
+                            };
+                        }
+                        let rows = query
+                            .fetch_all(&self.pool)
+                            .instrument(trace_span!("fetch string column list"))
+                            .await
+                            .unwrap();
+                        rows.into_iter()
+                            .map(|(column_value,)| DependencyValue::String(column_value))
+                            .collect()
+                    }
+                    Some(massager) => {
+                        let massager = massager.as_string();
+                        let mut query = sqlx::query(&query);
+                        for where_ in wheres {
+                            query = match &where_.value {
+                                DependencyValue::Id(id) => query.bind(id.parse::<i32>().unwrap()),
+                                DependencyValue::String(str) => query.bind(str),
+                                _ => unimplemented!(),
+                            };
+                        }
+                        let rows = query
+                            .fetch_all(&self.pool)
+                            .instrument(trace_span!("fetch string column list"))
+                            .await
+                            .unwrap();
+                        rows.into_iter()
+                            .map(|row| {
+                                DependencyValue::String(
+                                    massager
+                                        .massage(row.try_get_raw(column_name).unwrap())
+                                        .unwrap(),
+                                )
+                            })
+                            .collect()
+                    }
                 }
-                let rows = query
-                    .fetch_all(&self.pool)
-                    .instrument(trace_span!("fetch string column list"))
-                    .await
-                    .unwrap();
-                rows.into_iter()
-                    .map(|(column_value,)| DependencyValue::String(column_value))
-                    .collect()
             }
             _ => unreachable!(),
         }

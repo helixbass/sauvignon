@@ -137,6 +137,7 @@ impl Where {
     }
 }
 
+#[derive(Debug)]
 pub struct WhereResolved {
     pub column_name: String,
     pub value: DependencyValue,
@@ -157,7 +158,7 @@ pub struct ExternalDependencyValue {
 
 pub type Id = String;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum DependencyValue {
     Id(Id),
     String(String),
