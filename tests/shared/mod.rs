@@ -4,7 +4,7 @@ use sqlx::{postgres::PgPoolOptions, Pool, Postgres};
 use strum::{EnumString, VariantNames};
 
 use sauvignon::{
-    schema, Carver, CarverOrPopulator, ExternalDependencyValues, Id, InternalDependencyValues,
+    schema, Carver, CarverOrPopulator, ExternalDependencyValues, InternalDependencyValues,
     PopulatorListInterface, ResponseValue, Schema, UnionOrInterfaceTypePopulatorList,
 };
 

@@ -4,21 +4,18 @@ use std::sync::RwLock;
 
 use itertools::Itertools;
 use rkyv::{rancor, util::AlignedVec};
-use sql_query_builder::Select;
-use sqlx::{Pool, Postgres};
-use squalid::{EverythingExt, OptionExt, _d};
-use tracing::{instrument, trace, trace_span, Instrument};
+use squalid::{OptionExt, _d};
+use tracing::{instrument, trace, trace_span};
 
 use crate::{
-    builtin_types, fields_in_progress_new, get_hash, parse, pluralize, CarverOrPopulator, Database,
+    builtin_types, fields_in_progress_new, get_hash, parse, CarverOrPopulator, Database,
     DependencyType, DependencyValue, Document, DummyUnionTypenameField, Error,
-    ExternalDependencyValues, FieldPlan, FieldResolver, FieldsInProgress, Id, InProgress,
-    InProgressRecursing, InProgressRecursingList, IndexMap, Interface, InternalDependency,
-    InternalDependencyResolver, InternalDependencyValues, OperationType, OptionalPopulator,
-    OptionalPopulatorInterface, Populator, PopulatorInterface, PopulatorList,
-    PopulatorListInterface, PositionsTracker, QueryPlan, Request, Response, ResponseValue,
-    ResponseValueOrInProgress, Result as SauvignonResult, Type, TypeInterface, Union, Value,
-    WhereResolved,
+    ExternalDependencyValues, FieldPlan, FieldsInProgress, InProgress, InProgressRecursing,
+    InProgressRecursingList, IndexMap, Interface, InternalDependencyResolver,
+    InternalDependencyValues, OperationType, OptionalPopulator, OptionalPopulatorInterface,
+    Populator, PopulatorInterface, PopulatorListInterface, PositionsTracker, QueryPlan, Request,
+    Response, ResponseValue, ResponseValueOrInProgress, Result as SauvignonResult, Type,
+    TypeInterface, Union, Value, WhereResolved,
 };
 
 mod validation;

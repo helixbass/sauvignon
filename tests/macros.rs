@@ -1,5 +1,4 @@
 use sauvignon::{json_from_response, Database, PostgresDatabase, Schema};
-use sqlx::{Pool, Postgres};
 
 mod shared;
 
