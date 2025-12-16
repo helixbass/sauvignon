@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use sqlx::{Pool, Postgres};
+use sqlx::{Pool, Postgres, Row};
 use squalid::_d;
 use tracing::{trace_span, Instrument};
 
@@ -84,13 +84,34 @@ impl Database for PostgresDatabase {
                     "SELECT {} FROM {} WHERE {} = $1",
                     column_name, table_name, id_column_name,
                 );
-                let (column_value,): (String,) = sqlx::query_as(&query)
-                    .bind(id.parse::<i32>().unwrap())
-                    .fetch_one(&self.pool)
-                    .instrument(trace_span!("fetch string column"))
-                    .await
-                    .unwrap();
-                DependencyValue::String(column_value)
+                match self
+                    .massagers
+                    .get(table_name)
+                    .and_then(|table| table.get(column_name))
+                {
+                    None => {
+                        let (column_value,): (String,) = sqlx::query_as(&query)
+                            .bind(id.parse::<i32>().unwrap())
+                            .fetch_one(&self.pool)
+                            .instrument(trace_span!("fetch string column"))
+                            .await
+                            .unwrap();
+                        DependencyValue::String(column_value)
+                    }
+                    Some(massager) => {
+                        let massager = massager.as_string();
+                        let row = sqlx::query(&query)
+                            .bind(id.parse::<i32>().unwrap())
+                            .fetch_one(&self.pool)
+                            .instrument(trace_span!("fetch string column"))
+                            .await
+                            .unwrap();
+                        let massaged = massager
+                            .massage(row.try_get_raw(column_name).unwrap())
+                            .unwrap();
+                        DependencyValue::String(massaged)
+                    }
+                }
             }
             // TODO: add test (in this repo vs in swapi-sauvignon)
             // for optional int column
@@ -133,13 +154,34 @@ impl Database for PostgresDatabase {
                     "SELECT {} FROM {} WHERE {} = $1",
                     column_name, table_name, id_column_name,
                 );
-                let (column_value,): (Option<String>,) = sqlx::query_as(&query)
-                    .bind(id.parse::<i32>().unwrap())
-                    .fetch_one(&self.pool)
-                    .instrument(trace_span!("fetch optional string column"))
-                    .await
-                    .unwrap();
-                DependencyValue::OptionalString(column_value)
+                match self
+                    .massagers
+                    .get(table_name)
+                    .and_then(|table| table.get(column_name))
+                {
+                    None => {
+                        let (column_value,): (Option<String>,) = sqlx::query_as(&query)
+                            .bind(id.parse::<i32>().unwrap())
+                            .fetch_one(&self.pool)
+                            .instrument(trace_span!("fetch optional string column"))
+                            .await
+                            .unwrap();
+                        DependencyValue::OptionalString(column_value)
+                    }
+                    Some(massager) => {
+                        let massager = massager.as_optional_string();
+                        let row = sqlx::query(&query)
+                            .bind(id.parse::<i32>().unwrap())
+                            .fetch_one(&self.pool)
+                            .instrument(trace_span!("fetch optional string column"))
+                            .await
+                            .unwrap();
+                        let massaged = massager
+                            .massage(row.try_get_raw(column_name).unwrap())
+                            .unwrap();
+                        DependencyValue::OptionalString(massaged)
+                    }
+                }
             }
             // TODO: add test (in this repo vs in swapi-sauvignon)
             // for timestamp column
