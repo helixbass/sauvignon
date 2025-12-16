@@ -1,6 +1,6 @@
 use indoc::indoc;
 
-use sauvignon::json_from_response;
+use sauvignon::{json_from_response, PostgresDatabase};
 
 mod shared;
 
@@ -9,7 +9,8 @@ use shared::{get_db_pool, get_schema, pretty_print_json};
 async fn validation_test(request: &str, expected: &str) {
     let db_pool = get_db_pool().await.unwrap();
     let schema = get_schema(&db_pool).await.unwrap();
-    let response = schema.request(request, &db_pool).await;
+    let database = PostgresDatabase::new(db_pool, vec![]);
+    let response = schema.request(request, &database).await;
     let json = json_from_response(&response);
     assert_eq!(pretty_print_json(&json), pretty_print_json(expected));
 }

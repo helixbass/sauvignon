@@ -1,8 +1,9 @@
 use async_trait::async_trait;
 use sqlx::{Pool, Postgres};
+use squalid::_d;
 use tracing::{trace_span, Instrument};
 
-use crate::{DependencyType, DependencyValue, Id, WhereResolved};
+use crate::{ColumnValueMassager, DependencyType, DependencyValue, Id, IndexMap, WhereResolved};
 
 #[async_trait]
 pub trait Database: Send + Sync {
@@ -26,11 +27,25 @@ pub trait Database: Send + Sync {
 
 pub struct PostgresDatabase {
     pub pool: Pool<Postgres>,
+    pub massagers: IndexMap<String, IndexMap<String, ColumnValueMassager>>,
 }
 
 impl PostgresDatabase {
-    pub fn new(pool: Pool<Postgres>) -> Self {
-        Self { pool }
+    pub fn new(pool: Pool<Postgres>, massagers: Vec<PostgresColumnMassager>) -> Self {
+        Self {
+            pool,
+            massagers: {
+                let mut ret: IndexMap<String, IndexMap<String, ColumnValueMassager>> = _d();
+                for massager in massagers {
+                    let for_this_table = ret.entry(massager.table_name).or_default();
+                    if for_this_table.contains_key(&massager.column_name) {
+                        panic!("Already saw column");
+                    }
+                    for_this_table.insert(massager.column_name, massager.massager);
+                }
+                ret
+            },
+        }
     }
 }
 
@@ -263,6 +278,22 @@ impl Database for PostgresDatabase {
                     .collect()
             }
             _ => unreachable!(),
+        }
+    }
+}
+
+pub struct PostgresColumnMassager {
+    pub table_name: String,
+    pub column_name: String,
+    pub massager: ColumnValueMassager,
+}
+
+impl PostgresColumnMassager {
+    pub fn new(table_name: String, column_name: String, massager: ColumnValueMassager) -> Self {
+        Self {
+            table_name,
+            column_name,
+            massager,
         }
     }
 }

@@ -1,6 +1,5 @@
 use futures::join;
-use sauvignon::{json_from_response, Schema};
-use sqlx::{Pool, Postgres};
+use sauvignon::{json_from_response, Database, PostgresDatabase, Schema};
 use tracing_chrome::ChromeLayerBuilder;
 use tracing_subscriber::prelude::*;
 
@@ -9,8 +8,8 @@ mod shared;
 
 use shared::{get_db_pool, get_schema, pretty_print_json};
 
-async fn run_request(request: &str, expected: &str, schema: &Schema, db_pool: &Pool<Postgres>) {
-    let response = schema.request(request, db_pool).await;
+async fn run_request(request: &str, expected: &str, schema: &Schema, database: &dyn Database) {
+    let response = schema.request(request, database).await;
     let json = json_from_response(&response);
     assert_eq!(pretty_print_json(&json), pretty_print_json(expected));
 }
@@ -21,7 +20,8 @@ async fn main() {
     tracing_subscriber::registry().with(chrome_layer).init();
 
     let db_pool = get_db_pool().await.unwrap();
-    let schema = get_schema(&db_pool).await.unwrap();
+    let database = PostgresDatabase::new(db_pool, vec![]);
+    let schema = get_schema(&database.pool).await.unwrap();
 
     let belongs_to = run_request(
         r#"
@@ -52,7 +52,7 @@ async fn main() {
             }
         "#,
         &schema,
-        &db_pool,
+        &database,
     );
 
     let list_query = run_request(
@@ -81,7 +81,7 @@ async fn main() {
             }
         "#,
         &schema,
-        &db_pool,
+        &database,
     );
 
     join!(belongs_to, list_query);
