@@ -18,6 +18,7 @@ use crate::{
     OptionalPopulatorInterface, Populator, PopulatorInterface, PopulatorList,
     PopulatorListInterface, PositionsTracker, QueryPlan, Request, Response, ResponseValue,
     ResponseValueOrInProgress, Result as SauvignonResult, Type, TypeInterface, Union, Value,
+    WhereResolved,
 };
 
 mod validation;
@@ -483,6 +484,18 @@ async fn populate_internal_dependencies(
                                 &column_getter_list.table_name,
                                 &column_getter_list.column_name,
                                 internal_dependency.type_,
+                                &column_getter_list
+                                    .wheres
+                                    .iter()
+                                    .map(|where_| {
+                                        WhereResolved::new(
+                                            where_.column_name.clone(),
+                                            // TODO: this is punting on where's specifying
+                                            // values
+                                            external_dependency_values.get("id").unwrap().clone(),
+                                        )
+                                    })
+                                    .collect::<Vec<_>>(),
                             )
                             .await,
                     )

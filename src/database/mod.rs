@@ -247,8 +247,6 @@ impl Database for PostgresDatabase {
                 );
                 let mut query = sqlx::query_as::<_, (String,)>(&query);
                 for where_ in wheres {
-                    // TODO: this is punting on where's specifying
-                    // values
                     query = match &where_.value {
                         DependencyValue::Id(id) => query.bind(id),
                         DependencyValue::String(str) => query.bind(str),
