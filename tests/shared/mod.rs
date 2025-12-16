@@ -4,7 +4,7 @@ use sqlx::{postgres::PgPoolOptions, Pool, Postgres};
 use strum::{EnumString, VariantNames};
 
 use sauvignon::{
-    schema, Carver, CarverOrPopulator, ExternalDependencyValues, Id, InternalDependencyValues,
+    schema, Carver, CarverOrPopulator, ExternalDependencyValues, InternalDependencyValues,
     PopulatorListInterface, ResponseValue, Schema, UnionOrInterfaceTypePopulatorList,
 };
 
@@ -117,15 +117,17 @@ impl Carver for CanadianCityQuoteCarver {
 }
 
 pub async fn get_schema(db_pool: &Pool<Postgres>) -> anyhow::Result<Schema> {
-    let (katie_id,): (Id,) = sqlx::query_as("SELECT id FROM actors WHERE name = 'Katie Cassidy'")
+    let (katie_id,): (i32,) = sqlx::query_as("SELECT id FROM actors WHERE name = 'Katie Cassidy'")
         .fetch_one(db_pool)
         .await
         .unwrap();
-    let (proenza_schouler_id,): (Id,) =
+    let katie_id = katie_id.to_string();
+    let (proenza_schouler_id,): (i32,) =
         sqlx::query_as("SELECT id FROM designers WHERE name = 'Proenza Schouler'")
             .fetch_one(db_pool)
             .await
             .unwrap();
+    let proenza_schouler_id = proenza_schouler_id.to_string();
 
     Ok(schema! {
         types => [

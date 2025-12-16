@@ -10,16 +10,15 @@ use axum::{
     routing::{get, post},
     Extension, Json, Router,
 };
-use sauvignon::{Response, Schema};
+use sauvignon::{Database, Response, Schema};
 use serde::Deserialize;
-use sqlx::{Pool, Postgres};
 
 pub async fn graphql(
     Extension(schema): Extension<Arc<Schema>>,
-    Extension(db_pool): Extension<Pool<Postgres>>,
+    Extension(database): Extension<Arc<dyn Database>>,
     GraphQLRequest(request): GraphQLRequest,
 ) -> GraphQLResponse {
-    GraphQLResponse(schema.request(&request.query, &db_pool).await)
+    GraphQLResponse(schema.request(&request.query, &*database).await)
 }
 
 pub struct GraphQLRequest(RequestFields);
@@ -73,10 +72,10 @@ fn graphiql_html(graphql_path: &str) -> String {
     )
 }
 
-pub fn simple_app(schema: Arc<Schema>, db_pool: Pool<Postgres>) -> Router<()> {
+pub fn simple_app(schema: Arc<Schema>, database: Arc<dyn Database>) -> Router<()> {
     Router::new()
         .route("/graphql", post(graphql))
         .route("/graphiql", get(graphiql("/graphql")))
         .layer(Extension(schema))
-        .layer(Extension(db_pool))
+        .layer(Extension(database))
 }

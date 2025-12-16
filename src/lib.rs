@@ -1,4 +1,5 @@
 mod any_hash_map;
+mod database;
 mod dependencies;
 mod error;
 mod hash;
@@ -21,12 +22,13 @@ pub use strum;
 pub use shared::pluralize;
 
 pub use crate::any_hash_map::AnyHashMap;
+pub use crate::database::{Database, PostgresColumnMassager, PostgresDatabase};
 pub use crate::dependencies::{
     ArgumentInternalDependencyResolver, ColumnGetter, ColumnGetterList, ColumnValueMassager,
     ColumnValueMassagerInterface, DependencyType, DependencyValue, ExternalDependency,
     ExternalDependencyValue, ExternalDependencyValues, Id, InternalDependency,
     InternalDependencyResolver, InternalDependencyValue, InternalDependencyValues,
-    LiteralValueInternalDependencyResolver, Where,
+    LiteralValueInternalDependencyResolver, Where, WhereResolved,
 };
 pub use crate::error::{Error, Result};
 pub use crate::hash::get_hash;
@@ -63,4 +65,4 @@ pub use crate::types::{
     Type, TypeFull, TypeInterface, TypeOrInterfaceField, Union,
 };
 
-pub use proc_macros::schema;
+pub use proc_macros::{enum_optional_string_massager, enum_string_massager, schema};

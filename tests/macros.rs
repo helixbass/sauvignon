@@ -1,12 +1,11 @@
-use sauvignon::{json_from_response, Schema};
-use sqlx::{Pool, Postgres};
+use sauvignon::{json_from_response, Database, PostgresDatabase, Schema};
 
 mod shared;
 
 use shared::{get_db_pool, get_schema, pretty_print_json};
 
-async fn request_test(schema: &Schema, db_pool: &Pool<Postgres>, request: &str, expected: &str) {
-    let response = schema.request(request, &db_pool).await;
+async fn request_test(schema: &Schema, database: &dyn Database, request: &str, expected: &str) {
+    let response = schema.request(request, database).await;
     let json = json_from_response(&response);
     assert_eq!(pretty_print_json(&json), pretty_print_json(expected));
 }
@@ -15,10 +14,11 @@ async fn request_test(schema: &Schema, db_pool: &Pool<Postgres>, request: &str, 
 async fn test_column_getter() {
     let db_pool = get_db_pool().await.unwrap();
     let schema = get_schema(&db_pool).await.unwrap();
+    let database = PostgresDatabase::new(db_pool, vec![]);
 
     request_test(
         &schema,
-        &db_pool,
+        &database,
         r#"
             query {
               actorKatie {

@@ -25,6 +25,7 @@ shared = { package = "sauvignon_shared", path = "shared" }
 strum = { version = "0.27.2", features = ["derive"] }
 jiff = "0.2.16"
 jiff-sqlx = { version = "0.1.1", features = [ "postgres" ] }
+async-trait = "0.1.89"
 
 [dev-dependencies]
 futures = "0.3.31"
