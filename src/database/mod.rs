@@ -3,7 +3,7 @@ use sqlx::{Pool, Postgres, Row};
 use squalid::_d;
 use tracing::{instrument, trace_span, Instrument};
 
-use crate::{ColumnValueMassager, DependencyType, DependencyValue, Id, IndexMap, WhereResolved};
+use crate::{ColumnValueMassager, DependencyType, DependencyValue, IndexMap, WhereResolved};
 
 #[async_trait]
 pub trait Database: Send + Sync {
