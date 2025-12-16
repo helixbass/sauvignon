@@ -206,13 +206,13 @@ impl Database for PostgresDatabase {
                     "SELECT {} FROM {} WHERE {} = $1",
                     column_name, table_name, id_column_name,
                 );
-                let (column_value,): (Option<Id>,) = sqlx::query_as(&query)
+                let (column_value,): (Option<i32>,) = sqlx::query_as(&query)
                     .bind(id.parse::<i32>().unwrap())
                     .fetch_one(&self.pool)
                     .instrument(trace_span!("fetch optional ID column"))
                     .await
                     .unwrap();
-                DependencyValue::OptionalId(column_value)
+                DependencyValue::OptionalId(column_value.map(|id| id.to_string()))
             }
             // TODO: add test (in this repo vs in swapi-sauvignon)
             // for int_column()
