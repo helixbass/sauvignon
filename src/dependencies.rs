@@ -155,7 +155,7 @@ pub struct ExternalDependencyValue {
     pub value: DependencyValue,
 }
 
-pub type Id = i32;
+pub type Id = String;
 
 #[derive(Clone)]
 pub enum DependencyValue {
@@ -237,7 +237,7 @@ impl DependencyValue {
 
     pub fn maybe_non_optional(&self) -> Option<Self> {
         match self {
-            Self::OptionalId(value) => value.map(|value| Self::Id(value)),
+            Self::OptionalId(value) => value.as_ref().map(|value| Self::Id(value.clone())),
             Self::OptionalString(value) => value.as_ref().map(|value| Self::String(value.clone())),
             Self::OptionalFloat(value) => value.map(|value| Self::Float(value)),
             Self::OptionalInt(value) => value.map(|value| Self::Int(value)),

@@ -576,7 +576,7 @@ async fn populate_internal_dependencies(
                         .unwrap();
                     match (internal_dependency.type_, &argument.value) {
                         (DependencyType::Id, Value::Int(argument_value)) => {
-                            DependencyValue::Id(*argument_value)
+                            DependencyValue::Id(argument_value.to_string())
                         }
                         (DependencyType::String, Value::String(argument_value)) => {
                             DependencyValue::String(argument_value.clone())
