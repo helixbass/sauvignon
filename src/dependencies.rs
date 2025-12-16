@@ -60,21 +60,14 @@ pub enum InternalDependencyResolver {
 pub struct ColumnGetter {
     pub table_name: String,
     pub column_name: String,
-    pub massager: Option<ColumnValueMassager>,
     pub id_column_name: String,
 }
 
 impl ColumnGetter {
-    pub fn new(
-        table_name: String,
-        column_name: String,
-        massager: Option<ColumnValueMassager>,
-        id_column_name: String,
-    ) -> Self {
+    pub fn new(table_name: String, column_name: String, id_column_name: String) -> Self {
         Self {
             table_name,
             column_name,
-            massager,
             id_column_name,
         }
     }
@@ -122,21 +115,14 @@ pub struct ColumnGetterList {
     pub table_name: String,
     pub column_name: String,
     pub wheres: Vec<Where>,
-    pub massager: Option<ColumnValueMassager>,
 }
 
 impl ColumnGetterList {
-    pub fn new(
-        table_name: String,
-        column_name: String,
-        wheres: Vec<Where>,
-        massager: Option<ColumnValueMassager>,
-    ) -> Self {
+    pub fn new(table_name: String, column_name: String, wheres: Vec<Where>) -> Self {
         Self {
             table_name,
             column_name,
             wheres,
-            massager,
         }
     }
 }
@@ -148,6 +134,17 @@ pub struct Where {
 impl Where {
     pub fn new(column_name: String) -> Self {
         Self { column_name }
+    }
+}
+
+pub struct WhereResolved {
+    pub column_name: String,
+    pub value: DependencyValue,
+}
+
+impl WhereResolved {
+    pub fn new(column_name: String, value: DependencyValue) -> Self {
+        Self { column_name, value }
     }
 }
 

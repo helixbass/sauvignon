@@ -306,7 +306,6 @@ impl ToTokens for FieldProcessed {
                                 ::sauvignon::InternalDependencyResolver::ColumnGetter(::sauvignon::ColumnGetter::new(
                                     #table_name.to_owned(),
                                     #self_column_name.to_owned(),
-                                    None,
                                     #self_id_column_name.to_owned(),
                                 )),
                             )],
@@ -333,7 +332,6 @@ impl ToTokens for FieldProcessed {
                                 ::sauvignon::InternalDependencyResolver::ColumnGetter(::sauvignon::ColumnGetter::new(
                                     #table_name.to_owned(),
                                     #self_column_name.to_owned(),
-                                    None,
                                     #self_id_column_name.to_owned(),
                                 )),
                             )],
@@ -360,7 +358,6 @@ impl ToTokens for FieldProcessed {
                                 ::sauvignon::InternalDependencyResolver::ColumnGetter(::sauvignon::ColumnGetter::new(
                                     #table_name.to_owned(),
                                     #self_column_name.to_owned(),
-                                    None,
                                     #self_id_column_name.to_owned(),
                                 )),
                             )],
@@ -375,7 +372,6 @@ impl ToTokens for FieldProcessed {
                 type_,
             } => {
                 let self_column_name = name.to_snake_case();
-                let massager_struct_name = format_ident!("{}Massager", type_);
                 let type_str = type_.to_string();
                 quote! {
                     ::sauvignon::TypeFieldBuilder::default()
@@ -389,29 +385,6 @@ impl ToTokens for FieldProcessed {
                                 ::sauvignon::InternalDependencyResolver::ColumnGetter(::sauvignon::ColumnGetter::new(
                                     #table_name.to_owned(),
                                     #self_column_name.to_owned(),
-                                    {
-                                        struct #massager_struct_name;
-
-                                        impl ::sauvignon::ColumnValueMassagerInterface<Option<String>> for #massager_struct_name {
-                                            #[::tracing::instrument(
-                                                level = "trace",
-                                                skip(self, value)
-                                            )]
-                                            fn massage(
-                                                &self,
-                                                value: ::sqlx::postgres::PgValueRef<'_>,
-                                            ) -> Result<Option<String>, Box<dyn ::std::error::Error + Sync + Send>> {
-                                                <::std::option::Option<#type_> as ::sqlx::Decode<::sqlx::Postgres>>::decode(value)
-                                                    .map(|option_enum_value| {
-                                                        option_enum_value.map(|enum_value| {
-                                                            use ::sauvignon::heck::ToShoutySnakeCase;
-                                                            format!("{enum_value}").to_shouty_snake_case()
-                                                        })
-                                                    })
-                                            }
-                                        }
-                                        Some(::sauvignon::ColumnValueMassager::OptionalString(::std::boxed::Box::new(#massager_struct_name)))
-                                    },
                                     "id".to_owned(),
                                 )),
                             )],
@@ -426,7 +399,6 @@ impl ToTokens for FieldProcessed {
                 type_,
             } => {
                 let self_column_name = name.to_snake_case();
-                let massager_struct_name = format_ident!("{}Massager", type_);
                 let type_str = type_.to_string();
                 quote! {
                     ::sauvignon::TypeFieldBuilder::default()
@@ -440,27 +412,6 @@ impl ToTokens for FieldProcessed {
                                 ::sauvignon::InternalDependencyResolver::ColumnGetter(::sauvignon::ColumnGetter::new(
                                     #table_name.to_owned(),
                                     #self_column_name.to_owned(),
-                                    {
-                                        struct #massager_struct_name;
-
-                                        impl ::sauvignon::ColumnValueMassagerInterface<String> for #massager_struct_name {
-                                            #[::tracing::instrument(
-                                                level = "trace",
-                                                skip(self, value)
-                                            )]
-                                            fn massage(
-                                                &self,
-                                                value: ::sqlx::postgres::PgValueRef<'_>,
-                                            ) -> Result<String, Box<dyn ::std::error::Error + Sync + Send>> {
-                                                <#type_ as ::sqlx::Decode<::sqlx::Postgres>>::decode(value)
-                                                    .map(|enum_value| {
-                                                        use ::sauvignon::heck::ToShoutySnakeCase;
-                                                        format!("{enum_value}").to_shouty_snake_case()
-                                                    })
-                                            }
-                                        }
-                                        Some(::sauvignon::ColumnValueMassager::String(::std::boxed::Box::new(#massager_struct_name)))
-                                    },
                                     "id".to_owned(),
                                 )),
                             )],
@@ -487,7 +438,6 @@ impl ToTokens for FieldProcessed {
                                 ::sauvignon::InternalDependencyResolver::ColumnGetter(::sauvignon::ColumnGetter::new(
                                     #table_name.to_owned(),
                                     #self_column_name.to_owned(),
-                                    None,
                                     #self_id_column_name.to_owned(),
                                 )),
                             )],
@@ -513,7 +463,6 @@ impl ToTokens for FieldProcessed {
                                 ::sauvignon::InternalDependencyResolver::ColumnGetter(::sauvignon::ColumnGetter::new(
                                     #table_name.to_owned(),
                                     #self_column_name.to_owned(),
-                                    None,
                                     "id".to_owned(),
                                 )),
                             )],
@@ -540,7 +489,6 @@ impl ToTokens for FieldProcessed {
                                 ::sauvignon::InternalDependencyResolver::ColumnGetter(::sauvignon::ColumnGetter::new(
                                     #table_name.to_owned(),
                                     #self_column_name.to_owned(),
-                                    None,
                                     #self_id_column_name.to_owned(),
                                 )),
                             )],
@@ -566,7 +514,6 @@ impl ToTokens for FieldProcessed {
                                 ::sauvignon::InternalDependencyResolver::ColumnGetter(::sauvignon::ColumnGetter::new(
                                     #table_name.to_owned(),
                                     #self_column_name.to_owned(),
-                                    None,
                                     "id".to_owned(),
                                 )),
                             )],
@@ -680,7 +627,6 @@ impl ToTokens for FieldProcessed {
                                             ::sauvignon::InternalDependencyResolver::ColumnGetter(::sauvignon::ColumnGetter::new(
                                                 #self_table_name.to_owned(),
                                                 #self_belongs_to_foreign_key_column_name.to_owned(),
-                                                None,
                                                 "id".to_owned(),
                                             )),
                                         )],
@@ -704,7 +650,6 @@ impl ToTokens for FieldProcessed {
                                             ::sauvignon::InternalDependencyResolver::ColumnGetter(::sauvignon::ColumnGetter::new(
                                                 #self_table_name.to_owned(),
                                                 #self_belongs_to_foreign_key_column_name.to_owned(),
-                                                None,
                                                 "id".to_owned(),
                                             )),
                                         )],
@@ -735,7 +680,6 @@ impl ToTokens for FieldProcessed {
                                             ::sauvignon::InternalDependencyResolver::ColumnGetter(::sauvignon::ColumnGetter::new(
                                                 #self_table_name.to_owned(),
                                                 #self_belongs_to_foreign_key_type_column_name.to_owned(),
-                                                None,
                                                 "id".to_owned(),
                                             )),
                                         ),
@@ -745,7 +689,6 @@ impl ToTokens for FieldProcessed {
                                             ::sauvignon::InternalDependencyResolver::ColumnGetter(::sauvignon::ColumnGetter::new(
                                                 #self_table_name.to_owned(),
                                                 #self_belongs_to_foreign_key_column_name.to_owned(),
-                                                None,
                                                 "id".to_owned(),
                                             )),
                                         ),
@@ -789,7 +732,6 @@ impl ToTokens for FieldProcessed {
                                             #foreign_key_table_name.to_owned(),
                                             "id".to_owned(),
                                             vec![::sauvignon::Where::new(#foreign_key.to_owned())],
-                                            None,
                                         )),
                                     )],
                                     ::sauvignon::CarverOrPopulator::PopulatorList(::sauvignon::ValuePopulatorList::new("id".to_owned()).into())
@@ -804,7 +746,6 @@ impl ToTokens for FieldProcessed {
                         let internal_dependency_name = pluralize(through_other_column_name);
                         match maybe_type_kind {
                             Some(TypeKind::Enum) => {
-                                let massager_struct_name = format_ident!("{}Massager", type_);
                                 quote! {
                                     ::sauvignon::TypeFieldBuilder::default()
                                         .name(#name)
@@ -818,27 +759,6 @@ impl ToTokens for FieldProcessed {
                                                     #through.to_owned(),
                                                     #through_other_column_name.to_owned(),
                                                     vec![::sauvignon::Where::new(#through_self_column_name.to_owned())],
-                                                    {
-                                                        struct #massager_struct_name;
-
-                                                        impl ::sauvignon::ColumnValueMassagerInterface<String> for #massager_struct_name {
-                                                            #[::tracing::instrument(
-                                                                level = "trace",
-                                                                skip(self, value)
-                                                            )]
-                                                            fn massage(
-                                                                &self,
-                                                                value: ::sqlx::postgres::PgValueRef<'_>,
-                                                            ) -> Result<String, Box<dyn ::std::error::Error + Sync + Send>> {
-                                                                <#type_ as ::sqlx::Decode<::sqlx::Postgres>>::decode(value)
-                                                                    .map(|enum_value| {
-                                                                        use ::sauvignon::heck::ToShoutySnakeCase;
-                                                                        format!("{enum_value}").to_shouty_snake_case()
-                                                                    })
-                                                            }
-                                                        }
-                                                        Some(::sauvignon::ColumnValueMassager::String(::std::boxed::Box::new(#massager_struct_name)))
-                                                    }
                                                 )),
                                             )],
                                             ::sauvignon::CarverOrPopulator::CarverList(::std::boxed::Box::new(::sauvignon::EnumValueCarverList::new(#through_other_column_name.to_owned())))
@@ -861,7 +781,6 @@ impl ToTokens for FieldProcessed {
                                                     #through.to_owned(),
                                                     #through_other_column_name.to_owned(),
                                                     vec![::sauvignon::Where::new(#through_self_column_name.to_owned())],
-                                                    None,
                                                 )),
                                             )],
                                             ::sauvignon::CarverOrPopulator::PopulatorList(::sauvignon::ValuePopulatorList::new("id".to_owned()).into())
@@ -1517,7 +1436,6 @@ impl ToTokens for InternalDependencyProcessed {
                         #table_name.to_owned(),
                         "id".to_owned(),
                         vec![],
-                        None,
                     ))
                 }
             }
@@ -1537,7 +1455,6 @@ impl ToTokens for InternalDependencyProcessed {
                     ::sauvignon::InternalDependencyResolver::ColumnGetter(::sauvignon::ColumnGetter::new(
                         #table_name.to_owned(),
                         #column_name.to_owned(),
-                        None,
                         #self_id_column_name.to_owned(),
                     ))
                 }
@@ -2196,4 +2113,82 @@ fn parse_ident_or_type(input: &ParseBuffer) -> Result<Ident> {
             Ident::new("type", key.span())
         }
     })
+}
+
+struct EnumStringMassager {
+    pub enum_type: Ident,
+}
+
+impl Parse for EnumStringMassager {
+    fn parse(input: ParseStream) -> Result<Self> {
+        let enum_type: Ident = input.parse()?;
+        Ok(Self { enum_type })
+    }
+}
+
+// TODO: add tests for these in this repo vs in swapi-sauvignon
+#[proc_macro]
+pub fn enum_string_massager(input: TokenStream) -> TokenStream {
+    let enum_string_massager: EnumStringMassager = parse_macro_input!(input);
+
+    let massager_struct_name = format_ident!("{}Massager", enum_string_massager.enum_type);
+    let enum_type = &enum_string_massager.enum_type;
+
+    quote! {{
+        struct #massager_struct_name;
+
+        impl ::sauvignon::ColumnValueMassagerInterface<String> for #massager_struct_name {
+            #[::tracing::instrument(
+                level = "trace",
+                skip(self, value)
+            )]
+            fn massage(
+                &self,
+                value: ::sqlx::postgres::PgValueRef<'_>,
+            ) -> Result<String, Box<dyn ::std::error::Error + Sync + Send>> {
+                <::std::option::Option<#enum_type> as ::sqlx::Decode<::sqlx::Postgres>>::decode(value)
+                    .map(|option_enum_value| {
+                        option_enum_value.map(|enum_value| {
+                            use ::sauvignon::heck::ToShoutySnakeCase;
+                            format!("{enum_value}").to_shouty_snake_case()
+                        })
+                    })
+            }
+        }
+        Some(::sauvignon::ColumnValueMassager::String(::std::boxed::Box::new(#massager_struct_name)))
+    }}
+    .into()
+}
+
+#[proc_macro]
+pub fn enum_optional_string_massager(input: TokenStream) -> TokenStream {
+    let enum_string_massager: EnumStringMassager = parse_macro_input!(input);
+
+    let massager_struct_name = format_ident!("{}Massager", enum_string_massager.enum_type);
+    let enum_type = &enum_string_massager.enum_type;
+
+    quote! {{
+        struct #massager_struct_name;
+
+        impl ::sauvignon::ColumnValueMassagerInterface<Option<String>> for #massager_struct_name {
+            #[::tracing::instrument(
+                level = "trace",
+                skip(self, value)
+            )]
+            fn massage(
+                &self,
+                value: ::sqlx::postgres::PgValueRef<'_>,
+            ) -> Result<Option<String>, Box<dyn ::std::error::Error + Sync + Send>> {
+                <::std::option::Option<#enum_type> as ::sqlx::Decode<::sqlx::Postgres>>::decode(value)
+                    .map(|option_enum_value| {
+                        option_enum_value.map(|enum_value| {
+                            use ::sauvignon::heck::ToShoutySnakeCase;
+                            format!("{enum_value}").to_shouty_snake_case()
+                        })
+                    })
+            }
+        }
+        Some(::sauvignon::ColumnValueMassager::OptionalString(::std::boxed::Box::new(#massager_struct_name)))
+    }}
+    .into()
 }
