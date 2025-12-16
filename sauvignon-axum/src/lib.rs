@@ -12,7 +12,6 @@ use axum::{
 };
 use sauvignon::{Database, Response, Schema};
 use serde::Deserialize;
-use sqlx::{Pool, Postgres};
 
 pub async fn graphql(
     Extension(schema): Extension<Arc<Schema>>,
@@ -73,10 +72,10 @@ fn graphiql_html(graphql_path: &str) -> String {
     )
 }
 
-pub fn simple_app(schema: Arc<Schema>, db_pool: Pool<Postgres>) -> Router<()> {
+pub fn simple_app(schema: Arc<Schema>, database: Arc<dyn Database>) -> Router<()> {
     Router::new()
         .route("/graphql", post(graphql))
         .route("/graphiql", get(graphiql("/graphql")))
         .layer(Extension(schema))
-        .layer(Extension(db_pool))
+        .layer(Extension(database))
 }
