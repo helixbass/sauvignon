@@ -68,13 +68,13 @@ impl Database for PostgresDatabase {
                     "SELECT {} FROM {} WHERE {} = $1",
                     column_name, table_name, id_column_name,
                 );
-                let (column_value,): (Id,) = sqlx::query_as(&query)
-                    .bind(id)
+                let (column_value,): (i32,) = sqlx::query_as(&query)
+                    .bind(id.parse::<i32>().unwrap())
                     .fetch_one(&self.pool)
                     .instrument(trace_span!("fetch ID column"))
                     .await
                     .unwrap();
-                DependencyValue::Id(column_value)
+                DependencyValue::Id(column_value.to_string())
             }
             // TODO: add test (in this repo vs in swapi-sauvignon)
             // for enum_column()
@@ -85,7 +85,7 @@ impl Database for PostgresDatabase {
                     column_name, table_name, id_column_name,
                 );
                 let (column_value,): (String,) = sqlx::query_as(&query)
-                    .bind(id)
+                    .bind(id.parse::<i32>().unwrap())
                     .fetch_one(&self.pool)
                     .instrument(trace_span!("fetch string column"))
                     .await
@@ -101,7 +101,7 @@ impl Database for PostgresDatabase {
                     column_name, table_name, id_column_name,
                 );
                 let (column_value,): (Option<i32>,) = sqlx::query_as(&query)
-                    .bind(id)
+                    .bind(id.parse::<i32>().unwrap())
                     .fetch_one(&self.pool)
                     .instrument(trace_span!("fetch optional int column"))
                     .await
@@ -117,7 +117,7 @@ impl Database for PostgresDatabase {
                     column_name, table_name, id_column_name,
                 );
                 let (column_value,): (Option<f64>,) = sqlx::query_as(&query)
-                    .bind(id)
+                    .bind(id.parse::<i32>().unwrap())
                     .fetch_one(&self.pool)
                     .instrument(trace_span!("fetch optional float column"))
                     .await
@@ -134,7 +134,7 @@ impl Database for PostgresDatabase {
                     column_name, table_name, id_column_name,
                 );
                 let (column_value,): (Option<String>,) = sqlx::query_as(&query)
-                    .bind(id)
+                    .bind(id.parse::<i32>().unwrap())
                     .fetch_one(&self.pool)
                     .instrument(trace_span!("fetch optional string column"))
                     .await
@@ -150,7 +150,7 @@ impl Database for PostgresDatabase {
                     column_name, table_name, id_column_name,
                 );
                 let (column_value,): (jiff_sqlx::Timestamp,) = sqlx::query_as(&query)
-                    .bind(id)
+                    .bind(id.parse::<i32>().unwrap())
                     .fetch_one(&self.pool)
                     .instrument(trace_span!("fetch timestamp column"))
                     .await
@@ -164,7 +164,7 @@ impl Database for PostgresDatabase {
                     column_name, table_name, id_column_name,
                 );
                 let (column_value,): (Option<Id>,) = sqlx::query_as(&query)
-                    .bind(id)
+                    .bind(id.parse::<i32>().unwrap())
                     .fetch_one(&self.pool)
                     .instrument(trace_span!("fetch optional ID column"))
                     .await
@@ -180,7 +180,7 @@ impl Database for PostgresDatabase {
                     column_name, table_name, id_column_name,
                 );
                 let (column_value,): (i32,) = sqlx::query_as(&query)
-                    .bind(id)
+                    .bind(id.parse::<i32>().unwrap())
                     .fetch_one(&self.pool)
                     .instrument(trace_span!("fetch ID column"))
                     .await
@@ -220,12 +220,12 @@ impl Database for PostgresDatabase {
                         )
                     }
                 );
-                let mut query = sqlx::query_as::<_, (Id,)>(&query);
+                let mut query = sqlx::query_as::<_, (i32,)>(&query);
                 for where_ in wheres {
                     // TODO: this is punting on where's specifying
                     // values
                     query = match &where_.value {
-                        DependencyValue::Id(id) => query.bind(id),
+                        DependencyValue::Id(id) => query.bind(id.parse::<i32>().unwrap()),
                         DependencyValue::String(str) => query.bind(str),
                         _ => unimplemented!(),
                     };
@@ -236,7 +236,7 @@ impl Database for PostgresDatabase {
                     .await
                     .unwrap();
                 rows.into_iter()
-                    .map(|(column_value,)| DependencyValue::Id(column_value))
+                    .map(|(column_value,)| DependencyValue::Id(column_value.to_string()))
                     .collect()
             }
             DependencyType::ListOfStrings => {
@@ -263,7 +263,7 @@ impl Database for PostgresDatabase {
                 let mut query = sqlx::query_as::<_, (String,)>(&query);
                 for where_ in wheres {
                     query = match &where_.value {
-                        DependencyValue::Id(id) => query.bind(id),
+                        DependencyValue::Id(id) => query.bind(id.parse::<i32>().unwrap()),
                         DependencyValue::String(str) => query.bind(str),
                         _ => unimplemented!(),
                     };
