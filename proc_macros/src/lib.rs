@@ -2,7 +2,7 @@ use std::collections::HashSet;
 
 use heck::ToSnakeCase;
 use proc_macro::TokenStream;
-use quote::{quote, ToTokens};
+use quote::{format_ident, quote, ToTokens};
 use shared::pluralize;
 use squalid::{OptionExtDefault, OptionExtIterator, _d};
 use syn::{
@@ -209,6 +209,8 @@ impl Parse for Type {
                     bracketed!(fields_content in type_content);
                     let fields = fields.populate_default();
                     while !fields_content.is_empty() {
+                        // TODO: should check somewhere for duplicate field
+                        // name definitions
                         fields.push(fields_content.parse()?);
                         fields_content.parse::<Option<Token![,]>>()?;
                     }
@@ -255,12 +257,12 @@ impl Field {
         all_enum_names: &HashSet<String>,
     ) -> FieldProcessed {
         FieldProcessed {
-            name: self.name,
             value: self.value.process(
                 parent_type_name,
                 all_union_or_interface_type_names,
                 all_enum_names,
             ),
+            name: self.name,
         }
     }
 }
@@ -289,7 +291,243 @@ impl ToTokens for FieldProcessed {
         match &self.value {
             FieldValueProcessed::StringColumn {
                 table_name,
+                self_id_column_name,
             } => {
+                let self_column_name = name.to_snake_case();
+                quote! {
+                    ::sauvignon::TypeFieldBuilder::default()
+                        .name(#name)
+                        .type_(::sauvignon::TypeFull::NonNull(::std::boxed::Box::new(::sauvignon::TypeFull::Type("String".to_owned()))))
+                        .resolver(::sauvignon::FieldResolver::new(
+                            vec![::sauvignon::ExternalDependency::new("id".to_owned(), ::sauvignon::DependencyType::Id)],
+                            vec![::sauvignon::InternalDependency::new(
+                                #self_column_name.to_owned(),
+                                ::sauvignon::DependencyType::String,
+                                ::sauvignon::InternalDependencyResolver::ColumnGetter(::sauvignon::ColumnGetter::new(
+                                    #table_name.to_owned(),
+                                    #self_column_name.to_owned(),
+                                    None,
+                                    #self_id_column_name.to_owned(),
+                                )),
+                            )],
+                            ::sauvignon::CarverOrPopulator::Carver(::std::boxed::Box::new(::sauvignon::StringCarver::new(#self_column_name.to_owned()))),
+                        ))
+                        .build()
+                        .unwrap()
+                }
+            }
+            FieldValueProcessed::OptionalIntColumn {
+                table_name,
+                self_id_column_name,
+            } => {
+                let self_column_name = name.to_snake_case();
+                quote! {
+                    ::sauvignon::TypeFieldBuilder::default()
+                        .name(#name)
+                        .type_(::sauvignon::TypeFull::Type("Int".to_owned()))
+                        .resolver(::sauvignon::FieldResolver::new(
+                            vec![::sauvignon::ExternalDependency::new("id".to_owned(), ::sauvignon::DependencyType::Id)],
+                            vec![::sauvignon::InternalDependency::new(
+                                #self_column_name.to_owned(),
+                                ::sauvignon::DependencyType::OptionalInt,
+                                ::sauvignon::InternalDependencyResolver::ColumnGetter(::sauvignon::ColumnGetter::new(
+                                    #table_name.to_owned(),
+                                    #self_column_name.to_owned(),
+                                    None,
+                                    #self_id_column_name.to_owned(),
+                                )),
+                            )],
+                            ::sauvignon::CarverOrPopulator::Carver(::std::boxed::Box::new(::sauvignon::OptionalIntCarver::new(#self_column_name.to_owned()))),
+                        ))
+                        .build()
+                        .unwrap()
+                }
+            }
+            FieldValueProcessed::OptionalFloatColumn {
+                table_name,
+                self_id_column_name,
+            } => {
+                let self_column_name = name.to_snake_case();
+                quote! {
+                    ::sauvignon::TypeFieldBuilder::default()
+                        .name(#name)
+                        .type_(::sauvignon::TypeFull::Type("Float".to_owned()))
+                        .resolver(::sauvignon::FieldResolver::new(
+                            vec![::sauvignon::ExternalDependency::new("id".to_owned(), ::sauvignon::DependencyType::Id)],
+                            vec![::sauvignon::InternalDependency::new(
+                                #self_column_name.to_owned(),
+                                ::sauvignon::DependencyType::OptionalFloat,
+                                ::sauvignon::InternalDependencyResolver::ColumnGetter(::sauvignon::ColumnGetter::new(
+                                    #table_name.to_owned(),
+                                    #self_column_name.to_owned(),
+                                    None,
+                                    #self_id_column_name.to_owned(),
+                                )),
+                            )],
+                            ::sauvignon::CarverOrPopulator::Carver(::std::boxed::Box::new(::sauvignon::OptionalFloatCarver::new(#self_column_name.to_owned()))),
+                        ))
+                        .build()
+                        .unwrap()
+                }
+            }
+            FieldValueProcessed::OptionalEnumColumn {
+                table_name,
+                type_,
+            } => {
+                let self_column_name = name.to_snake_case();
+                let massager_struct_name = format_ident!("{}Massager", type_);
+                let type_str = type_.to_string();
+                quote! {
+                    ::sauvignon::TypeFieldBuilder::default()
+                        .name(#name)
+                        .type_(::sauvignon::TypeFull::Type(#type_str.to_owned()))
+                        .resolver(::sauvignon::FieldResolver::new(
+                            vec![::sauvignon::ExternalDependency::new("id".to_owned(), ::sauvignon::DependencyType::Id)],
+                            vec![::sauvignon::InternalDependency::new(
+                                #self_column_name.to_owned(),
+                                ::sauvignon::DependencyType::OptionalString,
+                                ::sauvignon::InternalDependencyResolver::ColumnGetter(::sauvignon::ColumnGetter::new(
+                                    #table_name.to_owned(),
+                                    #self_column_name.to_owned(),
+                                    {
+                                        struct #massager_struct_name;
+
+                                        impl ::sauvignon::ColumnValueMassagerInterface<Option<String>> for #massager_struct_name {
+                                            #[::tracing::instrument(
+                                                level = "trace",
+                                                skip(self, value)
+                                            )]
+                                            fn massage(
+                                                &self,
+                                                value: ::sqlx::postgres::PgValueRef<'_>,
+                                            ) -> Result<Option<String>, Box<dyn ::std::error::Error + Sync + Send>> {
+                                                <::std::option::Option<#type_> as ::sqlx::Decode<::sqlx::Postgres>>::decode(value)
+                                                    .map(|option_enum_value| {
+                                                        option_enum_value.map(|enum_value| {
+                                                            use ::sauvignon::heck::ToShoutySnakeCase;
+                                                            format!("{enum_value}").to_shouty_snake_case()
+                                                        })
+                                                    })
+                                            }
+                                        }
+                                        Some(::sauvignon::ColumnValueMassager::OptionalString(::std::boxed::Box::new(#massager_struct_name)))
+                                    },
+                                    "id".to_owned(),
+                                )),
+                            )],
+                            ::sauvignon::CarverOrPopulator::Carver(::std::boxed::Box::new(::sauvignon::OptionalEnumValueCarver::new(#self_column_name.to_owned()))),
+                        ))
+                        .build()
+                        .unwrap()
+                }
+            }
+            FieldValueProcessed::EnumColumn {
+                table_name,
+                type_,
+            } => {
+                let self_column_name = name.to_snake_case();
+                let massager_struct_name = format_ident!("{}Massager", type_);
+                let type_str = type_.to_string();
+                quote! {
+                    ::sauvignon::TypeFieldBuilder::default()
+                        .name(#name)
+                        .type_(::sauvignon::TypeFull::NonNull(::std::boxed::Box::new(::sauvignon::TypeFull::Type(#type_str.to_owned()))))
+                        .resolver(::sauvignon::FieldResolver::new(
+                            vec![::sauvignon::ExternalDependency::new("id".to_owned(), ::sauvignon::DependencyType::Id)],
+                            vec![::sauvignon::InternalDependency::new(
+                                #self_column_name.to_owned(),
+                                ::sauvignon::DependencyType::String,
+                                ::sauvignon::InternalDependencyResolver::ColumnGetter(::sauvignon::ColumnGetter::new(
+                                    #table_name.to_owned(),
+                                    #self_column_name.to_owned(),
+                                    {
+                                        struct #massager_struct_name;
+
+                                        impl ::sauvignon::ColumnValueMassagerInterface<String> for #massager_struct_name {
+                                            #[::tracing::instrument(
+                                                level = "trace",
+                                                skip(self, value)
+                                            )]
+                                            fn massage(
+                                                &self,
+                                                value: ::sqlx::postgres::PgValueRef<'_>,
+                                            ) -> Result<String, Box<dyn ::std::error::Error + Sync + Send>> {
+                                                <#type_ as ::sqlx::Decode<::sqlx::Postgres>>::decode(value)
+                                                    .map(|enum_value| {
+                                                        use ::sauvignon::heck::ToShoutySnakeCase;
+                                                        format!("{enum_value}").to_shouty_snake_case()
+                                                    })
+                                            }
+                                        }
+                                        Some(::sauvignon::ColumnValueMassager::String(::std::boxed::Box::new(#massager_struct_name)))
+                                    },
+                                    "id".to_owned(),
+                                )),
+                            )],
+                            ::sauvignon::CarverOrPopulator::Carver(::std::boxed::Box::new(::sauvignon::EnumValueCarver::new(#self_column_name.to_owned()))),
+                        ))
+                        .build()
+                        .unwrap()
+                }
+            }
+            FieldValueProcessed::TimestampColumn {
+                table_name,
+                self_id_column_name,
+            } => {
+                let self_column_name = name.to_snake_case();
+                quote! {
+                    ::sauvignon::TypeFieldBuilder::default()
+                        .name(#name)
+                        .type_(::sauvignon::TypeFull::NonNull(::std::boxed::Box::new(::sauvignon::TypeFull::Type("String".to_owned()))))
+                        .resolver(::sauvignon::FieldResolver::new(
+                            vec![::sauvignon::ExternalDependency::new("id".to_owned(), ::sauvignon::DependencyType::Id)],
+                            vec![::sauvignon::InternalDependency::new(
+                                #self_column_name.to_owned(),
+                                ::sauvignon::DependencyType::Timestamp,
+                                ::sauvignon::InternalDependencyResolver::ColumnGetter(::sauvignon::ColumnGetter::new(
+                                    #table_name.to_owned(),
+                                    #self_column_name.to_owned(),
+                                    None,
+                                    #self_id_column_name.to_owned(),
+                                )),
+                            )],
+                            ::sauvignon::CarverOrPopulator::Carver(::std::boxed::Box::new(::sauvignon::TimestampCarver::new(#self_column_name.to_owned()))),
+                        ))
+                        .build()
+                        .unwrap()
+                }
+            }
+            FieldValueProcessed::IdColumn {
+                table_name,
+            } => {
+                let self_column_name = name.to_snake_case();
+                quote! {
+                    ::sauvignon::TypeFieldBuilder::default()
+                        .name(#name)
+                        .type_(::sauvignon::TypeFull::NonNull(::std::boxed::Box::new(::sauvignon::TypeFull::Type("ID".to_owned()))))
+                        .resolver(::sauvignon::FieldResolver::new(
+                            vec![::sauvignon::ExternalDependency::new("id".to_owned(), ::sauvignon::DependencyType::Id)],
+                            vec![::sauvignon::InternalDependency::new(
+                                #self_column_name.to_owned(),
+                                ::sauvignon::DependencyType::Id,
+                                ::sauvignon::InternalDependencyResolver::ColumnGetter(::sauvignon::ColumnGetter::new(
+                                    #table_name.to_owned(),
+                                    #self_column_name.to_owned(),
+                                    None,
+                                    "id".to_owned(),
+                                )),
+                            )],
+                            ::sauvignon::CarverOrPopulator::Carver(::std::boxed::Box::new(::sauvignon::IdCarver::new(#self_column_name.to_owned()))),
+                        ))
+                        .build()
+                        .unwrap()
+                }
+            }
+            FieldValueProcessed::OptionalStringColumn {
+                table_name,
+                self_id_column_name,
+            } => {
+                let self_column_name = name.to_snake_case();
                 quote! {
                     ::sauvignon::TypeFieldBuilder::default()
                         .name(#name)
@@ -297,14 +535,42 @@ impl ToTokens for FieldProcessed {
                         .resolver(::sauvignon::FieldResolver::new(
                             vec![::sauvignon::ExternalDependency::new("id".to_owned(), ::sauvignon::DependencyType::Id)],
                             vec![::sauvignon::InternalDependency::new(
-                                #name.to_owned(),
-                                ::sauvignon::DependencyType::String,
+                                #self_column_name.to_owned(),
+                                ::sauvignon::DependencyType::OptionalString,
                                 ::sauvignon::InternalDependencyResolver::ColumnGetter(::sauvignon::ColumnGetter::new(
                                     #table_name.to_owned(),
-                                    #name.to_owned(),
+                                    #self_column_name.to_owned(),
+                                    None,
+                                    #self_id_column_name.to_owned(),
                                 )),
                             )],
-                            ::sauvignon::CarverOrPopulator::Carver(::std::boxed::Box::new(::sauvignon::StringCarver::new(#name.to_owned()))),
+                            ::sauvignon::CarverOrPopulator::Carver(::std::boxed::Box::new(::sauvignon::OptionalStringCarver::new(#self_column_name.to_owned()))),
+                        ))
+                        .build()
+                        .unwrap()
+                }
+            }
+            FieldValueProcessed::IntColumn {
+                table_name,
+            } => {
+                let self_column_name = name.to_snake_case();
+                quote! {
+                    ::sauvignon::TypeFieldBuilder::default()
+                        .name(#name)
+                        .type_(::sauvignon::TypeFull::NonNull(::std::boxed::Box::new(::sauvignon::TypeFull::Type("Int".to_owned()))))
+                        .resolver(::sauvignon::FieldResolver::new(
+                            vec![::sauvignon::ExternalDependency::new("id".to_owned(), ::sauvignon::DependencyType::Id)],
+                            vec![::sauvignon::InternalDependency::new(
+                                #self_column_name.to_owned(),
+                                ::sauvignon::DependencyType::Int,
+                                ::sauvignon::InternalDependencyResolver::ColumnGetter(::sauvignon::ColumnGetter::new(
+                                    #table_name.to_owned(),
+                                    #self_column_name.to_owned(),
+                                    None,
+                                    "id".to_owned(),
+                                )),
+                            )],
+                            ::sauvignon::CarverOrPopulator::Carver(::std::boxed::Box::new(::sauvignon::IntCarver::new(#self_column_name.to_owned()))),
                         ))
                         .build()
                         .unwrap()
@@ -395,39 +661,71 @@ impl ToTokens for FieldProcessed {
                 type_,
                 self_table_name,
                 polymorphic,
+                optional,
             } => {
                 let self_belongs_to_foreign_key_column_name =
                     format!("{}_id", name.to_snake_case());
                 match polymorphic {
-                    false => quote! {
-                        ::sauvignon::TypeFieldBuilder::default()
-                            .name(#name)
-                            .type_(::sauvignon::TypeFull::Type(#type_.to_owned()))
-                            .resolver(::sauvignon::FieldResolver::new(
-                                vec![::sauvignon::ExternalDependency::new("id".to_owned(), ::sauvignon::DependencyType::Id)],
-                                vec![::sauvignon::InternalDependency::new(
-                                    #self_belongs_to_foreign_key_column_name.to_owned(),
-                                    ::sauvignon::DependencyType::Id,
-                                    ::sauvignon::InternalDependencyResolver::ColumnGetter(::sauvignon::ColumnGetter::new(
-                                        #self_table_name.to_owned(),
-                                        #self_belongs_to_foreign_key_column_name.to_owned(),
-                                    )),
-                                )],
-                                ::sauvignon::CarverOrPopulator::Populator(::sauvignon::ValuesPopulator::new([(
-                                    #self_belongs_to_foreign_key_column_name.to_owned(),
-                                    "id".to_owned(),
-                                )]).into()),
-                            ))
-                            .build()
-                            .unwrap()
+                    false => {
+                        match optional {
+                            false => quote! {
+                                ::sauvignon::TypeFieldBuilder::default()
+                                    .name(#name)
+                                    .type_(::sauvignon::TypeFull::NonNull(::std::boxed::Box::new(::sauvignon::TypeFull::Type(#type_.to_owned()))))
+                                    .resolver(::sauvignon::FieldResolver::new(
+                                        vec![::sauvignon::ExternalDependency::new("id".to_owned(), ::sauvignon::DependencyType::Id)],
+                                        vec![::sauvignon::InternalDependency::new(
+                                            #self_belongs_to_foreign_key_column_name.to_owned(),
+                                            ::sauvignon::DependencyType::Id,
+                                            ::sauvignon::InternalDependencyResolver::ColumnGetter(::sauvignon::ColumnGetter::new(
+                                                #self_table_name.to_owned(),
+                                                #self_belongs_to_foreign_key_column_name.to_owned(),
+                                                None,
+                                                "id".to_owned(),
+                                            )),
+                                        )],
+                                        ::sauvignon::CarverOrPopulator::Populator(::sauvignon::ValuesPopulator::new([(
+                                            #self_belongs_to_foreign_key_column_name.to_owned(),
+                                            "id".to_owned(),
+                                        )]).into()),
+                                    ))
+                                    .build()
+                                    .unwrap()
+                            },
+                            true => quote! {
+                                ::sauvignon::TypeFieldBuilder::default()
+                                    .name(#name)
+                                    .type_(::sauvignon::TypeFull::Type(#type_.to_owned()))
+                                    .resolver(::sauvignon::FieldResolver::new(
+                                        vec![::sauvignon::ExternalDependency::new("id".to_owned(), ::sauvignon::DependencyType::Id)],
+                                        vec![::sauvignon::InternalDependency::new(
+                                            #self_belongs_to_foreign_key_column_name.to_owned(),
+                                            ::sauvignon::DependencyType::OptionalId,
+                                            ::sauvignon::InternalDependencyResolver::ColumnGetter(::sauvignon::ColumnGetter::new(
+                                                #self_table_name.to_owned(),
+                                                #self_belongs_to_foreign_key_column_name.to_owned(),
+                                                None,
+                                                "id".to_owned(),
+                                            )),
+                                        )],
+                                        ::sauvignon::CarverOrPopulator::OptionalPopulator(::sauvignon::OptionalValuesPopulator::new([(
+                                            #self_belongs_to_foreign_key_column_name.to_owned(),
+                                            "id".to_owned(),
+                                        )]).into()),
+                                    ))
+                                    .build()
+                                    .unwrap()
+                            },
+                        }
                     },
                     true => {
+                        assert!(!optional, "Don't support polymorphic + optional yet");
                         let self_belongs_to_foreign_key_type_column_name =
                             format!("{}_type", name.to_snake_case());
                         quote! {
                             ::sauvignon::TypeFieldBuilder::default()
                                 .name(#name)
-                                .type_(::sauvignon::TypeFull::Type(#type_.to_owned()))
+                                .type_(::sauvignon::TypeFull::NonNull(::std::boxed::Box::new(::sauvignon::TypeFull::Type(#type_.to_owned()))))
                                 .resolver(::sauvignon::FieldResolver::new(
                                     vec![::sauvignon::ExternalDependency::new("id".to_owned(), ::sauvignon::DependencyType::Id)],
                                     vec![
@@ -437,6 +735,8 @@ impl ToTokens for FieldProcessed {
                                             ::sauvignon::InternalDependencyResolver::ColumnGetter(::sauvignon::ColumnGetter::new(
                                                 #self_table_name.to_owned(),
                                                 #self_belongs_to_foreign_key_type_column_name.to_owned(),
+                                                None,
+                                                "id".to_owned(),
                                             )),
                                         ),
                                         ::sauvignon::InternalDependency::new(
@@ -445,6 +745,8 @@ impl ToTokens for FieldProcessed {
                                             ::sauvignon::InternalDependencyResolver::ColumnGetter(::sauvignon::ColumnGetter::new(
                                                 #self_table_name.to_owned(),
                                                 #self_belongs_to_foreign_key_column_name.to_owned(),
+                                                None,
+                                                "id".to_owned(),
                                             )),
                                         ),
                                     ],
@@ -467,15 +769,17 @@ impl ToTokens for FieldProcessed {
                 through,
                 through_self_column_name,
                 through_other_column_name,
+                maybe_type_kind,
             } => {
+                let type_str = type_.to_string();
                 match (foreign_key, through) {
                     (Some(foreign_key), None) => {
-                        let foreign_key_table_name = pluralize(&type_.to_snake_case());
+                        let foreign_key_table_name = pluralize(&type_str.to_snake_case());
 
                         quote! {
                             ::sauvignon::TypeFieldBuilder::default()
                                 .name(#name)
-                                .type_(::sauvignon::TypeFull::List(::std::boxed::Box::new(::sauvignon::TypeFull::Type(#type_.to_owned()))))
+                                .type_(::sauvignon::TypeFull::NonNull(::std::boxed::Box::new(::sauvignon::TypeFull::List(::std::boxed::Box::new(::sauvignon::TypeFull::NonNull(::std::boxed::Box::new(::sauvignon::TypeFull::Type(#type_str.to_owned()))))))))
                                 .resolver(::sauvignon::FieldResolver::new(
                                     vec![::sauvignon::ExternalDependency::new("id".to_owned(), ::sauvignon::DependencyType::Id)],
                                     vec![::sauvignon::InternalDependency::new(
@@ -485,6 +789,7 @@ impl ToTokens for FieldProcessed {
                                             #foreign_key_table_name.to_owned(),
                                             "id".to_owned(),
                                             vec![::sauvignon::Where::new(#foreign_key.to_owned())],
+                                            None,
                                         )),
                                     )],
                                     ::sauvignon::CarverOrPopulator::PopulatorList(::sauvignon::ValuePopulatorList::new("id".to_owned()).into())
@@ -496,25 +801,76 @@ impl ToTokens for FieldProcessed {
                     (None, Some(through)) => {
                         let through_self_column_name = through_self_column_name.as_ref().unwrap();
                         let through_other_column_name = through_other_column_name.as_ref().unwrap();
-                        quote! {
-                            ::sauvignon::TypeFieldBuilder::default()
-                                .name(#name)
-                                .type_(::sauvignon::TypeFull::List(::std::boxed::Box::new(::sauvignon::TypeFull::Type(#type_.to_owned()))))
-                                .resolver(::sauvignon::FieldResolver::new(
-                                    vec![::sauvignon::ExternalDependency::new("id".to_owned(), ::sauvignon::DependencyType::Id)],
-                                    vec![::sauvignon::InternalDependency::new(
-                                        "ids".to_owned(),
-                                        ::sauvignon::DependencyType::ListOfIds,
-                                        ::sauvignon::InternalDependencyResolver::ColumnGetterList(::sauvignon::ColumnGetterList::new(
-                                            #through.to_owned(),
-                                            #through_other_column_name.to_owned(),
-                                            vec![::sauvignon::Where::new(#through_self_column_name.to_owned())],
-                                        )),
-                                    )],
-                                    ::sauvignon::CarverOrPopulator::PopulatorList(::sauvignon::ValuePopulatorList::new("id".to_owned()).into())
-                                ))
-                                .build()
-                                .unwrap()
+                        let internal_dependency_name = pluralize(through_other_column_name);
+                        match maybe_type_kind {
+                            Some(TypeKind::Enum) => {
+                                let massager_struct_name = format_ident!("{}Massager", type_);
+                                quote! {
+                                    ::sauvignon::TypeFieldBuilder::default()
+                                        .name(#name)
+                                        .type_(::sauvignon::TypeFull::NonNull(::std::boxed::Box::new(::sauvignon::TypeFull::List(::std::boxed::Box::new(::sauvignon::TypeFull::NonNull(::std::boxed::Box::new(::sauvignon::TypeFull::Type(#type_str.to_owned()))))))))
+                                        .resolver(::sauvignon::FieldResolver::new(
+                                            vec![::sauvignon::ExternalDependency::new("id".to_owned(), ::sauvignon::DependencyType::Id)],
+                                            vec![::sauvignon::InternalDependency::new(
+                                                #internal_dependency_name.to_owned(),
+                                                ::sauvignon::DependencyType::ListOfStrings,
+                                                ::sauvignon::InternalDependencyResolver::ColumnGetterList(::sauvignon::ColumnGetterList::new(
+                                                    #through.to_owned(),
+                                                    #through_other_column_name.to_owned(),
+                                                    vec![::sauvignon::Where::new(#through_self_column_name.to_owned())],
+                                                    {
+                                                        struct #massager_struct_name;
+
+                                                        impl ::sauvignon::ColumnValueMassagerInterface<String> for #massager_struct_name {
+                                                            #[::tracing::instrument(
+                                                                level = "trace",
+                                                                skip(self, value)
+                                                            )]
+                                                            fn massage(
+                                                                &self,
+                                                                value: ::sqlx::postgres::PgValueRef<'_>,
+                                                            ) -> Result<String, Box<dyn ::std::error::Error + Sync + Send>> {
+                                                                <#type_ as ::sqlx::Decode<::sqlx::Postgres>>::decode(value)
+                                                                    .map(|enum_value| {
+                                                                        use ::sauvignon::heck::ToShoutySnakeCase;
+                                                                        format!("{enum_value}").to_shouty_snake_case()
+                                                                    })
+                                                            }
+                                                        }
+                                                        Some(::sauvignon::ColumnValueMassager::String(::std::boxed::Box::new(#massager_struct_name)))
+                                                    }
+                                                )),
+                                            )],
+                                            ::sauvignon::CarverOrPopulator::CarverList(::std::boxed::Box::new(::sauvignon::EnumValueCarverList::new(#through_other_column_name.to_owned())))
+                                        ))
+                                        .build()
+                                        .unwrap()
+                                }
+                            }
+                            None => {
+                                quote! {
+                                    ::sauvignon::TypeFieldBuilder::default()
+                                        .name(#name)
+                                        .type_(::sauvignon::TypeFull::NonNull(::std::boxed::Box::new(::sauvignon::TypeFull::List(::std::boxed::Box::new(::sauvignon::TypeFull::NonNull(::std::boxed::Box::new(::sauvignon::TypeFull::Type(#type_str.to_owned()))))))))
+                                        .resolver(::sauvignon::FieldResolver::new(
+                                            vec![::sauvignon::ExternalDependency::new("id".to_owned(), ::sauvignon::DependencyType::Id)],
+                                            vec![::sauvignon::InternalDependency::new(
+                                                "ids".to_owned(),
+                                                ::sauvignon::DependencyType::ListOfIds,
+                                                ::sauvignon::InternalDependencyResolver::ColumnGetterList(::sauvignon::ColumnGetterList::new(
+                                                    #through.to_owned(),
+                                                    #through_other_column_name.to_owned(),
+                                                    vec![::sauvignon::Where::new(#through_self_column_name.to_owned())],
+                                                    None,
+                                                )),
+                                            )],
+                                            ::sauvignon::CarverOrPopulator::PopulatorList(::sauvignon::ValuePopulatorList::new("id".to_owned()).into())
+                                        ))
+                                        .build()
+                                        .unwrap()
+                                }
+                            }
+                            _ => unimplemented!()
                         }
                     }
                     _ => unreachable!()
@@ -526,7 +882,30 @@ impl ToTokens for FieldProcessed {
 }
 
 enum FieldValue {
-    StringColumn,
+    StringColumn {
+        via_nested: Option<ViaNested>,
+    },
+    OptionalIntColumn {
+        via_nested: Option<ViaNested>,
+    },
+    OptionalFloatColumn {
+        via_nested: Option<ViaNested>,
+    },
+    OptionalEnumColumn {
+        type_: Ident,
+    },
+    EnumColumn {
+        type_: Ident,
+    },
+    TimestampColumn {
+        // TODO: add tests for via_nested here (vs in swapi-sauvignon)
+        via_nested: Option<ViaNested>,
+    },
+    IdColumn,
+    OptionalStringColumn {
+        via_nested: Option<ViaNested>,
+    },
+    IntColumn,
     Object {
         type_: TypeFull,
         internal_dependencies: Option<Vec<InternalDependency>>,
@@ -536,9 +915,10 @@ enum FieldValue {
     BelongsTo {
         type_: String,
         polymorphic: bool,
+        optional: bool,
     },
     HasMany {
-        type_: String,
+        type_: Ident,
         foreign_key: Option<String>,
         through: Option<String>,
     },
@@ -552,7 +932,78 @@ impl FieldValue {
         all_enum_names: &HashSet<String>,
     ) -> FieldValueProcessed {
         match self {
-            Self::StringColumn => FieldValueProcessed::StringColumn {
+            Self::StringColumn { via_nested } => match via_nested {
+                Some(via_nested) => FieldValueProcessed::StringColumn {
+                    table_name: via_nested.table_name,
+                    self_id_column_name: via_nested.foreign_key.unwrap_or_else(|| {
+                        format!("{}_id", parent_type_name.unwrap().to_snake_case())
+                    }),
+                },
+                None => FieldValueProcessed::StringColumn {
+                    table_name: pluralize(&parent_type_name.unwrap().to_snake_case()),
+                    self_id_column_name: "id".to_owned(),
+                },
+            },
+            Self::OptionalIntColumn { via_nested } => match via_nested {
+                Some(via_nested) => FieldValueProcessed::OptionalIntColumn {
+                    table_name: via_nested.table_name,
+                    self_id_column_name: via_nested.foreign_key.unwrap_or_else(|| {
+                        format!("{}_id", parent_type_name.unwrap().to_snake_case())
+                    }),
+                },
+                None => FieldValueProcessed::OptionalIntColumn {
+                    table_name: pluralize(&parent_type_name.unwrap().to_snake_case()),
+                    self_id_column_name: "id".to_owned(),
+                },
+            },
+            Self::OptionalFloatColumn { via_nested } => match via_nested {
+                Some(via_nested) => FieldValueProcessed::OptionalFloatColumn {
+                    table_name: via_nested.table_name,
+                    self_id_column_name: via_nested.foreign_key.unwrap_or_else(|| {
+                        format!("{}_id", parent_type_name.unwrap().to_snake_case())
+                    }),
+                },
+                None => FieldValueProcessed::OptionalFloatColumn {
+                    table_name: pluralize(&parent_type_name.unwrap().to_snake_case()),
+                    self_id_column_name: "id".to_owned(),
+                },
+            },
+            Self::OptionalEnumColumn { type_ } => FieldValueProcessed::OptionalEnumColumn {
+                table_name: pluralize(&parent_type_name.unwrap().to_snake_case()),
+                type_,
+            },
+            Self::EnumColumn { type_ } => FieldValueProcessed::EnumColumn {
+                table_name: pluralize(&parent_type_name.unwrap().to_snake_case()),
+                type_,
+            },
+            Self::TimestampColumn { via_nested } => match via_nested {
+                Some(via_nested) => FieldValueProcessed::TimestampColumn {
+                    table_name: via_nested.table_name,
+                    self_id_column_name: via_nested.foreign_key.unwrap_or_else(|| {
+                        format!("{}_id", parent_type_name.unwrap().to_snake_case())
+                    }),
+                },
+                None => FieldValueProcessed::TimestampColumn {
+                    table_name: pluralize(&parent_type_name.unwrap().to_snake_case()),
+                    self_id_column_name: "id".to_owned(),
+                },
+            },
+            Self::IdColumn => FieldValueProcessed::IdColumn {
+                table_name: pluralize(&parent_type_name.unwrap().to_snake_case()),
+            },
+            Self::OptionalStringColumn { via_nested } => match via_nested {
+                Some(via_nested) => FieldValueProcessed::OptionalStringColumn {
+                    table_name: via_nested.table_name,
+                    self_id_column_name: via_nested.foreign_key.unwrap_or_else(|| {
+                        format!("{}_id", parent_type_name.unwrap().to_snake_case())
+                    }),
+                },
+                None => FieldValueProcessed::OptionalStringColumn {
+                    table_name: pluralize(&parent_type_name.unwrap().to_snake_case()),
+                    self_id_column_name: "id".to_owned(),
+                },
+            },
+            Self::IntColumn => FieldValueProcessed::IntColumn {
                 table_name: pluralize(&parent_type_name.unwrap().to_snake_case()),
             },
             Self::Object {
@@ -564,7 +1015,9 @@ impl FieldValue {
                 internal_dependencies: internal_dependencies.map(|internal_dependencies| {
                     internal_dependencies
                         .into_iter()
-                        .map(|internal_dependency| internal_dependency.process(type_.name()))
+                        .map(|internal_dependency| {
+                            internal_dependency.process(type_.name(), parent_type_name)
+                        })
                         .collect()
                 }),
                 maybe_type_kind: if all_union_or_interface_type_names.contains(type_.name()) {
@@ -578,28 +1031,43 @@ impl FieldValue {
                 params,
                 carver_or_populator,
             },
-            Self::BelongsTo { type_, polymorphic } => FieldValueProcessed::BelongsTo {
+            Self::BelongsTo {
+                type_,
+                polymorphic,
+                optional,
+            } => FieldValueProcessed::BelongsTo {
                 type_,
                 self_table_name: pluralize(&parent_type_name.unwrap().to_snake_case()),
                 polymorphic,
+                optional,
             },
             Self::HasMany {
                 type_,
                 foreign_key,
                 through,
             } => {
+                let type_str = type_.to_string();
                 let through_self_column_name = through
                     .is_some()
                     .then(|| format!("{}_id", parent_type_name.unwrap().to_snake_case()));
-                let through_other_column_name = through
-                    .is_some()
-                    .then(|| format!("{}_id", type_.to_snake_case()));
+                let maybe_type_kind = if all_union_or_interface_type_names.contains(&type_str) {
+                    Some(TypeKind::UnionOrInterface)
+                } else if all_enum_names.contains(&type_str) {
+                    Some(TypeKind::Enum)
+                } else {
+                    None
+                };
+                let through_other_column_name = through.is_some().then(|| match maybe_type_kind {
+                    Some(TypeKind::Enum) => type_str.to_snake_case(),
+                    _ => format!("{}_id", type_str.to_snake_case()),
+                });
                 FieldValueProcessed::HasMany {
                     type_,
                     foreign_key,
                     through,
                     through_self_column_name,
                     through_other_column_name,
+                    maybe_type_kind,
                 }
             }
         }
@@ -613,15 +1081,176 @@ impl Parse for FieldValue {
                 "string_column" => {
                     let arguments_content;
                     parenthesized!(arguments_content in input);
+                    let mut via_nested: Option<ViaNested> = _d();
+                    while !arguments_content.is_empty() {
+                        let key = parse_ident_or_type(&arguments_content)?;
+                        arguments_content.parse::<Token![=>]>()?;
+                        match &*key.to_string() {
+                            "via_nested" => {
+                                via_nested = Some(arguments_content.parse()?);
+                            }
+                            key => {
+                                return Err(
+                                    arguments_content.error(format!("Unexpected key `{key}`"))
+                                )
+                            }
+                        }
+                        arguments_content.parse::<Option<Token![,]>>()?;
+                    }
+                    Ok(Self::StringColumn { via_nested })
+                }
+                "optional_int_column" => {
+                    let arguments_content;
+                    parenthesized!(arguments_content in input);
+                    let mut via_nested: Option<ViaNested> = _d();
+                    while !arguments_content.is_empty() {
+                        let key = parse_ident_or_type(&arguments_content)?;
+                        arguments_content.parse::<Token![=>]>()?;
+                        match &*key.to_string() {
+                            "via_nested" => {
+                                via_nested = Some(arguments_content.parse()?);
+                            }
+                            key => {
+                                return Err(
+                                    arguments_content.error(format!("Unexpected key `{key}`"))
+                                )
+                            }
+                        }
+                        arguments_content.parse::<Option<Token![,]>>()?;
+                    }
+                    Ok(Self::OptionalIntColumn { via_nested })
+                }
+                "optional_float_column" => {
+                    let arguments_content;
+                    parenthesized!(arguments_content in input);
+                    let mut via_nested: Option<ViaNested> = _d();
+                    while !arguments_content.is_empty() {
+                        let key = parse_ident_or_type(&arguments_content)?;
+                        arguments_content.parse::<Token![=>]>()?;
+                        match &*key.to_string() {
+                            "via_nested" => {
+                                via_nested = Some(arguments_content.parse()?);
+                            }
+                            key => {
+                                return Err(
+                                    arguments_content.error(format!("Unexpected key `{key}`"))
+                                )
+                            }
+                        }
+                        arguments_content.parse::<Option<Token![,]>>()?;
+                    }
+                    Ok(Self::OptionalFloatColumn { via_nested })
+                }
+                "optional_enum_column" => {
+                    let arguments_content;
+                    parenthesized!(arguments_content in input);
+                    let mut type_: Option<Ident> = _d();
+                    while !arguments_content.is_empty() {
+                        let key = parse_ident_or_type(&arguments_content)?;
+                        arguments_content.parse::<Token![=>]>()?;
+                        match &*key.to_string() {
+                            "type" => {
+                                type_ = Some(arguments_content.parse::<Ident>()?);
+                            }
+                            key => {
+                                return Err(
+                                    arguments_content.error(format!("Unexpected key `{key}`"))
+                                )
+                            }
+                        }
+                        arguments_content.parse::<Option<Token![,]>>()?;
+                    }
+                    Ok(Self::OptionalEnumColumn {
+                        type_: type_.expect("Expected `type`"),
+                    })
+                }
+                "enum_column" => {
+                    let arguments_content;
+                    parenthesized!(arguments_content in input);
+                    let mut type_: Option<Ident> = _d();
+                    while !arguments_content.is_empty() {
+                        let key = parse_ident_or_type(&arguments_content)?;
+                        arguments_content.parse::<Token![=>]>()?;
+                        match &*key.to_string() {
+                            "type" => {
+                                type_ = Some(arguments_content.parse::<Ident>()?);
+                            }
+                            key => {
+                                return Err(
+                                    arguments_content.error(format!("Unexpected key `{key}`"))
+                                )
+                            }
+                        }
+                        arguments_content.parse::<Option<Token![,]>>()?;
+                    }
+                    Ok(Self::EnumColumn {
+                        type_: type_.expect("Expected `type`"),
+                    })
+                }
+                "timestamp_column" => {
+                    let arguments_content;
+                    parenthesized!(arguments_content in input);
+                    let mut via_nested: Option<ViaNested> = _d();
+                    while !arguments_content.is_empty() {
+                        let key = parse_ident_or_type(&arguments_content)?;
+                        arguments_content.parse::<Token![=>]>()?;
+                        match &*key.to_string() {
+                            "via_nested" => {
+                                via_nested = Some(arguments_content.parse()?);
+                            }
+                            key => {
+                                return Err(
+                                    arguments_content.error(format!("Unexpected key `{key}`"))
+                                )
+                            }
+                        }
+                        arguments_content.parse::<Option<Token![,]>>()?;
+                    }
+                    Ok(Self::TimestampColumn { via_nested })
+                }
+                "id_column" => {
+                    let arguments_content;
+                    parenthesized!(arguments_content in input);
                     if !arguments_content.is_empty() {
                         return Err(arguments_content.error("Not expecting argument values"));
                     }
-                    Ok(Self::StringColumn)
+                    Ok(Self::IdColumn)
                 }
+                "optional_string_column" => {
+                    let arguments_content;
+                    parenthesized!(arguments_content in input);
+                    let mut via_nested: Option<ViaNested> = _d();
+                    while !arguments_content.is_empty() {
+                        let key = parse_ident_or_type(&arguments_content)?;
+                        arguments_content.parse::<Token![=>]>()?;
+                        match &*key.to_string() {
+                            "via_nested" => {
+                                via_nested = Some(arguments_content.parse()?);
+                            }
+                            key => {
+                                return Err(
+                                    arguments_content.error(format!("Unexpected key `{key}`"))
+                                )
+                            }
+                        }
+                        arguments_content.parse::<Option<Token![,]>>()?;
+                    }
+                    Ok(Self::OptionalStringColumn { via_nested })
+                }
+                "int_column" => {
+                    let arguments_content;
+                    parenthesized!(arguments_content in input);
+                    if !arguments_content.is_empty() {
+                        return Err(arguments_content.error("Not expecting argument values"));
+                    }
+                    Ok(Self::IntColumn)
+                }
+                // TODO: add tests for belongs_to optional: true
                 "belongs_to" => {
                     let arguments_content;
                     parenthesized!(arguments_content in input);
                     let mut type_: Option<String> = _d();
+                    let mut optional: Option<bool> = _d();
                     let mut polymorphic: Option<bool> = _d();
                     while !arguments_content.is_empty() {
                         let key = parse_ident_or_type(&arguments_content)?;
@@ -632,6 +1261,9 @@ impl Parse for FieldValue {
                             }
                             "polymorphic" => {
                                 polymorphic = Some(arguments_content.parse::<LitBool>()?.value);
+                            }
+                            "optional" => {
+                                optional = Some(arguments_content.parse::<LitBool>()?.value);
                             }
                             key => {
                                 return Err(
@@ -644,12 +1276,13 @@ impl Parse for FieldValue {
                     Ok(Self::BelongsTo {
                         type_: type_.expect("Expected `type`"),
                         polymorphic: polymorphic.unwrap_or(false),
+                        optional: optional.unwrap_or(false),
                     })
                 }
                 "has_many" => {
                     let arguments_content;
                     parenthesized!(arguments_content in input);
-                    let mut type_: Option<String> = _d();
+                    let mut type_: Option<Ident> = _d();
                     let mut foreign_key: Option<String> = _d();
                     let mut through: Option<String> = _d();
                     while !arguments_content.is_empty() {
@@ -657,7 +1290,7 @@ impl Parse for FieldValue {
                         arguments_content.parse::<Token![=>]>()?;
                         match &*key.to_string() {
                             "type" => {
-                                type_ = Some(arguments_content.parse::<Ident>()?.to_string());
+                                type_ = Some(arguments_content.parse::<Ident>()?);
                             }
                             "foreign_key" => {
                                 foreign_key = Some(arguments_content.parse::<Ident>()?.to_string());
@@ -761,6 +1394,37 @@ impl Parse for FieldValue {
 enum FieldValueProcessed {
     StringColumn {
         table_name: String,
+        self_id_column_name: String,
+    },
+    OptionalIntColumn {
+        table_name: String,
+        self_id_column_name: String,
+    },
+    OptionalFloatColumn {
+        table_name: String,
+        self_id_column_name: String,
+    },
+    OptionalEnumColumn {
+        type_: Ident,
+        table_name: String,
+    },
+    EnumColumn {
+        type_: Ident,
+        table_name: String,
+    },
+    TimestampColumn {
+        table_name: String,
+        self_id_column_name: String,
+    },
+    IdColumn {
+        table_name: String,
+    },
+    OptionalStringColumn {
+        table_name: String,
+        self_id_column_name: String,
+    },
+    IntColumn {
+        table_name: String,
     },
     Object {
         type_: TypeFull,
@@ -773,13 +1437,15 @@ enum FieldValueProcessed {
         type_: String,
         self_table_name: String,
         polymorphic: bool,
+        optional: bool,
     },
     HasMany {
-        type_: String,
+        type_: Ident,
         foreign_key: Option<String>,
         through: Option<String>,
         through_self_column_name: Option<String>,
         through_other_column_name: Option<String>,
+        maybe_type_kind: Option<TypeKind>,
     },
 }
 
@@ -789,10 +1455,16 @@ struct InternalDependency {
 }
 
 impl InternalDependency {
-    pub fn process(self, field_type_name: &str) -> InternalDependencyProcessed {
+    pub fn process(
+        self,
+        field_type_name: &str,
+        parent_type_name: Option<&str>,
+    ) -> InternalDependencyProcessed {
         InternalDependencyProcessed {
+            type_: self
+                .type_
+                .process(field_type_name, parent_type_name, &self.name),
             name: self.name,
-            type_: self.type_.process(field_type_name),
         }
     }
 }
@@ -828,6 +1500,9 @@ impl ToTokens for InternalDependencyProcessed {
             InternalDependencyTypeProcessed::IdColumnList { .. } => quote! {
                 ::sauvignon::DependencyType::ListOfIds
             },
+            InternalDependencyTypeProcessed::OptionalIntColumn { .. } => quote! {
+                ::sauvignon::DependencyType::OptionalInt
+            },
         };
         let resolver = match &self.type_ {
             InternalDependencyTypeProcessed::LiteralValue(dependency_value) => quote! {
@@ -842,6 +1517,7 @@ impl ToTokens for InternalDependencyProcessed {
                         #table_name.to_owned(),
                         "id".to_owned(),
                         vec![],
+                        None,
                     ))
                 }
             }
@@ -850,6 +1526,20 @@ impl ToTokens for InternalDependencyProcessed {
                     ::sauvignon::InternalDependencyResolver::Argument(
                         ::sauvignon::ArgumentInternalDependencyResolver::new(#name.to_owned()),
                     )
+                }
+            }
+            InternalDependencyTypeProcessed::OptionalIntColumn {
+                table_name,
+                column_name,
+                self_id_column_name,
+            } => {
+                quote! {
+                    ::sauvignon::InternalDependencyResolver::ColumnGetter(::sauvignon::ColumnGetter::new(
+                        #table_name.to_owned(),
+                        #column_name.to_owned(),
+                        None,
+                        #self_id_column_name.to_owned(),
+                    ))
                 }
             }
         };
@@ -867,16 +1557,36 @@ impl ToTokens for InternalDependencyProcessed {
 enum InternalDependencyType {
     LiteralValue(DependencyValue),
     IdColumnList { type_: Option<String> },
+    OptionalIntColumn { via_nested: Option<ViaNested> },
 }
 
 impl InternalDependencyType {
-    pub fn process(self, field_type_name: &str) -> InternalDependencyTypeProcessed {
+    pub fn process(
+        self,
+        field_type_name: &str,
+        parent_type_name: Option<&str>,
+        internal_dependency_name: &str,
+    ) -> InternalDependencyTypeProcessed {
         match self {
             Self::LiteralValue(dependency_value) => {
                 InternalDependencyTypeProcessed::LiteralValue(dependency_value)
             }
             Self::IdColumnList { type_ } => InternalDependencyTypeProcessed::IdColumnList {
                 field_type_name: type_.unwrap_or_else(|| field_type_name.to_owned()),
+            },
+            Self::OptionalIntColumn { via_nested } => match via_nested {
+                Some(via_nested) => InternalDependencyTypeProcessed::OptionalIntColumn {
+                    table_name: via_nested.table_name,
+                    column_name: internal_dependency_name.to_owned(),
+                    self_id_column_name: via_nested.foreign_key.unwrap_or_else(|| {
+                        format!("{}_id", parent_type_name.unwrap().to_snake_case())
+                    }),
+                },
+                None => InternalDependencyTypeProcessed::OptionalIntColumn {
+                    table_name: pluralize(&parent_type_name.unwrap().to_snake_case()),
+                    column_name: internal_dependency_name.to_owned(),
+                    self_id_column_name: "id".to_owned(),
+                },
             },
         }
     }
@@ -914,6 +1624,25 @@ impl Parse for InternalDependencyType {
                 }
                 Ok(Self::IdColumnList { type_ })
             }
+            "optional_int_column" => {
+                let arguments_content;
+                parenthesized!(arguments_content in input);
+                let mut via_nested: Option<ViaNested> = _d();
+                while !arguments_content.is_empty() {
+                    let key = parse_ident_or_type(&arguments_content)?;
+                    arguments_content.parse::<Token![=>]>()?;
+                    match &*key.to_string() {
+                        "via_nested" => {
+                            via_nested = Some(arguments_content.parse()?);
+                        }
+                        key => {
+                            return Err(arguments_content.error(format!("Unexpected key `{key}`")))
+                        }
+                    }
+                    arguments_content.parse::<Option<Token![,]>>()?;
+                }
+                Ok(Self::OptionalIntColumn { via_nested })
+            }
             _ => {
                 return Err(
                     input.error("Expected known internal dependency helper eg `literal_value()`")
@@ -926,8 +1655,15 @@ impl Parse for InternalDependencyType {
 #[derive(Clone)]
 enum InternalDependencyTypeProcessed {
     LiteralValue(DependencyValue),
-    IdColumnList { field_type_name: String },
+    IdColumnList {
+        field_type_name: String,
+    },
     Param(DependencyType),
+    OptionalIntColumn {
+        table_name: String,
+        column_name: String,
+        self_id_column_name: String,
+    },
 }
 
 #[proc_macro]
@@ -1350,9 +2086,14 @@ impl ToTokens for Enum {
         let name = &self.name;
         let name_str = name.to_string();
         let variants = match self.variants.as_ref() {
+            // TODO: seems weird whether to use ::sauvignon::strum::... vs
+            // ::strum::... here, I think I had to not use sauvignon::strum
+            // only on swapi-sauvignon because maybe the strum enum macros
+            // were generating something weird or something?
             None => quote! {{
-                use strum::VariantNames;
-                #name::VARIANTS.iter().map(|variant| (*variant).to_owned())
+                use ::strum::VariantNames;
+                use ::sauvignon::heck::ToShoutySnakeCase;
+                #name::VARIANTS.iter().map(|variant| variant.to_shouty_snake_case())
             }},
             Some(variants) => {
                 let variants = variants
@@ -1396,6 +2137,54 @@ impl ToTokens for DependencyType {
             },
         }
         .to_tokens(tokens)
+    }
+}
+
+struct ViaNested {
+    pub table_name: String,
+    pub foreign_key: Option<String>,
+}
+
+impl ViaNested {
+    pub fn new(table_name: String, foreign_key: Option<String>) -> Self {
+        Self {
+            table_name,
+            foreign_key,
+        }
+    }
+}
+
+impl Parse for ViaNested {
+    fn parse(input: ParseStream) -> Result<Self> {
+        Ok(match input.peek(Ident) {
+            true => {
+                let table_name = input.parse::<Ident>().unwrap().to_string();
+                Self::new(table_name, None)
+            }
+            false => {
+                let via_nested_contents;
+                braced!(via_nested_contents in input);
+                let mut table_name: Option<String> = _d();
+                let mut foreign_key: Option<String> = _d();
+                while !via_nested_contents.is_empty() {
+                    let key = parse_ident_or_type(&via_nested_contents)?;
+                    via_nested_contents.parse::<Token![=>]>()?;
+                    match &*key.to_string() {
+                        "table_name" => {
+                            table_name = Some(via_nested_contents.parse::<Ident>()?.to_string());
+                        }
+                        "foreign_key" => {
+                            foreign_key = Some(via_nested_contents.parse::<Ident>()?.to_string());
+                        }
+                        key => {
+                            return Err(via_nested_contents.error(format!("Unexpected key `{key}`")))
+                        }
+                    }
+                    via_nested_contents.parse::<Option<Token![,]>>()?;
+                }
+                Self::new(table_name.expect("Expected `table_name`"), foreign_key)
+            }
+        })
     }
 }
 

@@ -14,6 +14,7 @@ mod schema;
 mod string;
 mod types;
 
+pub use heck;
 pub use indexmap::{IndexMap, IndexSet};
 pub use strum;
 
@@ -21,10 +22,11 @@ pub use shared::pluralize;
 
 pub use crate::any_hash_map::AnyHashMap;
 pub use crate::dependencies::{
-    ArgumentInternalDependencyResolver, ColumnGetter, ColumnGetterList, DependencyType,
-    DependencyValue, ExternalDependency, ExternalDependencyValue, ExternalDependencyValues, Id,
-    InternalDependency, InternalDependencyResolver, InternalDependencyValue,
-    InternalDependencyValues, LiteralValueInternalDependencyResolver, Where,
+    ArgumentInternalDependencyResolver, ColumnGetter, ColumnGetterList, ColumnValueMassager,
+    ColumnValueMassagerInterface, DependencyType, DependencyValue, ExternalDependency,
+    ExternalDependencyValue, ExternalDependencyValues, Id, InternalDependency,
+    InternalDependencyResolver, InternalDependencyValue, InternalDependencyValues,
+    LiteralValueInternalDependencyResolver, Where,
 };
 pub use crate::error::{Error, Result};
 pub use crate::hash::get_hash;
@@ -39,8 +41,12 @@ pub use crate::request::{
     OperationDefinition, OperationDefinitionBuilder, Request, Selection, Value,
 };
 pub use crate::resolve::{
-    Carver, CarverOrPopulator, FieldResolver, Populator, PopulatorInterface, PopulatorList,
-    PopulatorListInterface, StringCarver, TypeDepluralizer, UnionOrInterfaceTypePopulator,
+    Carver, CarverList, CarverOrPopulator, EnumValueCarver, EnumValueCarverList, FieldResolver,
+    IdCarver, IntCarver, OptionalEnumValueCarver, OptionalFloatCarver, OptionalIntCarver,
+    OptionalPopulator, OptionalPopulatorInterface, OptionalStringCarver,
+    OptionalUnionOrInterfaceTypePopulator, OptionalValuePopulator, OptionalValuesPopulator,
+    Populator, PopulatorInterface, PopulatorList, PopulatorListInterface, StringCarver,
+    TimestampCarver, TypeDepluralizer, UnionOrInterfaceTypePopulator,
     UnionOrInterfaceTypePopulatorList, ValuePopulator, ValuePopulatorList, ValuesPopulator,
 };
 pub use crate::response::{
@@ -51,8 +57,8 @@ pub use crate::response::{
 pub use crate::schema::{Schema, TypeOrUnionOrInterface, ValidationError};
 pub use crate::string::singularize;
 pub use crate::types::{
-    builtin_types, string_type, BuiltInScalarType, DummyUnionTypenameField, Enum,
-    Field as TypeField, FieldBuilder as TypeFieldBuilder, FieldInterface, Interface,
+    builtin_types, float_type, id_type, string_type, BuiltInScalarType, DummyUnionTypenameField,
+    Enum, Field as TypeField, FieldBuilder as TypeFieldBuilder, FieldInterface, Interface,
     InterfaceBuilder, InterfaceField, ObjectType, ObjectTypeBuilder, Param, ScalarType, StringType,
     Type, TypeFull, TypeInterface, TypeOrInterfaceField, Union,
 };

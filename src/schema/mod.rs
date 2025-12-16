@@ -14,10 +14,10 @@ use crate::{
     DependencyType, DependencyValue, Document, DummyUnionTypenameField, Error,
     ExternalDependencyValues, FieldPlan, FieldResolver, FieldsInProgress, Id, InProgress,
     InProgressRecursing, InProgressRecursingList, IndexMap, Interface, InternalDependency,
-    InternalDependencyResolver, InternalDependencyValues, OperationType, Populator,
-    PopulatorInterface, PopulatorList, PopulatorListInterface, PositionsTracker, QueryPlan,
-    Request, Response, ResponseValue, ResponseValueOrInProgress, Result as SauvignonResult, Type,
-    TypeInterface, Union, Value,
+    InternalDependencyResolver, InternalDependencyValues, OperationType, OptionalPopulator,
+    OptionalPopulatorInterface, Populator, PopulatorInterface, PopulatorList,
+    PopulatorListInterface, PositionsTracker, QueryPlan, Request, Response, ResponseValue,
+    ResponseValueOrInProgress, Result as SauvignonResult, Type, TypeInterface, Union, Value,
 };
 
 mod validation;
@@ -513,6 +513,7 @@ fn maybe_column_getter_internal_dependency_bootstrap_table_name<'a>(
         return None;
     }
     match &internal_dependency.resolver {
+        // TODO: figure out whether to update to use massager
         InternalDependencyResolver::ColumnGetter(column_getter) => {
             Some((&column_getter.table_name, &column_getter.column_name))
         }
@@ -534,6 +535,7 @@ fn maybe_column_getter_internal_dependency<'a>(
         return None;
     }
     match &internal_dependency.resolver {
+        // TODO: figure out whether to update to use massager
         InternalDependencyResolver::ColumnGetter(column_getter)
             if column_getter.table_name == table_name =>
         {
@@ -586,6 +588,9 @@ fn maybe_list_of_ids_internal_dependencies(
     match &internal_dependency.resolver {
         InternalDependencyResolver::ColumnGetterList(column_getter_list) => {
             if !column_getter_list.wheres.is_empty() {
+                return None;
+            }
+            if !column_getter_list.massager.is_none() {
                 return None;
             }
             if pluralize(&column_getter_list.column_name) != internal_dependency.name {
@@ -673,6 +678,14 @@ fn progress_fields<'a>(
                                     &internal_dependency_values,
                                 ))
                             }
+                            CarverOrPopulator::CarverList(carver) => {
+                                ResponseValueOrInProgress::ResponseValue(ResponseValue::List(
+                                    carver.carve(
+                                        &external_dependency_values,
+                                        &internal_dependency_values,
+                                    ),
+                                ))
+                            }
                             CarverOrPopulator::UnionOrInterfaceTypePopulator(
                                 type_populator,
                                 populator,
@@ -720,6 +733,35 @@ fn progress_fields<'a>(
                                         fields_in_progress,
                                     ),
                                 )
+                            }
+                            CarverOrPopulator::OptionalPopulator(populator) => {
+                                to_recursing_after_optionally_populating(
+                                    &external_dependency_values,
+                                    &internal_dependency_values,
+                                    populator,
+                                    field_plan.field_type.type_.name(),
+                                    field_plan,
+                                )
+                            }
+                            CarverOrPopulator::OptionalUnionOrInterfaceTypePopulator(
+                                type_populator,
+                                populator,
+                            ) => {
+                                match type_populator.populate(
+                                    &external_dependency_values,
+                                    &internal_dependency_values,
+                                ) {
+                                    None => ResponseValueOrInProgress::ResponseValue(
+                                        ResponseValue::Null,
+                                    ),
+                                    Some(type_name) => to_recursing_after_populating(
+                                        &external_dependency_values,
+                                        &internal_dependency_values,
+                                        populator,
+                                        &type_name,
+                                        field_plan,
+                                    ),
+                                }
                             }
                         }
                     }
@@ -793,17 +835,22 @@ async fn populate_internal_dependencies(
         ret.insert(
             internal_dependency.name.clone(),
             match &internal_dependency.resolver {
+                // TODO: figure out whether to update any other branches here to use massager
                 InternalDependencyResolver::ColumnGetter(column_getter) => {
                     let row_id = match external_dependency_values.get("id").unwrap() {
                         DependencyValue::Id(id) => id,
                         _ => unreachable!(),
                     };
                     match internal_dependency.type_ {
+                        // TODO: add test (in this repo vs in swapi-sauvignon)
+                        // for id_column()
                         DependencyType::Id => {
                             // TODO: should check that table names and column names can never be SQL injection?
                             let query = format!(
-                                "SELECT {} FROM {} WHERE id = $1",
-                                column_getter.column_name, column_getter.table_name
+                                "SELECT {} FROM {} WHERE {} = $1",
+                                column_getter.column_name,
+                                column_getter.table_name,
+                                column_getter.id_column_name,
                             );
                             let (column_value,): (Id,) = sqlx::query_as(&query)
                                 .bind(row_id)
@@ -813,66 +860,309 @@ async fn populate_internal_dependencies(
                                 .unwrap();
                             DependencyValue::Id(column_value)
                         }
+                        // TODO: add test (in this repo vs in swapi-sauvignon)
+                        // for enum_column()
                         DependencyType::String => {
                             // TODO: should check that table names and column names can never be SQL injection?
                             let query = format!(
-                                "SELECT {} FROM {} WHERE id = $1",
-                                column_getter.column_name, column_getter.table_name
+                                "SELECT {} FROM {} WHERE {} = $1",
+                                column_getter.column_name,
+                                column_getter.table_name,
+                                column_getter.id_column_name,
                             );
-                            let (column_value,): (String,) = sqlx::query_as(&query)
+                            match column_getter.massager.as_ref() {
+                                None => {
+                                    let (column_value,): (String,) = sqlx::query_as(&query)
+                                        .bind(row_id)
+                                        .fetch_one(db_pool)
+                                        .instrument(trace_span!("fetch string column"))
+                                        .await
+                                        .unwrap();
+                                    DependencyValue::String(column_value)
+                                }
+                                Some(massager) => {
+                                    let massager = massager.as_string();
+                                    let row = sqlx::query(&query)
+                                        .bind(row_id)
+                                        .fetch_one(db_pool)
+                                        .instrument(trace_span!("fetch string column"))
+                                        .await
+                                        .unwrap();
+                                    let massaged = massager
+                                        .massage(
+                                            row.try_get_raw(&*column_getter.column_name).unwrap(),
+                                        )
+                                        .unwrap();
+                                    DependencyValue::String(massaged)
+                                }
+                            }
+                        }
+                        // TODO: add test (in this repo vs in swapi-sauvignon)
+                        // for optional int column
+                        DependencyType::OptionalInt => {
+                            // TODO: should check that table names and column names can never be SQL injection?
+                            let query = format!(
+                                "SELECT {} FROM {} WHERE {} = $1",
+                                column_getter.column_name,
+                                column_getter.table_name,
+                                column_getter.id_column_name,
+                            );
+                            let (column_value,): (Option<i32>,) = sqlx::query_as(&query)
                                 .bind(row_id)
                                 .fetch_one(db_pool)
-                                .instrument(trace_span!("fetch string column"))
+                                .instrument(trace_span!("fetch optional int column"))
                                 .await
                                 .unwrap();
-                            DependencyValue::String(column_value)
+                            DependencyValue::OptionalInt(column_value)
+                        }
+                        // TODO: add test (in this repo vs in swapi-sauvignon)
+                        // for optional float column
+                        DependencyType::OptionalFloat => {
+                            // TODO: should check that table names and column names can never be SQL injection?
+                            let query = format!(
+                                "SELECT {} FROM {} WHERE {} = $1",
+                                column_getter.column_name,
+                                column_getter.table_name,
+                                column_getter.id_column_name,
+                            );
+                            let (column_value,): (Option<f64>,) = sqlx::query_as(&query)
+                                .bind(row_id)
+                                .fetch_one(db_pool)
+                                .instrument(trace_span!("fetch optional float column"))
+                                .await
+                                .unwrap();
+                            DependencyValue::OptionalFloat(column_value)
+                        }
+                        // TODO: add test (in this repo vs in swapi-sauvignon)
+                        // for optional string column (including for optional_enum_column()
+                        // and optional_string_column())
+                        DependencyType::OptionalString => {
+                            // TODO: should check that table names and column names can never be SQL injection?
+                            let query = format!(
+                                "SELECT {} FROM {} WHERE {} = $1",
+                                column_getter.column_name,
+                                column_getter.table_name,
+                                column_getter.id_column_name,
+                            );
+                            match column_getter.massager.as_ref() {
+                                None => {
+                                    let (column_value,): (Option<String>,) = sqlx::query_as(&query)
+                                        .bind(row_id)
+                                        .fetch_one(db_pool)
+                                        .instrument(trace_span!("fetch optional string column"))
+                                        .await
+                                        .unwrap();
+                                    DependencyValue::OptionalString(column_value)
+                                }
+                                Some(massager) => {
+                                    let massager = massager.as_optional_string();
+                                    let row = sqlx::query(&query)
+                                        .bind(row_id)
+                                        .fetch_one(db_pool)
+                                        .instrument(trace_span!("fetch optional string column"))
+                                        .await
+                                        .unwrap();
+                                    let massaged = massager
+                                        .massage(
+                                            row.try_get_raw(&*column_getter.column_name).unwrap(),
+                                        )
+                                        .unwrap();
+                                    DependencyValue::OptionalString(massaged)
+                                }
+                            }
+                        }
+                        // TODO: add test (in this repo vs in swapi-sauvignon)
+                        // for timestamp column
+                        DependencyType::Timestamp => {
+                            // TODO: should check that table names and column names can never be SQL injection?
+                            let query = format!(
+                                "SELECT {} FROM {} WHERE {} = $1",
+                                column_getter.column_name,
+                                column_getter.table_name,
+                                column_getter.id_column_name,
+                            );
+                            let (column_value,): (jiff_sqlx::Timestamp,) = sqlx::query_as(&query)
+                                .bind(row_id)
+                                .fetch_one(db_pool)
+                                .instrument(trace_span!("fetch timestamp column"))
+                                .await
+                                .unwrap();
+                            DependencyValue::Timestamp(column_value.to_jiff())
+                        }
+                        DependencyType::OptionalId => {
+                            // TODO: should check that table names and column names can never be SQL injection?
+                            let query = format!(
+                                "SELECT {} FROM {} WHERE {} = $1",
+                                column_getter.column_name,
+                                column_getter.table_name,
+                                column_getter.id_column_name,
+                            );
+                            let (column_value,): (Option<Id>,) = sqlx::query_as(&query)
+                                .bind(row_id)
+                                .fetch_one(db_pool)
+                                .instrument(trace_span!("fetch optional ID column"))
+                                .await
+                                .unwrap();
+                            DependencyValue::OptionalId(column_value)
+                        }
+                        // TODO: add test (in this repo vs in swapi-sauvignon)
+                        // for int_column()
+                        DependencyType::Int => {
+                            // TODO: should check that table names and column names can never be SQL injection?
+                            let query = format!(
+                                "SELECT {} FROM {} WHERE {} = $1",
+                                column_getter.column_name,
+                                column_getter.table_name,
+                                column_getter.id_column_name,
+                            );
+                            let (column_value,): (i32,) = sqlx::query_as(&query)
+                                .bind(row_id)
+                                .fetch_one(db_pool)
+                                .instrument(trace_span!("fetch ID column"))
+                                .await
+                                .unwrap();
+                            DependencyValue::Int(column_value)
                         }
                         _ => unimplemented!(),
                     }
                 }
                 InternalDependencyResolver::LiteralValue(literal_value) => literal_value.0.clone(),
+                // TODO: figure out whether to update any other branches here to use massager
                 InternalDependencyResolver::ColumnGetterList(column_getter_list) => {
-                    // TODO: same as above, sql injection?
-                    let query = format!(
-                        "SELECT {} FROM {}{}",
-                        column_getter_list.column_name,
-                        column_getter_list.table_name,
-                        if column_getter_list.wheres.is_empty() {
-                            "".to_owned()
-                        } else {
-                            format!(
-                                " WHERE {}",
-                                column_getter_list
-                                    .wheres
-                                    .iter()
-                                    .enumerate()
-                                    .map(|(index, where_)| {
-                                        format!("{} = ${}", where_.column_name, index + 1)
-                                    })
-                                    .collect::<String>()
+                    match internal_dependency.type_ {
+                        DependencyType::ListOfIds => {
+                            // TODO: same as above, sql injection?
+                            let query = format!(
+                                "SELECT {} FROM {}{}",
+                                column_getter_list.column_name,
+                                column_getter_list.table_name,
+                                if column_getter_list.wheres.is_empty() {
+                                    "".to_owned()
+                                } else {
+                                    format!(
+                                        " WHERE {}",
+                                        column_getter_list
+                                            .wheres
+                                            .iter()
+                                            .enumerate()
+                                            .map(|(index, where_)| {
+                                                format!("{} = ${}", where_.column_name, index + 1)
+                                            })
+                                            .collect::<String>()
+                                    )
+                                }
+                            );
+                            let mut query = sqlx::query_as::<_, (Id,)>(&query);
+                            for _where in &column_getter_list.wheres {
+                                // TODO: this is punting on where's specifying
+                                // values
+                                query = match external_dependency_values.get("id").unwrap() {
+                                    DependencyValue::Id(id) => query.bind(id),
+                                    DependencyValue::String(str) => query.bind(str),
+                                    _ => unimplemented!(),
+                                };
+                            }
+                            let rows = query
+                                .fetch_all(db_pool)
+                                .instrument(trace_span!("fetch id column list"))
+                                .await
+                                .unwrap();
+                            DependencyValue::List(
+                                rows.into_iter()
+                                    .map(|(column_value,)| DependencyValue::Id(column_value))
+                                    .collect(),
                             )
                         }
-                    );
-                    let mut query = sqlx::query_as::<_, (Id,)>(&query);
-                    for _where in &column_getter_list.wheres {
-                        // TODO: this is punting on where's specifying
-                        // values
-                        query = match external_dependency_values.get("id").unwrap() {
-                            DependencyValue::Id(id) => query.bind(id),
-                            DependencyValue::String(str) => query.bind(str),
-                            _ => unimplemented!(),
-                        };
+                        DependencyType::ListOfStrings => {
+                            // TODO: same as above, sql injection?
+                            let query = format!(
+                                "SELECT {} FROM {}{}",
+                                column_getter_list.column_name,
+                                column_getter_list.table_name,
+                                if column_getter_list.wheres.is_empty() {
+                                    "".to_owned()
+                                } else {
+                                    format!(
+                                        " WHERE {}",
+                                        column_getter_list
+                                            .wheres
+                                            .iter()
+                                            .enumerate()
+                                            .map(|(index, where_)| {
+                                                format!("{} = ${}", where_.column_name, index + 1)
+                                            })
+                                            .collect::<String>()
+                                    )
+                                }
+                            );
+                            match column_getter_list.massager.as_ref() {
+                                None => {
+                                    let mut query = sqlx::query_as::<_, (String,)>(&query);
+                                    for _where in &column_getter_list.wheres {
+                                        // TODO: this is punting on where's specifying
+                                        // values
+                                        query = match external_dependency_values.get("id").unwrap()
+                                        {
+                                            DependencyValue::Id(id) => query.bind(id),
+                                            DependencyValue::String(str) => query.bind(str),
+                                            _ => unimplemented!(),
+                                        };
+                                    }
+                                    let rows = query
+                                        .fetch_all(db_pool)
+                                        .instrument(trace_span!("fetch string column list"))
+                                        .await
+                                        .unwrap();
+                                    DependencyValue::List(
+                                        rows.into_iter()
+                                            .map(|(column_value,)| {
+                                                DependencyValue::String(column_value)
+                                            })
+                                            .collect(),
+                                    )
+                                }
+                                // TODO: add test (in this repo vs in swapi-sauvignon)
+                                // for has_many(through => ...) of scalar enum type
+                                // (eg planet_climates in swapi-sauvignon)
+                                Some(massager) => {
+                                    let massager = massager.as_string();
+                                    let mut query = sqlx::query(&query);
+                                    for _where in &column_getter_list.wheres {
+                                        // TODO: this is punting on where's specifying
+                                        // values
+                                        query = match external_dependency_values.get("id").unwrap()
+                                        {
+                                            DependencyValue::Id(id) => query.bind(id),
+                                            DependencyValue::String(str) => query.bind(str),
+                                            _ => unimplemented!(),
+                                        };
+                                    }
+                                    let rows = query
+                                        .fetch_all(db_pool)
+                                        .instrument(trace_span!("fetch string column list"))
+                                        .await
+                                        .unwrap();
+                                    DependencyValue::List(
+                                        rows.into_iter()
+                                            .map(|row| {
+                                                DependencyValue::String(
+                                                    massager
+                                                        .massage(
+                                                            row.try_get_raw(
+                                                                &*column_getter_list.column_name,
+                                                            )
+                                                            .unwrap(),
+                                                        )
+                                                        .unwrap(),
+                                                )
+                                            })
+                                            .collect(),
+                                    )
+                                }
+                            }
+                        }
+                        _ => unreachable!(),
                     }
-                    let rows = query
-                        .fetch_all(db_pool)
-                        .instrument(trace_span!("fetch column list"))
-                        .await
-                        .unwrap();
-                    DependencyValue::List(
-                        rows.into_iter()
-                            .map(|(column_value,)| DependencyValue::Id(column_value))
-                            .collect(),
-                    )
                 }
                 InternalDependencyResolver::IntrospectionTypeInterfaces => {
                     let _ = trace_span!("resolve introspection type interfaces").entered();
@@ -987,6 +1277,38 @@ fn to_recursing_after_populating<'a>(
     field_plan: &'a FieldPlan<'a>,
 ) -> ResponseValueOrInProgress<'a> {
     let populated = populator.populate(&external_dependency_values, &internal_dependency_values);
+    let fields_in_progress = fields_in_progress_new(
+        &field_plan.selection_set_by_type.as_ref().unwrap()[resolved_concrete_type_name],
+        &populated,
+    );
+    ResponseValueOrInProgress::InProgressRecursing(InProgressRecursing::new(
+        field_plan,
+        populated,
+        fields_in_progress,
+    ))
+}
+
+#[instrument(
+    level = "trace",
+    skip(
+        external_dependency_values,
+        internal_dependency_values,
+        populator,
+        field_plan
+    )
+)]
+fn to_recursing_after_optionally_populating<'a>(
+    external_dependency_values: &ExternalDependencyValues,
+    internal_dependency_values: &InternalDependencyValues,
+    populator: &OptionalPopulator,
+    resolved_concrete_type_name: &str,
+    field_plan: &'a FieldPlan<'a>,
+) -> ResponseValueOrInProgress<'a> {
+    let Some(populated) =
+        populator.populate(&external_dependency_values, &internal_dependency_values)
+    else {
+        return ResponseValueOrInProgress::ResponseValue(ResponseValue::Null);
+    };
     let fields_in_progress = fields_in_progress_new(
         &field_plan.selection_set_by_type.as_ref().unwrap()[resolved_concrete_type_name],
         &populated,

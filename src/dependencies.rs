@@ -1,5 +1,8 @@
 use std::collections::HashMap;
+use std::error;
 
+use jiff::Timestamp;
+use sqlx::postgres::PgValueRef;
 use squalid::OptionExt;
 
 use crate::{AnyHashMap, Error};
@@ -10,6 +13,12 @@ pub enum DependencyType {
     String,
     ListOfIds,
     ListOfStrings,
+    OptionalInt,
+    OptionalFloat,
+    OptionalString,
+    Timestamp,
+    OptionalId,
+    Int,
 }
 
 pub struct ExternalDependency {
@@ -51,15 +60,52 @@ pub enum InternalDependencyResolver {
 pub struct ColumnGetter {
     pub table_name: String,
     pub column_name: String,
+    pub massager: Option<ColumnValueMassager>,
+    pub id_column_name: String,
 }
 
 impl ColumnGetter {
-    pub fn new(table_name: String, column_name: String) -> Self {
+    pub fn new(
+        table_name: String,
+        column_name: String,
+        massager: Option<ColumnValueMassager>,
+        id_column_name: String,
+    ) -> Self {
         Self {
             table_name,
             column_name,
+            massager,
+            id_column_name,
         }
     }
+}
+
+pub enum ColumnValueMassager {
+    OptionalString(Box<dyn ColumnValueMassagerInterface<Option<String>>>),
+    String(Box<dyn ColumnValueMassagerInterface<String>>),
+}
+
+impl ColumnValueMassager {
+    pub fn as_optional_string(&self) -> &Box<dyn ColumnValueMassagerInterface<Option<String>>> {
+        match self {
+            Self::OptionalString(value) => value,
+            _ => panic!("Expected optional string"),
+        }
+    }
+
+    pub fn as_string(&self) -> &Box<dyn ColumnValueMassagerInterface<String>> {
+        match self {
+            Self::String(value) => value,
+            _ => panic!("Expected string"),
+        }
+    }
+}
+
+pub trait ColumnValueMassagerInterface<TMassaged>: Send + Sync {
+    fn massage(
+        &self,
+        value: PgValueRef<'_>,
+    ) -> Result<TMassaged, Box<dyn error::Error + Sync + Send>>;
 }
 
 pub struct ArgumentInternalDependencyResolver {
@@ -76,14 +122,21 @@ pub struct ColumnGetterList {
     pub table_name: String,
     pub column_name: String,
     pub wheres: Vec<Where>,
+    pub massager: Option<ColumnValueMassager>,
 }
 
 impl ColumnGetterList {
-    pub fn new(table_name: String, column_name: String, wheres: Vec<Where>) -> Self {
+    pub fn new(
+        table_name: String,
+        column_name: String,
+        wheres: Vec<Where>,
+        massager: Option<ColumnValueMassager>,
+    ) -> Self {
         Self {
             table_name,
             column_name,
             wheres,
+            massager,
         }
     }
 }
@@ -112,6 +165,13 @@ pub enum DependencyValue {
     Id(Id),
     String(String),
     List(Vec<DependencyValue>),
+    Float(f64),
+    OptionalInt(Option<i32>),
+    OptionalFloat(Option<f64>),
+    OptionalString(Option<String>),
+    OptionalId(Option<Id>),
+    Timestamp(Timestamp),
+    Int(i32),
 }
 
 impl DependencyValue {
@@ -133,6 +193,58 @@ impl DependencyValue {
         match self {
             Self::List(values) => values,
             _ => panic!("Expected list"),
+        }
+    }
+
+    pub fn as_float(&self) -> f64 {
+        match self {
+            Self::Float(value) => *value,
+            _ => panic!("Expected float"),
+        }
+    }
+
+    pub fn as_optional_int(&self) -> Option<i32> {
+        match self {
+            Self::OptionalInt(value) => *value,
+            _ => panic!("Expected optional int"),
+        }
+    }
+
+    pub fn as_optional_float(&self) -> Option<f64> {
+        match self {
+            Self::OptionalFloat(value) => *value,
+            _ => panic!("Expected optional float"),
+        }
+    }
+
+    pub fn as_optional_string(&self) -> Option<&str> {
+        match self {
+            Self::OptionalString(value) => value.as_deref(),
+            _ => panic!("Expected optional string"),
+        }
+    }
+
+    pub fn as_timestamp(&self) -> Timestamp {
+        match self {
+            Self::Timestamp(value) => *value,
+            _ => panic!("Expected timestamp"),
+        }
+    }
+
+    pub fn as_int(&self) -> i32 {
+        match self {
+            Self::Int(value) => *value,
+            _ => panic!("Expected int"),
+        }
+    }
+
+    pub fn maybe_non_optional(&self) -> Option<Self> {
+        match self {
+            Self::OptionalId(value) => value.map(|value| Self::Id(value)),
+            Self::OptionalString(value) => value.as_ref().map(|value| Self::String(value.clone())),
+            Self::OptionalFloat(value) => value.map(|value| Self::Float(value)),
+            Self::OptionalInt(value) => value.map(|value| Self::Int(value)),
+            _ => panic!("Expected optional type"),
         }
     }
 }

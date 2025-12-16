@@ -148,12 +148,18 @@ impl TypeInterface for ScalarType {
 
 pub enum BuiltInScalarType {
     String(StringType),
+    Int(IntType),
+    Float(FloatType),
+    Id(IdType),
 }
 
 impl TypeInterface for BuiltInScalarType {
     fn name(&self) -> &str {
         match self {
             Self::String(type_) => type_.name(),
+            Self::Int(type_) => type_.name(),
+            Self::Float(type_) => type_.name(),
+            Self::Id(type_) => type_.name(),
         }
     }
 }
@@ -169,6 +175,48 @@ impl StringType {
 impl TypeInterface for StringType {
     fn name(&self) -> &str {
         "String"
+    }
+}
+
+pub struct IntType {}
+
+impl IntType {
+    pub fn new() -> Self {
+        Self {}
+    }
+}
+
+impl TypeInterface for IntType {
+    fn name(&self) -> &str {
+        "Int"
+    }
+}
+
+pub struct FloatType {}
+
+impl FloatType {
+    pub fn new() -> Self {
+        Self {}
+    }
+}
+
+impl TypeInterface for FloatType {
+    fn name(&self) -> &str {
+        "Float"
+    }
+}
+
+pub struct IdType {}
+
+impl IdType {
+    pub fn new() -> Self {
+        Self {}
+    }
+}
+
+impl TypeInterface for IdType {
+    fn name(&self) -> &str {
+        "ID"
     }
 }
 
@@ -264,7 +312,10 @@ pub trait FieldInterface {
 pub fn builtin_types() -> HashMap<String, Type> {
     [
         ("String".to_owned(), string_type()),
+        ("Int".to_owned(), int_type()),
+        ("Float".to_owned(), float_type()),
         ("__Type".to_owned(), introspection_type_type()),
+        ("ID".to_owned(), id_type()),
     ]
     .into_iter()
     .collect()
@@ -274,6 +325,20 @@ pub fn string_type() -> Type {
     Type::Scalar(ScalarType::BuiltIn(BuiltInScalarType::String(
         StringType::new(),
     )))
+}
+
+pub fn int_type() -> Type {
+    Type::Scalar(ScalarType::BuiltIn(BuiltInScalarType::Int(IntType::new())))
+}
+
+pub fn float_type() -> Type {
+    Type::Scalar(ScalarType::BuiltIn(BuiltInScalarType::Float(
+        FloatType::new(),
+    )))
+}
+
+pub fn id_type() -> Type {
+    Type::Scalar(ScalarType::BuiltIn(BuiltInScalarType::Id(IdType::new())))
 }
 
 pub fn introspection_type_type() -> Type {
