@@ -2147,13 +2147,13 @@ pub fn enum_string_massager(input: TokenStream) -> TokenStream {
                 value: ::sqlx::postgres::PgValueRef<'_>,
             ) -> Result<String, Box<dyn ::std::error::Error + Sync + Send>> {
                 <#enum_type as ::sqlx::Decode<::sqlx::Postgres>>::decode(value)
-                    map(|enum_value| {
+                    .map(|enum_value| {
                         use ::sauvignon::heck::ToShoutySnakeCase;
                         format!("{enum_value}").to_shouty_snake_case()
                     })
             }
         }
-        Some(::sauvignon::ColumnValueMassager::String(::std::boxed::Box::new(#massager_struct_name)))
+        ::sauvignon::ColumnValueMassager::String(::std::boxed::Box::new(#massager_struct_name))
     }}
     .into()
 }
@@ -2186,7 +2186,7 @@ pub fn enum_optional_string_massager(input: TokenStream) -> TokenStream {
                     })
             }
         }
-        Some(::sauvignon::ColumnValueMassager::OptionalString(::std::boxed::Box::new(#massager_struct_name)))
+        ::sauvignon::ColumnValueMassager::OptionalString(::std::boxed::Box::new(#massager_struct_name))
     }}
     .into()
 }
