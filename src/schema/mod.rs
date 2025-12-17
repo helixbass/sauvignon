@@ -228,7 +228,7 @@ async fn compute_response(
     }
 }
 
-#[instrument(level = "debug", skip(fields_in_progress, database, schema))]
+#[instrument(level = "trace", skip(fields_in_progress, database, schema))]
 fn progress_fields<'a>(
     fields_in_progress: FieldsInProgress<'a>,
     database: &'a dyn Database,
