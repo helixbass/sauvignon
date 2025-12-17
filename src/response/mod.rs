@@ -1,3 +1,4 @@
+use chrono::NaiveDate;
 use jiff::Timestamp;
 use serde::Serialize;
 use squalid::_d;
@@ -93,6 +94,12 @@ impl From<f64> for ResponseValue {
 
 impl From<Timestamp> for ResponseValue {
     fn from(value: Timestamp) -> Self {
+        Self::String(value.to_string())
+    }
+}
+
+impl<'a> From<&'a NaiveDate> for ResponseValue {
+    fn from(value: &'a NaiveDate) -> Self {
         Self::String(value.to_string())
     }
 }

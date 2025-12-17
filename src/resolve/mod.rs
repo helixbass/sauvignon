@@ -326,6 +326,35 @@ impl Carver for IntCarver {
     }
 }
 
+pub struct DateCarver {
+    pub name: String,
+}
+
+impl DateCarver {
+    pub fn new(name: String) -> Self {
+        Self { name }
+    }
+}
+
+impl Carver for DateCarver {
+    #[instrument(
+        level = "trace",
+        skip(self, external_dependencies, internal_dependencies)
+    )]
+    fn carve(
+        &self,
+        external_dependencies: &ExternalDependencyValues,
+        internal_dependencies: &InternalDependencyValues,
+    ) -> ResponseValue {
+        internal_dependencies
+            .get(&self.name)
+            .or_else(|| external_dependencies.get(&self.name))
+            .unwrap()
+            .as_date()
+            .into()
+    }
+}
+
 pub trait CarverList: Send + Sync {
     fn carve(
         &self,

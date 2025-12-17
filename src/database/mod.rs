@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use chrono::NaiveDate;
 use sqlx::{Pool, Postgres, Row};
 use squalid::_d;
 use tracing::{instrument, trace_span, Instrument};
@@ -229,6 +230,22 @@ impl Database for PostgresDatabase {
                     .await
                     .unwrap();
                 DependencyValue::Int(column_value)
+            }
+            // TODO: add test (in this repo vs in swapi-sauvignon)
+            // for date column
+            DependencyType::Date => {
+                // TODO: should check that table names and column names can never be SQL injection?
+                let query = format!(
+                    "SELECT {} FROM {} WHERE {} = $1",
+                    column_name, table_name, id_column_name,
+                );
+                let (column_value,): (NaiveDate,) = sqlx::query_as(&query)
+                    .bind(id.parse::<i32>().unwrap())
+                    .fetch_one(&self.pool)
+                    .instrument(trace_span!("fetch date column"))
+                    .await
+                    .unwrap();
+                DependencyValue::Date(column_value)
             }
             _ => unimplemented!(),
         }

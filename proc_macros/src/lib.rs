@@ -523,6 +523,31 @@ impl ToTokens for FieldProcessed {
                         .unwrap()
                 }
             }
+            FieldValueProcessed::DateColumn {
+                table_name,
+            } => {
+                let self_column_name = name.to_snake_case();
+                quote! {
+                    ::sauvignon::TypeFieldBuilder::default()
+                        .name(#name)
+                        .type_(::sauvignon::TypeFull::NonNull(::std::boxed::Box::new(::sauvignon::TypeFull::Type("String".to_owned()))))
+                        .resolver(::sauvignon::FieldResolver::new(
+                            vec![::sauvignon::ExternalDependency::new("id".to_owned(), ::sauvignon::DependencyType::Id)],
+                            vec![::sauvignon::InternalDependency::new(
+                                #self_column_name.to_owned(),
+                                ::sauvignon::DependencyType::Date,
+                                ::sauvignon::InternalDependencyResolver::ColumnGetter(::sauvignon::ColumnGetter::new(
+                                    #table_name.to_owned(),
+                                    #self_column_name.to_owned(),
+                                    "id".to_owned(),
+                                )),
+                            )],
+                            ::sauvignon::CarverOrPopulator::Carver(::std::boxed::Box::new(::sauvignon::DateCarver::new(#self_column_name.to_owned()))),
+                        ))
+                        .build()
+                        .unwrap()
+                }
+            }
             FieldValueProcessed::Object {
                 type_,
                 internal_dependencies,
@@ -825,6 +850,7 @@ enum FieldValue {
         via_nested: Option<ViaNested>,
     },
     IntColumn,
+    DateColumn,
     Object {
         type_: TypeFull,
         internal_dependencies: Option<Vec<InternalDependency>>,
@@ -923,6 +949,9 @@ impl FieldValue {
                 },
             },
             Self::IntColumn => FieldValueProcessed::IntColumn {
+                table_name: pluralize(&parent_type_name.unwrap().to_snake_case()),
+            },
+            Self::DateColumn => FieldValueProcessed::DateColumn {
                 table_name: pluralize(&parent_type_name.unwrap().to_snake_case()),
             },
             Self::Object {
@@ -1164,6 +1193,14 @@ impl Parse for FieldValue {
                     }
                     Ok(Self::IntColumn)
                 }
+                "date_column" => {
+                    let arguments_content;
+                    parenthesized!(arguments_content in input);
+                    if !arguments_content.is_empty() {
+                        return Err(arguments_content.error("Not expecting argument values"));
+                    }
+                    Ok(Self::DateColumn)
+                }
                 // TODO: add tests for belongs_to optional: true
                 "belongs_to" => {
                     let arguments_content;
@@ -1343,6 +1380,9 @@ enum FieldValueProcessed {
         self_id_column_name: String,
     },
     IntColumn {
+        table_name: String,
+    },
+    DateColumn {
         table_name: String,
     },
     Object {

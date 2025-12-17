@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::error;
 
+use chrono::NaiveDate;
 use jiff::Timestamp;
 use sqlx::postgres::PgValueRef;
 use squalid::OptionExt;
@@ -19,6 +20,7 @@ pub enum DependencyType {
     Timestamp,
     OptionalId,
     Int,
+    Date,
 }
 
 pub struct ExternalDependency {
@@ -170,6 +172,7 @@ pub enum DependencyValue {
     OptionalId(Option<Id>),
     Timestamp(Timestamp),
     Int(i32),
+    Date(NaiveDate),
 }
 
 impl DependencyValue {
@@ -233,6 +236,13 @@ impl DependencyValue {
         match self {
             Self::Int(value) => *value,
             _ => panic!("Expected int"),
+        }
+    }
+
+    pub fn as_date(&self) -> &NaiveDate {
+        match self {
+            Self::Date(value) => value,
+            _ => panic!("Expected date"),
         }
     }
 
