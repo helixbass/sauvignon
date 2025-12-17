@@ -27,6 +27,7 @@ jiff = "0.2.16"
 jiff-sqlx = { version = "0.1.1", features = [ "postgres" ] }
 async-trait = "0.1.89"
 chrono = "0.4.42"
+uuid = "1.19.0"
 
 [dev-dependencies]
 futures = "0.3.31"

@@ -121,13 +121,11 @@ pub async fn get_schema(db_pool: &Pool<Postgres>) -> anyhow::Result<Schema> {
         .fetch_one(db_pool)
         .await
         .unwrap();
-    let katie_id = katie_id.to_string();
     let (proenza_schouler_id,): (i32,) =
         sqlx::query_as("SELECT id FROM designers WHERE name = 'Proenza Schouler'")
             .fetch_one(db_pool)
             .await
             .unwrap();
-    let proenza_schouler_id = proenza_schouler_id.to_string();
 
     Ok(schema! {
         types => [

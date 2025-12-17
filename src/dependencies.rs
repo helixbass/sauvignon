@@ -5,6 +5,7 @@ use chrono::NaiveDate;
 use jiff::Timestamp;
 use sqlx::postgres::PgValueRef;
 use squalid::OptionExt;
+use uuid::Uuid;
 
 use crate::{AnyHashMap, Error};
 
@@ -158,7 +159,43 @@ pub struct ExternalDependencyValue {
     pub value: DependencyValue,
 }
 
-pub type Id = String;
+#[derive(Clone, Debug)]
+pub enum Id {
+    Int(i32),
+    String(String),
+    Uuid(Uuid),
+}
+
+impl Id {
+    pub fn get_string(&self) -> String {
+        match self {
+            Self::Int(value) => value.to_string(),
+            Self::String(value) => value.clone(),
+            Self::Uuid(value) => value.to_string(),
+        }
+    }
+
+    pub fn as_int(&self) -> i32 {
+        match self {
+            Self::Int(value) => *value,
+            _ => panic!("Expected int"),
+        }
+    }
+
+    pub fn as_string(&self) -> &String {
+        match self {
+            Self::String(value) => value,
+            _ => panic!("Expected string"),
+        }
+    }
+
+    pub fn as_uuid(&self) -> &Uuid {
+        match self {
+            Self::Uuid(value) => value,
+            _ => panic!("Expected uuid"),
+        }
+    }
+}
 
 #[derive(Clone, Debug)]
 pub enum DependencyValue {

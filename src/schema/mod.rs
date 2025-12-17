@@ -10,7 +10,7 @@ use tracing::{instrument, trace, trace_span};
 use crate::{
     builtin_types, fields_in_progress_new, get_hash, parse, CarverOrPopulator, Database,
     DependencyType, DependencyValue, Document, DummyUnionTypenameField, Error,
-    ExternalDependencyValues, FieldPlan, FieldsInProgress, InProgress, InProgressRecursing,
+    ExternalDependencyValues, FieldPlan, FieldsInProgress, Id, InProgress, InProgressRecursing,
     InProgressRecursingList, IndexMap, Interface, InternalDependencyResolver,
     InternalDependencyValues, OperationType, OptionalPopulator, OptionalPopulatorInterface,
     Populator, PopulatorInterface, PopulatorListInterface, PositionsTracker, QueryPlan, Request,
@@ -573,7 +573,7 @@ async fn populate_internal_dependencies(
                         .unwrap();
                     match (internal_dependency.type_, &argument.value) {
                         (DependencyType::Id, Value::Int(argument_value)) => {
-                            DependencyValue::Id(argument_value.to_string())
+                            DependencyValue::Id(Id::Int(*argument_value))
                         }
                         (DependencyType::String, Value::String(argument_value)) => {
                             DependencyValue::String(argument_value.clone())

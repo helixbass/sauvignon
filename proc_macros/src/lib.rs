@@ -1808,13 +1808,13 @@ impl ToTokens for DependencyValue {
     fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
         match self {
             Self::Id(id) => quote! {
-                ::sauvignon::DependencyValue::Id(#id)
+                ::sauvignon::DependencyValue::Id(::sauvignon::Id::Int(#id))
             },
             Self::String(string) => quote! {
                 ::sauvignon::DependencyValue::String(#string.to_owned())
             },
             Self::IdentId(ident) => quote! {
-                ::sauvignon::DependencyValue::Id(#ident.clone())
+                ::sauvignon::DependencyValue::Id(::sauvignon::Id::Int(#ident.clone()))
             },
             _ => unimplemented!(),
         }

@@ -260,7 +260,7 @@ impl Carver for IdCarver {
                 .or_else(|| external_dependencies.get(&self.name))
                 .unwrap()
                 .as_id()
-                .to_string(),
+                .get_string(),
         )
     }
 }

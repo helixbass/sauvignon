@@ -4,7 +4,7 @@ use sqlx::{Pool, Postgres, Row};
 use squalid::_d;
 use tracing::{instrument, trace_span, Instrument};
 
-use crate::{ColumnValueMassager, DependencyType, DependencyValue, IndexMap, WhereResolved};
+use crate::{ColumnValueMassager, DependencyType, DependencyValue, Id, IndexMap, WhereResolved};
 
 #[async_trait]
 pub trait Database: Send + Sync {
@@ -12,7 +12,7 @@ pub trait Database: Send + Sync {
         &self,
         table_name: &str,
         column_name: &str,
-        id: &str,
+        id: &Id,
         id_column_name: &str,
         dependency_type: DependencyType,
     ) -> DependencyValue;
@@ -57,7 +57,7 @@ impl Database for PostgresDatabase {
         &self,
         table_name: &str,
         column_name: &str,
-        id: &str,
+        id: &Id,
         id_column_name: &str,
         dependency_type: DependencyType,
     ) -> DependencyValue {
@@ -71,12 +71,12 @@ impl Database for PostgresDatabase {
                     column_name, table_name, id_column_name,
                 );
                 let (column_value,): (i32,) = sqlx::query_as(&query)
-                    .bind(id.parse::<i32>().unwrap())
+                    .bind(id.as_int())
                     .fetch_one(&self.pool)
                     .instrument(trace_span!("fetch ID column"))
                     .await
                     .unwrap();
-                DependencyValue::Id(column_value.to_string())
+                DependencyValue::Id(Id::Int(column_value))
             }
             // TODO: add test (in this repo vs in swapi-sauvignon)
             // for enum_column()
@@ -93,7 +93,7 @@ impl Database for PostgresDatabase {
                 {
                     None => {
                         let (column_value,): (String,) = sqlx::query_as(&query)
-                            .bind(id.parse::<i32>().unwrap())
+                            .bind(id.as_int())
                             .fetch_one(&self.pool)
                             .instrument(trace_span!("fetch string column"))
                             .await
@@ -103,7 +103,7 @@ impl Database for PostgresDatabase {
                     Some(massager) => {
                         let massager = massager.as_string();
                         let row = sqlx::query(&query)
-                            .bind(id.parse::<i32>().unwrap())
+                            .bind(id.as_int())
                             .fetch_one(&self.pool)
                             .instrument(trace_span!("fetch string column"))
                             .await
@@ -124,7 +124,7 @@ impl Database for PostgresDatabase {
                     column_name, table_name, id_column_name,
                 );
                 let (column_value,): (Option<i32>,) = sqlx::query_as(&query)
-                    .bind(id.parse::<i32>().unwrap())
+                    .bind(id.as_int())
                     .fetch_one(&self.pool)
                     .instrument(trace_span!("fetch optional int column"))
                     .await
@@ -140,7 +140,7 @@ impl Database for PostgresDatabase {
                     column_name, table_name, id_column_name,
                 );
                 let (column_value,): (Option<f64>,) = sqlx::query_as(&query)
-                    .bind(id.parse::<i32>().unwrap())
+                    .bind(id.as_int())
                     .fetch_one(&self.pool)
                     .instrument(trace_span!("fetch optional float column"))
                     .await
@@ -163,7 +163,7 @@ impl Database for PostgresDatabase {
                 {
                     None => {
                         let (column_value,): (Option<String>,) = sqlx::query_as(&query)
-                            .bind(id.parse::<i32>().unwrap())
+                            .bind(id.as_int())
                             .fetch_one(&self.pool)
                             .instrument(trace_span!("fetch optional string column"))
                             .await
@@ -173,7 +173,7 @@ impl Database for PostgresDatabase {
                     Some(massager) => {
                         let massager = massager.as_optional_string();
                         let row = sqlx::query(&query)
-                            .bind(id.parse::<i32>().unwrap())
+                            .bind(id.as_int())
                             .fetch_one(&self.pool)
                             .instrument(trace_span!("fetch optional string column"))
                             .await
@@ -194,7 +194,7 @@ impl Database for PostgresDatabase {
                     column_name, table_name, id_column_name,
                 );
                 let (column_value,): (jiff_sqlx::Timestamp,) = sqlx::query_as(&query)
-                    .bind(id.parse::<i32>().unwrap())
+                    .bind(id.as_int())
                     .fetch_one(&self.pool)
                     .instrument(trace_span!("fetch timestamp column"))
                     .await
@@ -208,12 +208,12 @@ impl Database for PostgresDatabase {
                     column_name, table_name, id_column_name,
                 );
                 let (column_value,): (Option<i32>,) = sqlx::query_as(&query)
-                    .bind(id.parse::<i32>().unwrap())
+                    .bind(id.as_int())
                     .fetch_one(&self.pool)
                     .instrument(trace_span!("fetch optional ID column"))
                     .await
                     .unwrap();
-                DependencyValue::OptionalId(column_value.map(|id| id.to_string()))
+                DependencyValue::OptionalId(column_value.map(|id| Id::Int(id)))
             }
             // TODO: add test (in this repo vs in swapi-sauvignon)
             // for int_column()
@@ -224,7 +224,7 @@ impl Database for PostgresDatabase {
                     column_name, table_name, id_column_name,
                 );
                 let (column_value,): (i32,) = sqlx::query_as(&query)
-                    .bind(id.parse::<i32>().unwrap())
+                    .bind(id.as_int())
                     .fetch_one(&self.pool)
                     .instrument(trace_span!("fetch ID column"))
                     .await
@@ -240,7 +240,7 @@ impl Database for PostgresDatabase {
                     column_name, table_name, id_column_name,
                 );
                 let (column_value,): (NaiveDate,) = sqlx::query_as(&query)
-                    .bind(id.parse::<i32>().unwrap())
+                    .bind(id.as_int())
                     .fetch_one(&self.pool)
                     .instrument(trace_span!("fetch date column"))
                     .await
@@ -286,7 +286,7 @@ impl Database for PostgresDatabase {
                     // TODO: this is punting on where's specifying
                     // values
                     query = match &where_.value {
-                        DependencyValue::Id(id) => query.bind(id.parse::<i32>().unwrap()),
+                        DependencyValue::Id(id) => query.bind(id.as_int()),
                         DependencyValue::String(str) => query.bind(str),
                         _ => unimplemented!(),
                     };
@@ -297,7 +297,7 @@ impl Database for PostgresDatabase {
                     .await
                     .unwrap();
                 rows.into_iter()
-                    .map(|(column_value,)| DependencyValue::Id(column_value.to_string()))
+                    .map(|(column_value,)| DependencyValue::Id(Id::Int(column_value)))
                     .collect()
             }
             DependencyType::ListOfStrings => {
@@ -330,7 +330,7 @@ impl Database for PostgresDatabase {
                         let mut query = sqlx::query_as::<_, (String,)>(&query);
                         for where_ in wheres {
                             query = match &where_.value {
-                                DependencyValue::Id(id) => query.bind(id.parse::<i32>().unwrap()),
+                                DependencyValue::Id(id) => query.bind(id.as_int()),
                                 DependencyValue::String(str) => query.bind(str),
                                 _ => unimplemented!(),
                             };
@@ -349,7 +349,7 @@ impl Database for PostgresDatabase {
                         let mut query = sqlx::query(&query);
                         for where_ in wheres {
                             query = match &where_.value {
-                                DependencyValue::Id(id) => query.bind(id.parse::<i32>().unwrap()),
+                                DependencyValue::Id(id) => query.bind(id.as_int()),
                                 DependencyValue::String(str) => query.bind(str),
                                 _ => unimplemented!(),
                             };
