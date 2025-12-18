@@ -238,7 +238,7 @@ impl From<ValidationError> for ResponseError {
 impl From<ParseOrLexError> for ResponseError {
     fn from(value: ParseOrLexError) -> Self {
         Self::new(
-            value.message().to_owned(),
+            value.message().into(),
             value.location().into_iter().collect(),
         )
     }

@@ -62,7 +62,7 @@ impl<TRequest: Iterator<Item = char>> Lex<TRequest> {
     fn error(&mut self, message: &str) -> LexError {
         self.has_errored = true;
         LexError::new(
-            message.to_owned(),
+            message.into(),
             PositionsTracker::current().map(|positions_tracker| positions_tracker.last_char()),
         )
     }
@@ -769,7 +769,7 @@ where
 
 fn parse_error(message: &str) -> ParseError {
     ParseError::new(
-        message.to_owned(),
+        message.into(),
         PositionsTracker::current().map(|positions_tracker| {
             positions_tracker
                 .maybe_last_token()
@@ -872,7 +872,7 @@ mod tests {
 
     #[test]
     fn test_name() {
-        lex_test("Foo", [Token::Name("Foo".to_owned())]);
+        lex_test("Foo", [Token::Name("Foo".into())]);
     }
 
     #[test]
@@ -883,7 +883,7 @@ mod tests {
 
     #[test]
     fn test_dot_dot_dot() {
-        lex_test("...a", [Token::DotDotDot, Token::Name("a".to_owned())]);
+        lex_test("...a", [Token::DotDotDot, Token::Name("a".into())]);
     }
 
     fn lex_error_test(request: &str, expected_error_message: &str, location: Location) {
@@ -891,10 +891,7 @@ mod tests {
             illicit::Layer::new()
                 .offer(PositionsTracker::default())
                 .enter(|| parse(request.chars()).unwrap_err()),
-            ParseOrLexError::Lex(LexError::new(
-                expected_error_message.to_owned(),
-                Some(location)
-            )),
+            ParseOrLexError::Lex(LexError::new(expected_error_message.into(), Some(location))),
         );
     }
 
@@ -947,7 +944,7 @@ mod tests {
                 .offer(PositionsTracker::default())
                 .enter(|| parse(request.chars()).unwrap_err()),
             ParseOrLexError::Parse(ParseError::new(
-                expected_error_message.to_owned(),
+                expected_error_message.into(),
                 Some(location)
             )),
         );

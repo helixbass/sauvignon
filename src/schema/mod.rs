@@ -45,7 +45,7 @@ impl Schema {
             .iter()
             .position(|type_| type_.is_query_type())
             .ok_or_else(|| Error::NoQueryTypeSpecified)?;
-        let query_type_name = types[query_type_index].name().to_owned();
+        let query_type_name = types[query_type_index].name().into();
 
         let interface_all_concrete_types = interfaces
             .iter()
@@ -73,7 +73,7 @@ impl Schema {
         Ok(Self {
             types: types
                 .into_iter()
-                .map(|type_| (type_.name().to_owned(), type_))
+                .map(|type_| (type_.name().into(), type_))
                 .collect(),
             query_type_name,
             builtin_types: builtin_types(),
@@ -194,7 +194,7 @@ impl Schema {
         type_or_union_or_interface: &TypeOrUnionOrInterface,
     ) -> HashSet<SmolStr> {
         match type_or_union_or_interface {
-            TypeOrUnionOrInterface::Type(type_) => [type_.name().to_owned()].into_iter().collect(),
+            TypeOrUnionOrInterface::Type(type_) => [type_.name().into()].into_iter().collect(),
             TypeOrUnionOrInterface::Union(union) => union.types.iter().cloned().collect(),
             TypeOrUnionOrInterface::Interface(interface) => {
                 self.interface_all_concrete_types[&interface.name].clone()

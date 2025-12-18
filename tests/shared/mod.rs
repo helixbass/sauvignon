@@ -28,14 +28,14 @@ impl UnionOrInterfaceTypePopulatorList for ActorsAndDesignersTypePopulator {
             .unwrap()
             .as_list()
             .into_iter()
-            .map(|_| "Actor".to_owned())
+            .map(|_| "Actor".into())
             .chain(
                 internal_dependencies
                     .get("designer_ids")
                     .unwrap()
                     .as_list()
                     .into_iter()
-                    .map(|_| "Designer".to_owned()),
+                    .map(|_| "Designer".into()),
             )
             .collect()
     }
@@ -62,7 +62,7 @@ impl PopulatorListInterface for ActorsAndDesignersPopulator {
             .into_iter()
             .map(|actor_id| {
                 let mut ret = ExternalDependencyValues::default();
-                ret.insert("id".to_owned(), actor_id.clone()).unwrap();
+                ret.insert("id".into(), actor_id.clone()).unwrap();
                 ret
             })
             .chain(
@@ -73,7 +73,7 @@ impl PopulatorListInterface for ActorsAndDesignersPopulator {
                     .into_iter()
                     .map(|designer_id| {
                         let mut ret = ExternalDependencyValues::default();
-                        ret.insert("id".to_owned(), designer_id.clone()).unwrap();
+                        ret.insert("id".into(), designer_id.clone()).unwrap();
                         ret
                     }),
             )
@@ -112,7 +112,7 @@ impl Carver for CanadianCityQuoteCarver {
             CanadianCity::from_str(internal_dependencies.get("city").unwrap().as_string())
                 .unwrap()
                 .quote()
-                .to_owned(),
+                .into(),
         )
     }
 }

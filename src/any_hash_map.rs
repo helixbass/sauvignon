@@ -169,8 +169,8 @@ fn test_any_hash_map() {
     let mut any_hash_map = AnyHashMap::new();
     assert_eq!(format!("{any_hash_map:?}"), "{}");
 
-    any_hash_map.insert("foo".to_owned(), 5i32);
-    any_hash_map.insert("bar".to_owned(), MyType(10));
+    any_hash_map.insert("foo".into(), 5i32);
+    any_hash_map.insert("bar".into(), MyType(10));
 
     assert_eq!(any_hash_map.get("foo"), Some(&5i32));
     assert_eq!(any_hash_map.get_mut("foo"), Some(&mut 5i32));

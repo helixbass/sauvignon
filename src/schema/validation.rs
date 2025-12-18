@@ -153,7 +153,7 @@ fn validate_lone_anonymous_operation(request: &Request) -> Option<ValidationErro
     }
 
     Some(ValidationError::new(
-        "Anonymous operation must be only operation".to_owned(),
+        "Anonymous operation must be only operation".into(),
         PositionsTracker::current()
             .map(|positions_tracker| {
                 vec![positions_tracker.nth_operation_location(

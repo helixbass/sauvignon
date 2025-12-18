@@ -170,7 +170,7 @@ impl Carver for OptionalEnumValueCarver {
             .as_optional_string()
         {
             None => ResponseValue::Null,
-            Some(value) => ResponseValue::EnumValue(value.to_owned()),
+            Some(value) => ResponseValue::EnumValue(value.into()),
         }
     }
 }
@@ -201,7 +201,7 @@ impl Carver for EnumValueCarver {
                 .or_else(|| external_dependencies.get(&self.name))
                 .unwrap()
                 .as_string()
-                .to_owned(),
+                .clone(),
         )
     }
 }
@@ -291,7 +291,7 @@ impl Carver for OptionalStringCarver {
             .or_else(|| external_dependencies.get(&self.name))
             .unwrap()
             .as_optional_string()
-            .map(|str| ResponseValue::String(str.to_owned()))
+            .map(|str| ResponseValue::String(str.into()))
             .unwrap_or_else(|| ResponseValue::Null)
     }
 }
@@ -389,7 +389,7 @@ impl CarverList for EnumValueCarverList {
             .unwrap()
             .as_list()
             .into_iter()
-            .map(|value| ResponseValue::EnumValue(value.as_string().to_owned()))
+            .map(|value| ResponseValue::EnumValue(value.as_string().clone()))
             .collect()
     }
 }

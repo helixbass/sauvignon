@@ -325,7 +325,7 @@ impl ExternalDependencyValues {
         let mut other = Self::Full(_d());
         mem::swap(self, &mut other);
         self.as_full_mut()
-            .insert("id".to_owned(), other.into_just_id())
+            .insert("id".into(), other.into_just_id())
             .unwrap();
     }
 

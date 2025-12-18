@@ -102,7 +102,7 @@ impl ObjectTypeBuilder {
             .flatten()
             .if_is(OperationType::Query)
             .map(|_| {
-                [("__type".to_owned(), Field::new_introspection_type())]
+                [("__type".into(), Field::new_introspection_type())]
                     .into_iter()
                     .collect()
             })
@@ -253,13 +253,13 @@ impl Field {
             .resolver(FieldResolver::new(
                 vec![],
                 vec![InternalDependency::new(
-                    "__typename".to_owned(),
+                    "__typename".into(),
                     DependencyType::String,
                     InternalDependencyResolver::LiteralValue(
                         LiteralValueInternalDependencyResolver(DependencyValue::String(type_name)),
                     ),
                 )],
-                CarverOrPopulator::Carver(Box::new(StringCarver::new("__typename".to_owned()))),
+                CarverOrPopulator::Carver(Box::new(StringCarver::new("__typename".into()))),
             ))
             .build()
             .unwrap()
@@ -268,7 +268,7 @@ impl Field {
     pub fn new_introspection_type() -> Self {
         FieldBuilder::default()
             .name("__type")
-            .type_(TypeFull::Type("__Type".to_owned()))
+            .type_(TypeFull::Type("__Type".into()))
             .resolver(FieldResolver::new(
                 vec![],
                 vec![InternalDependency::new(
@@ -369,33 +369,31 @@ pub fn introspection_type_type() -> Type {
                             DependencyType::String,
                         )],
                         vec![InternalDependency::new(
-                            "names".to_owned(),
+                            "names".into(),
                             DependencyType::ListOfStrings,
                             InternalDependencyResolver::IntrospectionTypeInterfaces,
                         )],
                         CarverOrPopulator::PopulatorList(
-                            ValuePopulatorList::new("name".to_owned()).into(),
+                            ValuePopulatorList::new("name".into()).into(),
                         ),
                     ))
                     .build()
                     .unwrap(),
                 FieldBuilder::default()
                     .name("possibleTypes")
-                    .type_(TypeFull::List(Box::new(TypeFull::Type(
-                        "__Type".to_owned(),
-                    ))))
+                    .type_(TypeFull::List(Box::new(TypeFull::Type("__Type".into()))))
                     .resolver(FieldResolver::new(
                         vec![ExternalDependency::new(
                             "name".into(),
                             DependencyType::String,
                         )],
                         vec![InternalDependency::new(
-                            "names".to_owned(),
+                            "names".into(),
                             DependencyType::ListOfStrings,
                             InternalDependencyResolver::IntrospectionTypePossibleTypes,
                         )],
                         CarverOrPopulator::PopulatorList(
-                            ValuePopulatorList::new("name".to_owned()).into(),
+                            ValuePopulatorList::new("name".into()).into(),
                         ),
                     ))
                     .build()
