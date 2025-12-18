@@ -162,16 +162,16 @@ struct SchemaProcessed {
 }
 
 struct Type {
-    pub name: SmolStr,
+    pub name: String,
     pub fields: Vec<Field>,
-    pub implements: Option<Vec<SmolStr>>,
+    pub implements: Option<Vec<String>>,
 }
 
 impl Type {
     pub fn process(
         self,
-        all_union_or_interface_type_names: &HashSet<SmolStr>,
-        all_enum_names: &HashSet<SmolStr>,
+        all_union_or_interface_type_names: &HashSet<String>,
+        all_enum_names: &HashSet<String>,
     ) -> TypeProcessed {
         TypeProcessed {
             name: self.name.clone(),
@@ -198,7 +198,7 @@ impl Parse for Type {
         let type_content;
         braced!(type_content in input);
         let mut fields: Option<Vec<Field>> = _d();
-        let mut implements: Option<Vec<SmolStr>> = _d();
+        let mut implements: Option<Vec<String>> = _d();
         while !type_content.is_empty() {
             let key: Ident = type_content.parse()?;
             type_content.parse::<Token![=>]>()?;
@@ -239,13 +239,13 @@ impl Parse for Type {
 }
 
 struct TypeProcessed {
-    pub name: SmolStr,
+    pub name: String,
     pub fields: Vec<FieldProcessed>,
-    pub implements: Option<Vec<SmolStr>>,
+    pub implements: Option<Vec<String>>,
 }
 
 struct Field {
-    pub name: SmolStr,
+    pub name: String,
     pub value: FieldValue,
 }
 
@@ -253,8 +253,8 @@ impl Field {
     pub fn process(
         self,
         parent_type_name: Option<&str>,
-        all_union_or_interface_type_names: &HashSet<SmolStr>,
-        all_enum_names: &HashSet<SmolStr>,
+        all_union_or_interface_type_names: &HashSet<String>,
+        all_enum_names: &HashSet<String>,
     ) -> FieldProcessed {
         FieldProcessed {
             value: self.value.process(
@@ -281,7 +281,7 @@ impl Parse for Field {
 }
 
 struct FieldProcessed {
-    pub name: SmolStr,
+    pub name: String,
     pub value: FieldValueProcessed,
 }
 
@@ -742,7 +742,7 @@ impl ToTokens for FieldProcessed {
                 let type_str = type_.to_string();
                 match (foreign_key, through) {
                     (Some(foreign_key), None) => {
-                        let foreign_key_table_name = pluralize(&type_str.to_snake_case());
+                        let foreign_key_table_name = pluralize(&type_str.to_snake_case()).to_string();
 
                         quote! {
                             ::sauvignon::TypeFieldBuilder::default()
@@ -768,7 +768,7 @@ impl ToTokens for FieldProcessed {
                     (None, Some(through)) => {
                         let through_self_column_name = through_self_column_name.as_ref().unwrap();
                         let through_other_column_name = through_other_column_name.as_ref().unwrap();
-                        let internal_dependency_name = pluralize(through_other_column_name);
+                        let internal_dependency_name = pluralize(through_other_column_name).to_string();
                         match maybe_type_kind {
                             Some(TypeKind::Enum) => {
                                 quote! {
@@ -885,7 +885,7 @@ impl FieldValue {
                     }),
                 },
                 None => FieldValueProcessed::StringColumn {
-                    table_name: pluralize(&parent_type_name.unwrap().to_snake_case()),
+                    table_name: pluralize(&parent_type_name.unwrap().to_snake_case()).into(),
                     self_id_column_name: "id".to_owned(),
                 },
             },
@@ -897,7 +897,7 @@ impl FieldValue {
                     }),
                 },
                 None => FieldValueProcessed::OptionalIntColumn {
-                    table_name: pluralize(&parent_type_name.unwrap().to_snake_case()),
+                    table_name: pluralize(&parent_type_name.unwrap().to_snake_case()).into(),
                     self_id_column_name: "id".to_owned(),
                 },
             },
@@ -909,16 +909,16 @@ impl FieldValue {
                     }),
                 },
                 None => FieldValueProcessed::OptionalFloatColumn {
-                    table_name: pluralize(&parent_type_name.unwrap().to_snake_case()),
+                    table_name: pluralize(&parent_type_name.unwrap().to_snake_case()).into(),
                     self_id_column_name: "id".to_owned(),
                 },
             },
             Self::OptionalEnumColumn { type_ } => FieldValueProcessed::OptionalEnumColumn {
-                table_name: pluralize(&parent_type_name.unwrap().to_snake_case()),
+                table_name: pluralize(&parent_type_name.unwrap().to_snake_case()).into(),
                 type_,
             },
             Self::EnumColumn { type_ } => FieldValueProcessed::EnumColumn {
-                table_name: pluralize(&parent_type_name.unwrap().to_snake_case()),
+                table_name: pluralize(&parent_type_name.unwrap().to_snake_case()).into(),
                 type_,
             },
             Self::TimestampColumn { via_nested } => match via_nested {
@@ -929,12 +929,12 @@ impl FieldValue {
                     }),
                 },
                 None => FieldValueProcessed::TimestampColumn {
-                    table_name: pluralize(&parent_type_name.unwrap().to_snake_case()),
+                    table_name: pluralize(&parent_type_name.unwrap().to_snake_case()).into(),
                     self_id_column_name: "id".to_owned(),
                 },
             },
             Self::IdColumn => FieldValueProcessed::IdColumn {
-                table_name: pluralize(&parent_type_name.unwrap().to_snake_case()),
+                table_name: pluralize(&parent_type_name.unwrap().to_snake_case()).into(),
             },
             Self::OptionalStringColumn { via_nested } => match via_nested {
                 Some(via_nested) => FieldValueProcessed::OptionalStringColumn {
@@ -944,15 +944,15 @@ impl FieldValue {
                     }),
                 },
                 None => FieldValueProcessed::OptionalStringColumn {
-                    table_name: pluralize(&parent_type_name.unwrap().to_snake_case()),
+                    table_name: pluralize(&parent_type_name.unwrap().to_snake_case()).into(),
                     self_id_column_name: "id".to_owned(),
                 },
             },
             Self::IntColumn => FieldValueProcessed::IntColumn {
-                table_name: pluralize(&parent_type_name.unwrap().to_snake_case()),
+                table_name: pluralize(&parent_type_name.unwrap().to_snake_case()).into(),
             },
             Self::DateColumn => FieldValueProcessed::DateColumn {
-                table_name: pluralize(&parent_type_name.unwrap().to_snake_case()),
+                table_name: pluralize(&parent_type_name.unwrap().to_snake_case()).into(),
             },
             Self::Object {
                 type_,
@@ -985,7 +985,7 @@ impl FieldValue {
                 optional,
             } => FieldValueProcessed::BelongsTo {
                 type_,
-                self_table_name: pluralize(&parent_type_name.unwrap().to_snake_case()),
+                self_table_name: pluralize(&parent_type_name.unwrap().to_snake_case()).into(),
                 polymorphic,
                 optional,
             },
@@ -1470,7 +1470,7 @@ impl ToTokens for InternalDependencyProcessed {
                 )
             },
             InternalDependencyTypeProcessed::IdColumnList { field_type_name } => {
-                let table_name = pluralize(&field_type_name.to_snake_case());
+                let table_name = pluralize(&field_type_name.to_snake_case()).to_string();
                 quote! {
                     ::sauvignon::InternalDependencyResolver::ColumnGetterList(::sauvignon::ColumnGetterList::new(
                         #table_name.into(),
@@ -1540,7 +1540,7 @@ impl InternalDependencyType {
                     }),
                 },
                 None => InternalDependencyTypeProcessed::OptionalIntColumn {
-                    table_name: pluralize(&parent_type_name.unwrap().to_snake_case()),
+                    table_name: pluralize(&parent_type_name.unwrap().to_snake_case()).into(),
                     column_name: internal_dependency_name.to_owned(),
                     self_id_column_name: "id".to_owned(),
                 },
