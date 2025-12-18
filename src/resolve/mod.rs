@@ -692,11 +692,15 @@ pub trait PopulatorListInterface: Send + Sync {
 
 pub struct ValuePopulatorList {
     pub singular: SmolStr,
+    pub plural: SmolStr,
 }
 
 impl ValuePopulatorList {
     pub fn new(singular: SmolStr) -> Self {
-        Self { singular }
+        Self {
+            plural: pluralize(&singular),
+            singular,
+        }
     }
 }
 
@@ -711,7 +715,7 @@ impl PopulatorListInterface for ValuePopulatorList {
         internal_dependencies: &InternalDependencyValues,
     ) -> Vec<ExternalDependencyValues> {
         internal_dependencies
-            .get(&pluralize(&self.singular))
+            .get(&self.plural)
             .unwrap()
             .as_list()
             .into_iter()
