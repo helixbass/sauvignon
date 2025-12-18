@@ -4,13 +4,14 @@ use std::sync::RwLock;
 
 use itertools::Itertools;
 use rkyv::{rancor, util::AlignedVec};
+use smol_str::SmolStr;
 use squalid::{OptionExt, _d};
 use tracing::{instrument, trace, trace_span};
 
 use crate::{
     builtin_types, fields_in_progress_new, get_hash, parse, CarverOrPopulator, Database,
     DependencyType, DependencyValue, Document, DummyUnionTypenameField, Error,
-    ExternalDependencyValues, FieldPlan, FieldsInProgress, InProgress, InProgressRecursing,
+    ExternalDependencyValues, FieldPlan, FieldsInProgress, Id, InProgress, InProgressRecursing,
     InProgressRecursingList, IndexMap, Interface, InternalDependencyResolver,
     InternalDependencyValues, OperationType, OptionalPopulator, OptionalPopulatorInterface,
     Populator, PopulatorInterface, PopulatorListInterface, PositionsTracker, QueryPlan, Request,
@@ -23,12 +24,12 @@ pub use validation::ValidationError;
 use validation::ValidationRequestOrErrors;
 
 pub struct Schema {
-    pub types: HashMap<String, Type>,
-    pub query_type_name: String,
-    builtin_types: HashMap<String, Type>,
-    pub unions: HashMap<String, Union>,
-    pub interfaces: HashMap<String, Interface>,
-    pub interface_all_concrete_types: HashMap<String, HashSet<String>>,
+    pub types: HashMap<SmolStr, Type>,
+    pub query_type_name: SmolStr,
+    builtin_types: HashMap<SmolStr, Type>,
+    pub unions: HashMap<SmolStr, Union>,
+    pub interfaces: HashMap<SmolStr, Interface>,
+    pub interface_all_concrete_types: HashMap<SmolStr, HashSet<SmolStr>>,
     pub dummy_union_typename_field: DummyUnionTypenameField,
     pub cached_validated_documents: RwLock<HashMap<u64, AlignedVec>>,
 }
@@ -44,7 +45,7 @@ impl Schema {
             .iter()
             .position(|type_| type_.is_query_type())
             .ok_or_else(|| Error::NoQueryTypeSpecified)?;
-        let query_type_name = types[query_type_index].name().to_owned();
+        let query_type_name = types[query_type_index].name().into();
 
         let interface_all_concrete_types = interfaces
             .iter()
@@ -72,7 +73,7 @@ impl Schema {
         Ok(Self {
             types: types
                 .into_iter()
-                .map(|type_| (type_.name().to_owned(), type_))
+                .map(|type_| (type_.name().into(), type_))
                 .collect(),
             query_type_name,
             builtin_types: builtin_types(),
@@ -143,7 +144,10 @@ impl Schema {
                 request
             }
         };
-        compute_response(self, &request, database).await.into()
+        let is_database_sync = database.is_sync();
+        compute_response(self, &request, (database, is_database_sync))
+            .await
+            .into()
     }
 
     pub fn query_type(&self) -> &Type {
@@ -191,9 +195,9 @@ impl Schema {
     pub fn all_concrete_type_names(
         &self,
         type_or_union_or_interface: &TypeOrUnionOrInterface,
-    ) -> HashSet<String> {
+    ) -> HashSet<SmolStr> {
         match type_or_union_or_interface {
-            TypeOrUnionOrInterface::Type(type_) => [type_.name().to_owned()].into_iter().collect(),
+            TypeOrUnionOrInterface::Type(type_) => [type_.name().into()].into_iter().collect(),
             TypeOrUnionOrInterface::Union(union) => union.types.iter().cloned().collect(),
             TypeOrUnionOrInterface::Interface(interface) => {
                 self.interface_all_concrete_types[&interface.name].clone()
@@ -204,7 +208,7 @@ impl Schema {
     pub fn all_concrete_type_names_for_type_or_union_or_interface(
         &self,
         name: &str,
-    ) -> HashSet<String> {
+    ) -> HashSet<SmolStr> {
         self.all_concrete_type_names(&self.type_or_union_or_interface(name))
     }
 }
@@ -213,7 +217,7 @@ impl Schema {
 async fn compute_response(
     schema: &Schema,
     request: &Request,
-    database: &dyn Database,
+    database: (&dyn Database, bool),
 ) -> ResponseValue {
     let query_plan = QueryPlan::new(&request, schema);
     let response_in_progress = query_plan.initial_response_in_progress();
@@ -228,10 +232,10 @@ async fn compute_response(
     }
 }
 
-#[instrument(level = "debug", skip(fields_in_progress, database, schema))]
+#[instrument(level = "trace", skip(fields_in_progress, database, schema))]
 fn progress_fields<'a>(
     fields_in_progress: FieldsInProgress<'a>,
-    database: &'a dyn Database,
+    database: (&'a dyn Database, bool),
     schema: &'a Schema,
 ) -> Pin<Box<dyn Future<Output = (bool, FieldsInProgress<'a>)> + 'a + Send>> {
     Box::pin(async move {
@@ -450,9 +454,10 @@ fn progress_fields<'a>(
 async fn populate_internal_dependencies(
     field_plan: &FieldPlan<'_>,
     external_dependency_values: &ExternalDependencyValues,
-    database: &dyn Database,
+    database: (&dyn Database, bool),
     schema: &Schema,
 ) -> InternalDependencyValues {
+    let (database, is_database_sync) = database;
     let mut ret = InternalDependencyValues::default();
     for internal_dependency in field_plan.field_type.resolver.internal_dependencies.iter() {
         ret.insert(
@@ -463,19 +468,47 @@ async fn populate_internal_dependencies(
                         DependencyValue::Id(id) => id,
                         _ => unreachable!(),
                     };
-                    database
-                        .get_column(
+                    if is_database_sync {
+                        database.get_column_sync(
                             &column_getter.table_name,
                             &column_getter.column_name,
                             row_id,
                             &column_getter.id_column_name,
                             internal_dependency.type_,
                         )
-                        .await
+                    } else {
+                        database
+                            .get_column(
+                                &column_getter.table_name,
+                                &column_getter.column_name,
+                                row_id,
+                                &column_getter.id_column_name,
+                                internal_dependency.type_,
+                            )
+                            .await
+                    }
                 }
                 InternalDependencyResolver::LiteralValue(literal_value) => literal_value.0.clone(),
                 InternalDependencyResolver::ColumnGetterList(column_getter_list) => {
-                    DependencyValue::List(
+                    DependencyValue::List(if is_database_sync {
+                        database.get_column_list_sync(
+                            &column_getter_list.table_name,
+                            &column_getter_list.column_name,
+                            internal_dependency.type_,
+                            &column_getter_list
+                                .wheres
+                                .iter()
+                                .map(|where_| {
+                                    WhereResolved::new(
+                                        where_.column_name.clone(),
+                                        // TODO: this is punting on where's specifying
+                                        // values
+                                        external_dependency_values.get("id").unwrap().clone(),
+                                    )
+                                })
+                                .collect::<Vec<_>>(),
+                        )
+                    } else {
                         database
                             .get_column_list(
                                 &column_getter_list.table_name,
@@ -494,8 +527,8 @@ async fn populate_internal_dependencies(
                                     })
                                     .collect::<Vec<_>>(),
                             )
-                            .await,
-                    )
+                            .await
+                    })
                 }
                 InternalDependencyResolver::IntrospectionTypeInterfaces => {
                     let _ = trace_span!("resolve introspection type interfaces").entered();
@@ -573,7 +606,7 @@ async fn populate_internal_dependencies(
                         .unwrap();
                     match (internal_dependency.type_, &argument.value) {
                         (DependencyType::Id, Value::Int(argument_value)) => {
-                            DependencyValue::Id(argument_value.to_string())
+                            DependencyValue::Id(Id::Int(*argument_value))
                         }
                         (DependencyType::String, Value::String(argument_value)) => {
                             DependencyValue::String(argument_value.clone())

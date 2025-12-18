@@ -1,9 +1,11 @@
-pub fn pluralize(value: &str) -> String {
+use smol_str::{format_smolstr, SmolStr};
+
+pub fn pluralize(value: &str) -> SmolStr {
     match value {
-        "Species" => "Species".to_owned(),
-        "species" => "species".to_owned(),
-        "Person" => "People".to_owned(),
-        "person" => "people".to_owned(),
-        value => format!("{value}s"),
+        "Species" => "Species".into(),
+        "species" => "species".into(),
+        "Person" => "People".into(),
+        "person" => "people".into(),
+        value => format_smolstr!("{value}s"),
     }
 }

@@ -1,5 +1,7 @@
+use chrono::NaiveDate;
 use jiff::Timestamp;
 use serde::Serialize;
+use smol_str::{format_smolstr, SmolStr};
 use squalid::_d;
 use tracing::instrument;
 
@@ -44,12 +46,12 @@ impl From<Vec<ResponseError>> for Response {
 pub enum ResponseValue {
     Null,
     List(Vec<ResponseValue>),
-    Map(IndexMap<String, ResponseValue>),
-    String(String),
+    Map(IndexMap<SmolStr, ResponseValue>),
+    String(SmolStr),
     Boolean(bool),
     Int(i32),
     Float(f64),
-    EnumValue(String),
+    EnumValue(SmolStr),
 }
 
 impl From<FieldsInProgress<'_>> for ResponseValue {
@@ -93,7 +95,13 @@ impl From<f64> for ResponseValue {
 
 impl From<Timestamp> for ResponseValue {
     fn from(value: Timestamp) -> Self {
-        Self::String(value.to_string())
+        Self::String(format_smolstr!("{}", value))
+    }
+}
+
+impl<'a> From<&'a NaiveDate> for ResponseValue {
+    fn from(value: &'a NaiveDate) -> Self {
+        Self::String(format_smolstr!("{}", value))
     }
 }
 
@@ -112,11 +120,11 @@ impl<TInner: Into<ResponseValue>> From<Vec<TInner>> for ResponseValue {
     }
 }
 
-pub type FieldsInProgress<'a> = IndexMap<String, ResponseValueOrInProgress<'a>>;
+pub type FieldsInProgress<'a> = IndexMap<SmolStr, ResponseValueOrInProgress<'a>>;
 
 #[instrument(level = "trace", skip(field_plans, external_dependency_values))]
 pub fn fields_in_progress_new<'a>(
-    field_plans: &'a IndexMap<String, FieldPlan<'a>>,
+    field_plans: &'a IndexMap<SmolStr, FieldPlan<'a>>,
     external_dependency_values: &ExternalDependencyValues,
 ) -> FieldsInProgress<'a> {
     // TODO: this looks like a map_values()
@@ -210,13 +218,13 @@ impl<'a> InProgressRecursingList<'a> {
 
 #[derive(Serialize)]
 pub struct ResponseError {
-    pub message: String,
+    pub message: SmolStr,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub locations: Vec<Location>,
 }
 
 impl ResponseError {
-    pub fn new(message: String, locations: Vec<Location>) -> Self {
+    pub fn new(message: SmolStr, locations: Vec<Location>) -> Self {
         Self { message, locations }
     }
 }
@@ -230,7 +238,7 @@ impl From<ValidationError> for ResponseError {
 impl From<ParseOrLexError> for ResponseError {
     fn from(value: ParseOrLexError) -> Self {
         Self::new(
-            value.message().to_owned(),
+            value.message().into(),
             value.location().into_iter().collect(),
         )
     }

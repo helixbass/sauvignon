@@ -1,5 +1,6 @@
 use std::{iter::Peekable, vec};
 
+use smol_str::{format_smolstr, SmolStr};
 use squalid::_d;
 use tracing::{instrument, trace_span};
 
@@ -27,14 +28,14 @@ pub enum Token {
     LeftCurlyBracket,
     Pipe,
     RightCurlyBracket,
-    Name(String),
-    String(String),
+    Name(SmolStr),
+    String(SmolStr),
     Int(i32),
     Float(f64),
 }
 
 impl Token {
-    pub fn into_name(self) -> String {
+    pub fn into_name(self) -> SmolStr {
         match self {
             Self::Name(name) => name,
             _ => panic!("Expected name"),
@@ -61,7 +62,7 @@ impl<TRequest: Iterator<Item = char>> Lex<TRequest> {
     fn error(&mut self, message: &str) -> LexError {
         self.has_errored = true;
         LexError::new(
-            message.to_owned(),
+            message.into(),
             PositionsTracker::current().map(|positions_tracker| positions_tracker.last_char()),
         )
     }
@@ -117,14 +118,14 @@ where
                                     _ => break,
                                 }
                             }
-                            Some(Token::Name(chars.iter().collect()))
+                            Some(Token::Name(chars.into_iter().collect()))
                         }
                         '"' => match self.request.next() {
                             Some('"') => match self.request.next() {
                                 Some('"') => {
                                     unimplemented!()
                                 }
-                                _ => Some(Token::String("".to_owned())),
+                                _ => Some(Token::String("".into())),
                             },
                             Some(ch) => {
                                 let mut resolved_chars: Vec<char> =
@@ -222,7 +223,7 @@ where
                                                                     )));
                                                                 }
                                                                 break Some(Token::Float(
-                                                                    format!(
+                                                                    format_smolstr!(
                                                                         "{}{}.{}e{}{}",
                                                                         if is_negative {
                                                                             "-"
@@ -231,10 +232,10 @@ where
                                                                         },
                                                                         integer_part
                                                                             .into_iter()
-                                                                            .collect::<String>(),
+                                                                            .collect::<SmolStr>(),
                                                                         fractional_part
                                                                             .into_iter()
-                                                                            .collect::<String>(),
+                                                                            .collect::<SmolStr>(),
                                                                         if has_exponent_negative_sign {
                                                                             "-"
                                                                         } else {
@@ -242,7 +243,7 @@ where
                                                                         },
                                                                         exponent_digits
                                                                             .into_iter()
-                                                                            .collect::<String>(),
+                                                                            .collect::<SmolStr>(),
                                                                     )
                                                                     .parse::<f64>()
                                                                     // TODO: look for .expect()'s
@@ -261,10 +262,10 @@ where
                                                         if is_negative { "-" } else { "" },
                                                         integer_part
                                                             .into_iter()
-                                                            .collect::<String>(),
+                                                            .collect::<SmolStr>(),
                                                         fractional_part
                                                             .into_iter()
-                                                            .collect::<String>(),
+                                                            .collect::<SmolStr>(),
                                                     )
                                                     .parse::<f64>()
                                                     .expect("Couldn't parse float"),
@@ -296,7 +297,7 @@ where
                                                                 if is_negative { "-" } else { "" },
                                                                 integer_part
                                                                     .into_iter()
-                                                                    .collect::<String>(),
+                                                                    .collect::<SmolStr>(),
                                                                 if has_exponent_negative_sign {
                                                                     "-"
                                                                 } else {
@@ -304,7 +305,7 @@ where
                                                                 },
                                                                 exponent_digits
                                                                     .into_iter()
-                                                                    .collect::<String>(),
+                                                                    .collect::<SmolStr>(),
                                                             )
                                                             .parse::<f64>()
                                                             .expect("Couldn't parse float"),
@@ -317,7 +318,7 @@ where
                                 }
                                 _ => Some(Token::Int(
                                     i32::from_str_radix(
-                                        &integer_part.into_iter().collect::<String>(),
+                                        &integer_part.into_iter().collect::<SmolStr>(),
                                         10,
                                     )
                                     .unwrap(),
@@ -390,7 +391,7 @@ where
                     }
                 }
                 char::from_u32(
-                    u32::from_str_radix(&unicode_hex.into_iter().collect::<String>(), 16).unwrap(),
+                    u32::from_str_radix(&unicode_hex.into_iter().collect::<SmolStr>(), 16).unwrap(),
                 )
                 .expect("Couldn't convert hex to char")
             }
@@ -768,7 +769,7 @@ where
 
 fn parse_error(message: &str) -> ParseError {
     ParseError::new(
-        message.to_owned(),
+        message.into(),
         PositionsTracker::current().map(|positions_tracker| {
             positions_tracker
                 .maybe_last_token()
@@ -779,12 +780,12 @@ fn parse_error(message: &str) -> ParseError {
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct LexError {
-    pub message: String,
+    pub message: SmolStr,
     pub location: Option<Location>,
 }
 
 impl LexError {
-    pub fn new(message: String, location: Option<Location>) -> Self {
+    pub fn new(message: SmolStr, location: Option<Location>) -> Self {
         Self { message, location }
     }
 }
@@ -813,12 +814,12 @@ impl ParseOrLexError {
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct ParseError {
-    pub message: String,
+    pub message: SmolStr,
     pub location: Option<Location>,
 }
 
 impl ParseError {
-    pub fn new(message: String, location: Option<Location>) -> Self {
+    pub fn new(message: SmolStr, location: Option<Location>) -> Self {
         Self { message, location }
     }
 }
@@ -865,13 +866,13 @@ mod tests {
 
     #[test]
     fn test_string() {
-        lex_test(r#""""#, [Token::String("".to_owned())]);
-        lex_test(r#""abc""#, [Token::String("abc".to_owned())]);
+        lex_test(r#""""#, [Token::String("".into())]);
+        lex_test(r#""abc""#, [Token::String("abc".into())]);
     }
 
     #[test]
     fn test_name() {
-        lex_test("Foo", [Token::Name("Foo".to_owned())]);
+        lex_test("Foo", [Token::Name("Foo".into())]);
     }
 
     #[test]
@@ -882,7 +883,7 @@ mod tests {
 
     #[test]
     fn test_dot_dot_dot() {
-        lex_test("...a", [Token::DotDotDot, Token::Name("a".to_owned())]);
+        lex_test("...a", [Token::DotDotDot, Token::Name("a".into())]);
     }
 
     fn lex_error_test(request: &str, expected_error_message: &str, location: Location) {
@@ -890,10 +891,7 @@ mod tests {
             illicit::Layer::new()
                 .offer(PositionsTracker::default())
                 .enter(|| parse(request.chars()).unwrap_err()),
-            ParseOrLexError::Lex(LexError::new(
-                expected_error_message.to_owned(),
-                Some(location)
-            )),
+            ParseOrLexError::Lex(LexError::new(expected_error_message.into(), Some(location))),
         );
     }
 
@@ -946,7 +944,7 @@ mod tests {
                 .offer(PositionsTracker::default())
                 .enter(|| parse(request.chars()).unwrap_err()),
             ParseOrLexError::Parse(ParseError::new(
-                expected_error_message.to_owned(),
+                expected_error_message.into(),
                 Some(location)
             )),
         );

@@ -1,5 +1,6 @@
 use std::str::FromStr;
 
+use smol_str::SmolStr;
 use sqlx::{postgres::PgPoolOptions, Pool, Postgres};
 use strum::{EnumString, VariantNames};
 
@@ -21,20 +22,20 @@ impl UnionOrInterfaceTypePopulatorList for ActorsAndDesignersTypePopulator {
         &self,
         _external_dependencies: &ExternalDependencyValues,
         internal_dependencies: &InternalDependencyValues,
-    ) -> Vec<String> {
+    ) -> Vec<SmolStr> {
         internal_dependencies
             .get("actor_ids")
             .unwrap()
             .as_list()
             .into_iter()
-            .map(|_| "Actor".to_owned())
+            .map(|_| "Actor".into())
             .chain(
                 internal_dependencies
                     .get("designer_ids")
                     .unwrap()
                     .as_list()
                     .into_iter()
-                    .map(|_| "Designer".to_owned()),
+                    .map(|_| "Designer".into()),
             )
             .collect()
     }
@@ -61,7 +62,7 @@ impl PopulatorListInterface for ActorsAndDesignersPopulator {
             .into_iter()
             .map(|actor_id| {
                 let mut ret = ExternalDependencyValues::default();
-                ret.insert("id".to_owned(), actor_id.clone()).unwrap();
+                ret.insert("id".into(), actor_id.clone()).unwrap();
                 ret
             })
             .chain(
@@ -72,7 +73,7 @@ impl PopulatorListInterface for ActorsAndDesignersPopulator {
                     .into_iter()
                     .map(|designer_id| {
                         let mut ret = ExternalDependencyValues::default();
-                        ret.insert("id".to_owned(), designer_id.clone()).unwrap();
+                        ret.insert("id".into(), designer_id.clone()).unwrap();
                         ret
                     }),
             )
@@ -111,7 +112,7 @@ impl Carver for CanadianCityQuoteCarver {
             CanadianCity::from_str(internal_dependencies.get("city").unwrap().as_string())
                 .unwrap()
                 .quote()
-                .to_owned(),
+                .into(),
         )
     }
 }
@@ -121,13 +122,11 @@ pub async fn get_schema(db_pool: &Pool<Postgres>) -> anyhow::Result<Schema> {
         .fetch_one(db_pool)
         .await
         .unwrap();
-    let katie_id = katie_id.to_string();
     let (proenza_schouler_id,): (i32,) =
         sqlx::query_as("SELECT id FROM designers WHERE name = 'Proenza Schouler'")
             .fetch_one(db_pool)
             .await
             .unwrap();
-    let proenza_schouler_id = proenza_schouler_id.to_string();
 
     Ok(schema! {
         types => [

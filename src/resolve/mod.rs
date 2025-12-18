@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
-use heck::ToPascalCase;
+use heck_smol_str::ToPascalCase;
+use smol_str::SmolStr;
 use tracing::instrument;
 
 use crate::{
@@ -54,11 +55,11 @@ pub trait Carver: Send + Sync {
 }
 
 pub struct StringCarver {
-    pub name: String,
+    pub name: SmolStr,
 }
 
 impl StringCarver {
-    pub fn new(name: String) -> Self {
+    pub fn new(name: SmolStr) -> Self {
         Self { name }
     }
 }
@@ -85,11 +86,11 @@ impl Carver for StringCarver {
 }
 
 pub struct OptionalIntCarver {
-    pub name: String,
+    pub name: SmolStr,
 }
 
 impl OptionalIntCarver {
-    pub fn new(name: String) -> Self {
+    pub fn new(name: SmolStr) -> Self {
         Self { name }
     }
 }
@@ -114,11 +115,11 @@ impl Carver for OptionalIntCarver {
 }
 
 pub struct OptionalFloatCarver {
-    pub name: String,
+    pub name: SmolStr,
 }
 
 impl OptionalFloatCarver {
-    pub fn new(name: String) -> Self {
+    pub fn new(name: SmolStr) -> Self {
         Self { name }
     }
 }
@@ -143,11 +144,11 @@ impl Carver for OptionalFloatCarver {
 }
 
 pub struct OptionalEnumValueCarver {
-    pub name: String,
+    pub name: SmolStr,
 }
 
 impl OptionalEnumValueCarver {
-    pub fn new(name: String) -> Self {
+    pub fn new(name: SmolStr) -> Self {
         Self { name }
     }
 }
@@ -169,17 +170,17 @@ impl Carver for OptionalEnumValueCarver {
             .as_optional_string()
         {
             None => ResponseValue::Null,
-            Some(value) => ResponseValue::EnumValue(value.to_owned()),
+            Some(value) => ResponseValue::EnumValue(value.into()),
         }
     }
 }
 
 pub struct EnumValueCarver {
-    pub name: String,
+    pub name: SmolStr,
 }
 
 impl EnumValueCarver {
-    pub fn new(name: String) -> Self {
+    pub fn new(name: SmolStr) -> Self {
         Self { name }
     }
 }
@@ -200,17 +201,17 @@ impl Carver for EnumValueCarver {
                 .or_else(|| external_dependencies.get(&self.name))
                 .unwrap()
                 .as_string()
-                .to_owned(),
+                .clone(),
         )
     }
 }
 
 pub struct TimestampCarver {
-    pub name: String,
+    pub name: SmolStr,
 }
 
 impl TimestampCarver {
-    pub fn new(name: String) -> Self {
+    pub fn new(name: SmolStr) -> Self {
         Self { name }
     }
 }
@@ -235,11 +236,11 @@ impl Carver for TimestampCarver {
 }
 
 pub struct IdCarver {
-    pub name: String,
+    pub name: SmolStr,
 }
 
 impl IdCarver {
-    pub fn new(name: String) -> Self {
+    pub fn new(name: SmolStr) -> Self {
         Self { name }
     }
 }
@@ -260,17 +261,17 @@ impl Carver for IdCarver {
                 .or_else(|| external_dependencies.get(&self.name))
                 .unwrap()
                 .as_id()
-                .to_string(),
+                .get_string(),
         )
     }
 }
 
 pub struct OptionalStringCarver {
-    pub name: String,
+    pub name: SmolStr,
 }
 
 impl OptionalStringCarver {
-    pub fn new(name: String) -> Self {
+    pub fn new(name: SmolStr) -> Self {
         Self { name }
     }
 }
@@ -290,17 +291,17 @@ impl Carver for OptionalStringCarver {
             .or_else(|| external_dependencies.get(&self.name))
             .unwrap()
             .as_optional_string()
-            .map(|str| ResponseValue::String(str.to_owned()))
+            .map(|str| ResponseValue::String(str.into()))
             .unwrap_or_else(|| ResponseValue::Null)
     }
 }
 
 pub struct IntCarver {
-    pub name: String,
+    pub name: SmolStr,
 }
 
 impl IntCarver {
-    pub fn new(name: String) -> Self {
+    pub fn new(name: SmolStr) -> Self {
         Self { name }
     }
 }
@@ -326,6 +327,35 @@ impl Carver for IntCarver {
     }
 }
 
+pub struct DateCarver {
+    pub name: SmolStr,
+}
+
+impl DateCarver {
+    pub fn new(name: SmolStr) -> Self {
+        Self { name }
+    }
+}
+
+impl Carver for DateCarver {
+    #[instrument(
+        level = "trace",
+        skip(self, external_dependencies, internal_dependencies)
+    )]
+    fn carve(
+        &self,
+        external_dependencies: &ExternalDependencyValues,
+        internal_dependencies: &InternalDependencyValues,
+    ) -> ResponseValue {
+        internal_dependencies
+            .get(&self.name)
+            .or_else(|| external_dependencies.get(&self.name))
+            .unwrap()
+            .as_date()
+            .into()
+    }
+}
+
 pub trait CarverList: Send + Sync {
     fn carve(
         &self,
@@ -335,11 +365,11 @@ pub trait CarverList: Send + Sync {
 }
 
 pub struct EnumValueCarverList {
-    pub singular: String,
+    pub singular: SmolStr,
 }
 
 impl EnumValueCarverList {
-    pub fn new(singular: String) -> Self {
+    pub fn new(singular: SmolStr) -> Self {
         Self { singular }
     }
 }
@@ -359,7 +389,7 @@ impl CarverList for EnumValueCarverList {
             .unwrap()
             .as_list()
             .into_iter()
-            .map(|value| ResponseValue::EnumValue(value.as_string().to_owned()))
+            .map(|value| ResponseValue::EnumValue(value.as_string().clone()))
             .collect()
     }
 }
@@ -411,11 +441,11 @@ pub trait PopulatorInterface: Send + Sync {
 }
 
 pub struct ValuePopulator {
-    pub key: String,
+    pub key: SmolStr,
 }
 
 impl ValuePopulator {
-    pub fn new(key: String) -> Self {
+    pub fn new(key: SmolStr) -> Self {
         Self { key }
     }
 }
@@ -441,11 +471,11 @@ impl PopulatorInterface for ValuePopulator {
 }
 
 pub struct ValuesPopulator {
-    pub keys: HashMap<String, String>,
+    pub keys: HashMap<SmolStr, SmolStr>,
 }
 
 impl ValuesPopulator {
-    pub fn new(keys: impl IntoIterator<Item = (String, String)>) -> Self {
+    pub fn new(keys: impl IntoIterator<Item = (SmolStr, SmolStr)>) -> Self {
         Self {
             keys: keys.into_iter().collect(),
         }
@@ -524,11 +554,11 @@ pub trait OptionalPopulatorInterface: Send + Sync {
 }
 
 pub struct OptionalValuePopulator {
-    pub key: String,
+    pub key: SmolStr,
 }
 
 impl OptionalValuePopulator {
-    pub fn new(key: String) -> Self {
+    pub fn new(key: SmolStr) -> Self {
         Self { key }
     }
 }
@@ -557,11 +587,11 @@ impl OptionalPopulatorInterface for OptionalValuePopulator {
 }
 
 pub struct OptionalValuesPopulator {
-    pub keys: HashMap<String, String>,
+    pub keys: HashMap<SmolStr, SmolStr>,
 }
 
 impl OptionalValuesPopulator {
-    pub fn new(keys: impl IntoIterator<Item = (String, String)>) -> Self {
+    pub fn new(keys: impl IntoIterator<Item = (SmolStr, SmolStr)>) -> Self {
         Self {
             keys: keys.into_iter().collect(),
         }
@@ -661,12 +691,16 @@ pub trait PopulatorListInterface: Send + Sync {
 }
 
 pub struct ValuePopulatorList {
-    pub singular: String,
+    pub singular: SmolStr,
+    pub plural: SmolStr,
 }
 
 impl ValuePopulatorList {
-    pub fn new(singular: String) -> Self {
-        Self { singular }
+    pub fn new(singular: SmolStr) -> Self {
+        Self {
+            plural: pluralize(&singular),
+            singular,
+        }
     }
 }
 
@@ -681,7 +715,7 @@ impl PopulatorListInterface for ValuePopulatorList {
         internal_dependencies: &InternalDependencyValues,
     ) -> Vec<ExternalDependencyValues> {
         internal_dependencies
-            .get(&pluralize(&self.singular))
+            .get(&self.plural)
             .unwrap()
             .as_list()
             .into_iter()
@@ -699,7 +733,7 @@ pub trait UnionOrInterfaceTypePopulator: Send + Sync {
         &self,
         external_dependencies: &ExternalDependencyValues,
         internal_dependencies: &InternalDependencyValues,
-    ) -> String;
+    ) -> SmolStr;
 }
 
 pub struct TypeDepluralizer {}
@@ -719,7 +753,7 @@ impl UnionOrInterfaceTypePopulator for TypeDepluralizer {
         &self,
         _external_dependencies: &ExternalDependencyValues,
         internal_dependencies: &InternalDependencyValues,
-    ) -> String {
+    ) -> SmolStr {
         singularize(internal_dependencies.get("type").unwrap().as_string()).to_pascal_case()
     }
 }
@@ -729,7 +763,7 @@ pub trait OptionalUnionOrInterfaceTypePopulator: Send + Sync {
         &self,
         external_dependencies: &ExternalDependencyValues,
         internal_dependencies: &InternalDependencyValues,
-    ) -> Option<String>;
+    ) -> Option<SmolStr>;
 }
 
 pub trait UnionOrInterfaceTypePopulatorList: Send + Sync {
@@ -737,5 +771,5 @@ pub trait UnionOrInterfaceTypePopulatorList: Send + Sync {
         &self,
         external_dependencies: &ExternalDependencyValues,
         internal_dependencies: &InternalDependencyValues,
-    ) -> Vec<String>;
+    ) -> Vec<SmolStr>;
 }

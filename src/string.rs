@@ -1,9 +1,11 @@
-pub fn singularize(value: &str) -> String {
+use smol_str::SmolStr;
+
+pub fn singularize(value: &str) -> SmolStr {
     match value {
-        "species" => "species".to_owned(),
+        "species" => "species".into(),
         value => {
             assert!(value.ends_with("s"));
-            value[0..value.len() - 1].to_owned()
+            value[0..value.len() - 1].into()
         }
     }
 }
