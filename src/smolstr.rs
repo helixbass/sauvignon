@@ -6,7 +6,7 @@ use sqlx::{
     Decode, Encode, Postgres, Type,
 };
 
-pub struct SmolStrSqlx(SmolStr);
+pub struct SmolStrSqlx(pub SmolStr);
 
 impl Type<Postgres> for SmolStrSqlx {
     fn type_info() -> PgTypeInfo {

@@ -5,7 +5,9 @@ use sqlx::{Pool, Postgres, Row};
 use squalid::_d;
 use tracing::{instrument, trace_span, Instrument};
 
-use crate::{ColumnValueMassager, DependencyType, DependencyValue, Id, IndexMap, WhereResolved};
+use crate::{
+    ColumnValueMassager, DependencyType, DependencyValue, Id, IndexMap, SmolStrSqlx, WhereResolved,
+};
 
 #[async_trait]
 pub trait Database: Send + Sync {
@@ -93,13 +95,13 @@ impl Database for PostgresDatabase {
                     .and_then(|table| table.get(column_name))
                 {
                     None => {
-                        let (column_value,): (SmolStr,) = sqlx::query_as(&query)
+                        let (column_value,): (SmolStrSqlx,) = sqlx::query_as(&query)
                             .bind(id.as_int())
                             .fetch_one(&self.pool)
                             .instrument(trace_span!("fetch string column"))
                             .await
                             .unwrap();
-                        DependencyValue::String(column_value)
+                        DependencyValue::String(column_value.0)
                     }
                     Some(massager) => {
                         let massager = massager.as_string();
@@ -163,13 +165,15 @@ impl Database for PostgresDatabase {
                     .and_then(|table| table.get(column_name))
                 {
                     None => {
-                        let (column_value,): (Option<SmolStr>,) = sqlx::query_as(&query)
+                        let (column_value,): (Option<SmolStrSqlx>,) = sqlx::query_as(&query)
                             .bind(id.as_int())
                             .fetch_one(&self.pool)
                             .instrument(trace_span!("fetch optional string column"))
                             .await
                             .unwrap();
-                        DependencyValue::OptionalString(column_value)
+                        DependencyValue::OptionalString(
+                            column_value.map(|column_value| column_value.0),
+                        )
                     }
                     Some(massager) => {
                         let massager = massager.as_optional_string();
@@ -288,7 +292,7 @@ impl Database for PostgresDatabase {
                     // values
                     query = match &where_.value {
                         DependencyValue::Id(id) => query.bind(id.as_int()),
-                        DependencyValue::String(str) => query.bind(str),
+                        DependencyValue::String(str) => query.bind(SmolStrSqlx(str.clone())),
                         _ => unimplemented!(),
                     };
                 }
@@ -328,11 +332,13 @@ impl Database for PostgresDatabase {
                     .and_then(|table| table.get(column_name))
                 {
                     None => {
-                        let mut query = sqlx::query_as::<_, (SmolStr,)>(&query);
+                        let mut query = sqlx::query_as::<_, (SmolStrSqlx,)>(&query);
                         for where_ in wheres {
                             query = match &where_.value {
                                 DependencyValue::Id(id) => query.bind(id.as_int()),
-                                DependencyValue::String(str) => query.bind(str),
+                                DependencyValue::String(str) => {
+                                    query.bind(SmolStrSqlx(str.clone()))
+                                }
                                 _ => unimplemented!(),
                             };
                         }
@@ -342,7 +348,7 @@ impl Database for PostgresDatabase {
                             .await
                             .unwrap();
                         rows.into_iter()
-                            .map(|(column_value,)| DependencyValue::String(column_value))
+                            .map(|(column_value,)| DependencyValue::String(column_value.0))
                             .collect()
                     }
                     Some(massager) => {
@@ -351,7 +357,9 @@ impl Database for PostgresDatabase {
                         for where_ in wheres {
                             query = match &where_.value {
                                 DependencyValue::Id(id) => query.bind(id.as_int()),
-                                DependencyValue::String(str) => query.bind(str),
+                                DependencyValue::String(str) => {
+                                    query.bind(SmolStrSqlx(str.clone()))
+                                }
                                 _ => unimplemented!(),
                             };
                         }

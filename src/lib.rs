@@ -12,13 +12,13 @@ mod request;
 mod resolve;
 mod response;
 mod schema;
-mod smol_str;
+mod smolstr;
 mod string;
 mod types;
 
-pub use ::smol_str;
 pub use heck;
 pub use indexmap::{IndexMap, IndexSet};
+pub use smol_str;
 pub use strum;
 
 pub use shared::pluralize;
@@ -59,6 +59,7 @@ pub use crate::response::{
     ResponseValueOrInProgress,
 };
 pub use crate::schema::{Schema, TypeOrUnionOrInterface, ValidationError};
+pub use crate::smolstr::SmolStrSqlx;
 pub use crate::string::singularize;
 pub use crate::types::{
     builtin_types, float_type, id_type, string_type, BuiltInScalarType, DummyUnionTypenameField,
