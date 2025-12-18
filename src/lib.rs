@@ -17,6 +17,7 @@ mod string;
 mod types;
 
 pub use heck;
+pub use heck_smol_str;
 pub use indexmap::{IndexMap, IndexSet};
 pub use smol_str;
 pub use strum;

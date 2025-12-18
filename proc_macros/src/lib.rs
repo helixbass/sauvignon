@@ -2049,7 +2049,7 @@ impl ToTokens for Enum {
             // were generating something weird or something?
             None => quote! {{
                 use ::strum::VariantNames;
-                use ::sauvignon::heck::ToShoutySnakeCase;
+                use ::sauvignon::heck_smol_str::ToShoutySnakeCase;
                 #name::VARIANTS.iter().map(|variant| variant.to_shouty_snake_case())
             }},
             Some(variants) => {

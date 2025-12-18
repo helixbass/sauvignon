@@ -29,7 +29,7 @@ async-trait = "0.1.89"
 chrono = "0.4.42"
 uuid = "1.19.0"
 smol_str = { version = "0.3.4", features = [ "serde" ] }
-heck-smol-str = { git = "https://github.com/helixbass/heck-smol-str", rev = "bae2e38" }
+heck-smol-str = { git = "https://github.com/helixbass/heck-smol-str", rev = "0855492" }
 
 [dev-dependencies]
 futures = "0.3.31"
