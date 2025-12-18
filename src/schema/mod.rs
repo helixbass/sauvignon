@@ -144,7 +144,10 @@ impl Schema {
                 request
             }
         };
-        compute_response(self, &request, database).await.into()
+        let is_database_sync = database.is_sync();
+        compute_response(self, &request, (database, is_database_sync))
+            .await
+            .into()
     }
 
     pub fn query_type(&self) -> &Type {
@@ -214,7 +217,7 @@ impl Schema {
 async fn compute_response(
     schema: &Schema,
     request: &Request,
-    database: &dyn Database,
+    database: (&dyn Database, bool),
 ) -> ResponseValue {
     let query_plan = QueryPlan::new(&request, schema);
     let response_in_progress = query_plan.initial_response_in_progress();
@@ -232,7 +235,7 @@ async fn compute_response(
 #[instrument(level = "trace", skip(fields_in_progress, database, schema))]
 fn progress_fields<'a>(
     fields_in_progress: FieldsInProgress<'a>,
-    database: &'a dyn Database,
+    database: (&'a dyn Database, bool),
     schema: &'a Schema,
 ) -> Pin<Box<dyn Future<Output = (bool, FieldsInProgress<'a>)> + 'a + Send>> {
     Box::pin(async move {
@@ -451,9 +454,10 @@ fn progress_fields<'a>(
 async fn populate_internal_dependencies(
     field_plan: &FieldPlan<'_>,
     external_dependency_values: &ExternalDependencyValues,
-    database: &dyn Database,
+    database: (&dyn Database, bool),
     schema: &Schema,
 ) -> InternalDependencyValues {
+    let (database, is_database_sync) = database;
     let mut ret = InternalDependencyValues::default();
     for internal_dependency in field_plan.field_type.resolver.internal_dependencies.iter() {
         ret.insert(
@@ -464,19 +468,47 @@ async fn populate_internal_dependencies(
                         DependencyValue::Id(id) => id,
                         _ => unreachable!(),
                     };
-                    database
-                        .get_column(
+                    if is_database_sync {
+                        database.get_column_sync(
                             &column_getter.table_name,
                             &column_getter.column_name,
                             row_id,
                             &column_getter.id_column_name,
                             internal_dependency.type_,
                         )
-                        .await
+                    } else {
+                        database
+                            .get_column(
+                                &column_getter.table_name,
+                                &column_getter.column_name,
+                                row_id,
+                                &column_getter.id_column_name,
+                                internal_dependency.type_,
+                            )
+                            .await
+                    }
                 }
                 InternalDependencyResolver::LiteralValue(literal_value) => literal_value.0.clone(),
                 InternalDependencyResolver::ColumnGetterList(column_getter_list) => {
-                    DependencyValue::List(
+                    DependencyValue::List(if is_database_sync {
+                        database.get_column_list_sync(
+                            &column_getter_list.table_name,
+                            &column_getter_list.column_name,
+                            internal_dependency.type_,
+                            &column_getter_list
+                                .wheres
+                                .iter()
+                                .map(|where_| {
+                                    WhereResolved::new(
+                                        where_.column_name.clone(),
+                                        // TODO: this is punting on where's specifying
+                                        // values
+                                        external_dependency_values.get("id").unwrap().clone(),
+                                    )
+                                })
+                                .collect::<Vec<_>>(),
+                        )
+                    } else {
                         database
                             .get_column_list(
                                 &column_getter_list.table_name,
@@ -495,8 +527,8 @@ async fn populate_internal_dependencies(
                                     })
                                     .collect::<Vec<_>>(),
                             )
-                            .await,
-                    )
+                            .await
+                    })
                 }
                 InternalDependencyResolver::IntrospectionTypeInterfaces => {
                     let _ = trace_span!("resolve introspection type interfaces").entered();

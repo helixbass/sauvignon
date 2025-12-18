@@ -27,6 +27,25 @@ pub trait Database: Send + Sync {
         dependency_type: DependencyType,
         wheres: &[WhereResolved],
     ) -> Vec<DependencyValue>;
+
+    fn get_column_sync(
+        &self,
+        table_name: &str,
+        column_name: &str,
+        id: &Id,
+        id_column_name: &str,
+        dependency_type: DependencyType,
+    ) -> DependencyValue;
+
+    fn get_column_list_sync(
+        &self,
+        table_name: &str,
+        column_name: &str,
+        dependency_type: DependencyType,
+        wheres: &[WhereResolved],
+    ) -> Vec<DependencyValue>;
+
+    fn is_sync(&self) -> bool;
 }
 
 pub struct PostgresDatabase {
@@ -382,6 +401,31 @@ impl Database for PostgresDatabase {
             }
             _ => unreachable!(),
         }
+    }
+
+    fn get_column_sync(
+        &self,
+        _table_name: &str,
+        _column_name: &str,
+        _id: &Id,
+        _id_column_name: &str,
+        _dependency_type: DependencyType,
+    ) -> DependencyValue {
+        unreachable!()
+    }
+
+    fn get_column_list_sync(
+        &self,
+        _table_name: &str,
+        _column_name: &str,
+        _dependency_type: DependencyType,
+        _wheres: &[WhereResolved],
+    ) -> Vec<DependencyValue> {
+        unreachable!()
+    }
+
+    fn is_sync(&self) -> bool {
+        false
     }
 }
 
