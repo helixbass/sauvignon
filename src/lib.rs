@@ -12,12 +12,13 @@ mod request;
 mod resolve;
 mod response;
 mod schema;
+mod smol_str;
 mod string;
 mod types;
 
+pub use ::smol_str;
 pub use heck;
 pub use indexmap::{IndexMap, IndexSet};
-pub use smol_str;
 pub use strum;
 
 pub use shared::pluralize;
