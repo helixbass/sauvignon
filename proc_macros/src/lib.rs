@@ -162,16 +162,16 @@ struct SchemaProcessed {
 }
 
 struct Type {
-    pub name: String,
+    pub name: SmolStr,
     pub fields: Vec<Field>,
-    pub implements: Option<Vec<String>>,
+    pub implements: Option<Vec<SmolStr>>,
 }
 
 impl Type {
     pub fn process(
         self,
-        all_union_or_interface_type_names: &HashSet<String>,
-        all_enum_names: &HashSet<String>,
+        all_union_or_interface_type_names: &HashSet<SmolStr>,
+        all_enum_names: &HashSet<SmolStr>,
     ) -> TypeProcessed {
         TypeProcessed {
             name: self.name.clone(),
@@ -198,7 +198,7 @@ impl Parse for Type {
         let type_content;
         braced!(type_content in input);
         let mut fields: Option<Vec<Field>> = _d();
-        let mut implements: Option<Vec<String>> = _d();
+        let mut implements: Option<Vec<SmolStr>> = _d();
         while !type_content.is_empty() {
             let key: Ident = type_content.parse()?;
             type_content.parse::<Token![=>]>()?;
@@ -239,13 +239,13 @@ impl Parse for Type {
 }
 
 struct TypeProcessed {
-    pub name: String,
+    pub name: SmolStr,
     pub fields: Vec<FieldProcessed>,
-    pub implements: Option<Vec<String>>,
+    pub implements: Option<Vec<SmolStr>>,
 }
 
 struct Field {
-    pub name: String,
+    pub name: SmolStr,
     pub value: FieldValue,
 }
 
@@ -253,8 +253,8 @@ impl Field {
     pub fn process(
         self,
         parent_type_name: Option<&str>,
-        all_union_or_interface_type_names: &HashSet<String>,
-        all_enum_names: &HashSet<String>,
+        all_union_or_interface_type_names: &HashSet<SmolStr>,
+        all_enum_names: &HashSet<SmolStr>,
     ) -> FieldProcessed {
         FieldProcessed {
             value: self.value.process(
@@ -281,7 +281,7 @@ impl Parse for Field {
 }
 
 struct FieldProcessed {
-    pub name: String,
+    pub name: SmolStr,
     pub value: FieldValueProcessed,
 }
 
@@ -2177,7 +2177,7 @@ pub fn enum_string_massager(input: TokenStream) -> TokenStream {
     quote! {{
         struct #massager_struct_name;
 
-        impl ::sauvignon::ColumnValueMassagerInterface<String> for #massager_struct_name {
+        impl ::sauvignon::ColumnValueMassagerInterface<::sauvignon::smol_str::SmolStr> for #massager_struct_name {
             #[::tracing::instrument(
                 level = "trace",
                 skip(self, value)
@@ -2185,7 +2185,7 @@ pub fn enum_string_massager(input: TokenStream) -> TokenStream {
             fn massage(
                 &self,
                 value: ::sqlx::postgres::PgValueRef<'_>,
-            ) -> Result<String, Box<dyn ::std::error::Error + Sync + Send>> {
+            ) -> Result<::sauvignon::smol_str::SmolStr, Box<dyn ::std::error::Error + Sync + Send>> {
                 <#enum_type as ::sqlx::Decode<::sqlx::Postgres>>::decode(value)
                     .map(|enum_value| {
                         use ::sauvignon::heck::ToShoutySnakeCase;
@@ -2208,7 +2208,7 @@ pub fn enum_optional_string_massager(input: TokenStream) -> TokenStream {
     quote! {{
         struct #massager_struct_name;
 
-        impl ::sauvignon::ColumnValueMassagerInterface<Option<String>> for #massager_struct_name {
+        impl ::sauvignon::ColumnValueMassagerInterface<Option<::sauvignon::smol_str::SmolStr>> for #massager_struct_name {
             #[::tracing::instrument(
                 level = "trace",
                 skip(self, value)
@@ -2216,7 +2216,7 @@ pub fn enum_optional_string_massager(input: TokenStream) -> TokenStream {
             fn massage(
                 &self,
                 value: ::sqlx::postgres::PgValueRef<'_>,
-            ) -> Result<Option<String>, Box<dyn ::std::error::Error + Sync + Send>> {
+            ) -> Result<Option<::sauvignon::smol_str::SmolStr>, Box<dyn ::std::error::Error + Sync + Send>> {
                 <::std::option::Option<#enum_type> as ::sqlx::Decode<::sqlx::Postgres>>::decode(value)
                     .map(|option_enum_value| {
                         option_enum_value.map(|enum_value| {

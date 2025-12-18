@@ -3,7 +3,9 @@ use std::any::{type_name, Any};
 use std::collections::HashMap;
 use std::fmt;
 
-type AnyMap = HashMap<String, Box<dyn AnyClone + Send + Sync>>;
+use smol_str::SmolStr;
+
+type AnyMap = HashMap<SmolStr, Box<dyn AnyClone + Send + Sync>>;
 
 #[derive(Clone, Default)]
 pub struct AnyHashMap {
@@ -16,7 +18,7 @@ impl AnyHashMap {
         AnyHashMap { map: None }
     }
 
-    pub fn insert<T: Clone + Send + Sync + 'static>(&mut self, name: String, val: T) -> Option<T> {
+    pub fn insert<T: Clone + Send + Sync + 'static>(&mut self, name: SmolStr, val: T) -> Option<T> {
         self.map
             .get_or_insert_with(Box::default)
             .insert(name, Box::new(val))
@@ -39,7 +41,7 @@ impl AnyHashMap {
 
     pub fn get_or_insert<T: Clone + Send + Sync + 'static>(
         &mut self,
-        name: String,
+        name: SmolStr,
         value: T,
     ) -> &mut T {
         self.get_or_insert_with(name, || value)
@@ -47,7 +49,7 @@ impl AnyHashMap {
 
     pub fn get_or_insert_with<T: Clone + Send + Sync + 'static, F: FnOnce() -> T>(
         &mut self,
-        name: String,
+        name: SmolStr,
         f: F,
     ) -> &mut T {
         let out = self
@@ -60,7 +62,7 @@ impl AnyHashMap {
 
     pub fn get_or_insert_default<T: Default + Clone + Send + Sync + 'static>(
         &mut self,
-        name: String,
+        name: SmolStr,
     ) -> &mut T {
         self.get_or_insert_with(name, T::default)
     }

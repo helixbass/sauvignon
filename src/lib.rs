@@ -17,6 +17,7 @@ mod types;
 
 pub use heck;
 pub use indexmap::{IndexMap, IndexSet};
+pub use smol_str;
 pub use strum;
 
 pub use shared::pluralize;

@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 use chrono::NaiveDate;
+use smol_str::SmolStr;
 use sqlx::{Pool, Postgres, Row};
 use squalid::_d;
 use tracing::{instrument, trace_span, Instrument};
@@ -28,7 +29,7 @@ pub trait Database: Send + Sync {
 
 pub struct PostgresDatabase {
     pub pool: Pool<Postgres>,
-    pub massagers: IndexMap<String, IndexMap<String, ColumnValueMassager>>,
+    pub massagers: IndexMap<SmolStr, IndexMap<SmolStr, ColumnValueMassager>>,
 }
 
 impl PostgresDatabase {
@@ -36,7 +37,7 @@ impl PostgresDatabase {
         Self {
             pool,
             massagers: {
-                let mut ret: IndexMap<String, IndexMap<String, ColumnValueMassager>> = _d();
+                let mut ret: IndexMap<SmolStr, IndexMap<SmolStr, ColumnValueMassager>> = _d();
                 for massager in massagers {
                     let for_this_table = ret.entry(massager.table_name).or_default();
                     if for_this_table.contains_key(&massager.column_name) {
@@ -92,7 +93,7 @@ impl Database for PostgresDatabase {
                     .and_then(|table| table.get(column_name))
                 {
                     None => {
-                        let (column_value,): (String,) = sqlx::query_as(&query)
+                        let (column_value,): (SmolStr,) = sqlx::query_as(&query)
                             .bind(id.as_int())
                             .fetch_one(&self.pool)
                             .instrument(trace_span!("fetch string column"))
@@ -162,7 +163,7 @@ impl Database for PostgresDatabase {
                     .and_then(|table| table.get(column_name))
                 {
                     None => {
-                        let (column_value,): (Option<String>,) = sqlx::query_as(&query)
+                        let (column_value,): (Option<SmolStr>,) = sqlx::query_as(&query)
                             .bind(id.as_int())
                             .fetch_one(&self.pool)
                             .instrument(trace_span!("fetch optional string column"))
@@ -327,7 +328,7 @@ impl Database for PostgresDatabase {
                     .and_then(|table| table.get(column_name))
                 {
                     None => {
-                        let mut query = sqlx::query_as::<_, (String,)>(&query);
+                        let mut query = sqlx::query_as::<_, (SmolStr,)>(&query);
                         for where_ in wheres {
                             query = match &where_.value {
                                 DependencyValue::Id(id) => query.bind(id.as_int()),
@@ -377,13 +378,13 @@ impl Database for PostgresDatabase {
 }
 
 pub struct PostgresColumnMassager {
-    pub table_name: String,
-    pub column_name: String,
+    pub table_name: SmolStr,
+    pub column_name: SmolStr,
     pub massager: ColumnValueMassager,
 }
 
 impl PostgresColumnMassager {
-    pub fn new(table_name: String, column_name: String, massager: ColumnValueMassager) -> Self {
+    pub fn new(table_name: SmolStr, column_name: SmolStr, massager: ColumnValueMassager) -> Self {
         Self {
             table_name,
             column_name,

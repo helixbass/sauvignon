@@ -1,5 +1,6 @@
 use std::str::FromStr;
 
+use smol_str::SmolStr;
 use sqlx::{postgres::PgPoolOptions, Pool, Postgres};
 use strum::{EnumString, VariantNames};
 
@@ -21,7 +22,7 @@ impl UnionOrInterfaceTypePopulatorList for ActorsAndDesignersTypePopulator {
         &self,
         _external_dependencies: &ExternalDependencyValues,
         internal_dependencies: &InternalDependencyValues,
-    ) -> Vec<String> {
+    ) -> Vec<SmolStr> {
         internal_dependencies
             .get("actor_ids")
             .unwrap()

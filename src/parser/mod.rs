@@ -1,5 +1,6 @@
 use std::{iter::Peekable, vec};
 
+use smol_str::{format_smolstr, SmolStr};
 use squalid::_d;
 use tracing::{instrument, trace_span};
 
@@ -27,14 +28,14 @@ pub enum Token {
     LeftCurlyBracket,
     Pipe,
     RightCurlyBracket,
-    Name(String),
-    String(String),
+    Name(SmolStr),
+    String(SmolStr),
     Int(i32),
     Float(f64),
 }
 
 impl Token {
-    pub fn into_name(self) -> String {
+    pub fn into_name(self) -> SmolStr {
         match self {
             Self::Name(name) => name,
             _ => panic!("Expected name"),
@@ -124,7 +125,7 @@ where
                                 Some('"') => {
                                     unimplemented!()
                                 }
-                                _ => Some(Token::String("".to_owned())),
+                                _ => Some(Token::String("".into())),
                             },
                             Some(ch) => {
                                 let mut resolved_chars: Vec<char> =
@@ -222,7 +223,7 @@ where
                                                                     )));
                                                                 }
                                                                 break Some(Token::Float(
-                                                                    format!(
+                                                                    format_smolstr!(
                                                                         "{}{}.{}e{}{}",
                                                                         if is_negative {
                                                                             "-"
@@ -231,10 +232,10 @@ where
                                                                         },
                                                                         integer_part
                                                                             .into_iter()
-                                                                            .collect::<String>(),
+                                                                            .collect::<SmolStr>(),
                                                                         fractional_part
                                                                             .into_iter()
-                                                                            .collect::<String>(),
+                                                                            .collect::<SmolStr>(),
                                                                         if has_exponent_negative_sign {
                                                                             "-"
                                                                         } else {
@@ -242,7 +243,7 @@ where
                                                                         },
                                                                         exponent_digits
                                                                             .into_iter()
-                                                                            .collect::<String>(),
+                                                                            .collect::<SmolStr>(),
                                                                     )
                                                                     .parse::<f64>()
                                                                     // TODO: look for .expect()'s
@@ -261,10 +262,10 @@ where
                                                         if is_negative { "-" } else { "" },
                                                         integer_part
                                                             .into_iter()
-                                                            .collect::<String>(),
+                                                            .collect::<SmolStr>(),
                                                         fractional_part
                                                             .into_iter()
-                                                            .collect::<String>(),
+                                                            .collect::<SmolStr>(),
                                                     )
                                                     .parse::<f64>()
                                                     .expect("Couldn't parse float"),
@@ -296,7 +297,7 @@ where
                                                                 if is_negative { "-" } else { "" },
                                                                 integer_part
                                                                     .into_iter()
-                                                                    .collect::<String>(),
+                                                                    .collect::<SmolStr>(),
                                                                 if has_exponent_negative_sign {
                                                                     "-"
                                                                 } else {
@@ -304,7 +305,7 @@ where
                                                                 },
                                                                 exponent_digits
                                                                     .into_iter()
-                                                                    .collect::<String>(),
+                                                                    .collect::<SmolStr>(),
                                                             )
                                                             .parse::<f64>()
                                                             .expect("Couldn't parse float"),
@@ -317,7 +318,7 @@ where
                                 }
                                 _ => Some(Token::Int(
                                     i32::from_str_radix(
-                                        &integer_part.into_iter().collect::<String>(),
+                                        &integer_part.into_iter().collect::<SmolStr>(),
                                         10,
                                     )
                                     .unwrap(),
@@ -390,7 +391,7 @@ where
                     }
                 }
                 char::from_u32(
-                    u32::from_str_radix(&unicode_hex.into_iter().collect::<String>(), 16).unwrap(),
+                    u32::from_str_radix(&unicode_hex.into_iter().collect::<SmolStr>(), 16).unwrap(),
                 )
                 .expect("Couldn't convert hex to char")
             }
@@ -779,12 +780,12 @@ fn parse_error(message: &str) -> ParseError {
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct LexError {
-    pub message: String,
+    pub message: SmolStr,
     pub location: Option<Location>,
 }
 
 impl LexError {
-    pub fn new(message: String, location: Option<Location>) -> Self {
+    pub fn new(message: SmolStr, location: Option<Location>) -> Self {
         Self { message, location }
     }
 }
@@ -813,12 +814,12 @@ impl ParseOrLexError {
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct ParseError {
-    pub message: String,
+    pub message: SmolStr,
     pub location: Option<Location>,
 }
 
 impl ParseError {
-    pub fn new(message: String, location: Option<Location>) -> Self {
+    pub fn new(message: SmolStr, location: Option<Location>) -> Self {
         Self { message, location }
     }
 }
@@ -865,8 +866,8 @@ mod tests {
 
     #[test]
     fn test_string() {
-        lex_test(r#""""#, [Token::String("".to_owned())]);
-        lex_test(r#""abc""#, [Token::String("abc".to_owned())]);
+        lex_test(r#""""#, [Token::String("".into())]);
+        lex_test(r#""abc""#, [Token::String("abc".into())]);
     }
 
     #[test]

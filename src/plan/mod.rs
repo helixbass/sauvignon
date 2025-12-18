@@ -1,5 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
+use smol_str::SmolStr;
 use squalid::{OptionExt, _d};
 use tracing::instrument;
 
@@ -9,7 +10,7 @@ use crate::{
 };
 
 pub struct QueryPlan<'a> {
-    pub field_plans: IndexMap<String, FieldPlan<'a>>,
+    pub field_plans: IndexMap<SmolStr, FieldPlan<'a>>,
 }
 
 impl<'a> QueryPlan<'a> {
@@ -36,10 +37,10 @@ impl<'a> QueryPlan<'a> {
 }
 
 pub struct FieldPlan<'a> {
-    pub name: String,
+    pub name: SmolStr,
     pub field_type: &'a types::Field,
-    pub selection_set_by_type: Option<HashMap<String, IndexMap<String, FieldPlan<'a>>>>,
-    pub arguments: Option<IndexMap<String, Argument>>,
+    pub selection_set_by_type: Option<HashMap<SmolStr, IndexMap<SmolStr, FieldPlan<'a>>>>,
+    pub arguments: Option<IndexMap<SmolStr, Argument>>,
 }
 
 impl<'a> FieldPlan<'a> {
@@ -76,10 +77,10 @@ impl<'a> FieldPlan<'a> {
 #[instrument(level = "trace", skip(selection_set, schema, request))]
 fn create_field_plans<'a>(
     selection_set: &'a [Selection],
-    all_current_concrete_type_names: &HashSet<String>,
+    all_current_concrete_type_names: &HashSet<SmolStr>,
     schema: &'a Schema,
     request: &'a Request,
-) -> HashMap<String, IndexMap<String, FieldPlan<'a>>> {
+) -> HashMap<SmolStr, IndexMap<SmolStr, FieldPlan<'a>>> {
     merge_hash_maps(
         selection_set
             .iter()
@@ -159,12 +160,12 @@ fn should_skip(directives: &[Directive]) -> bool {
 
 #[instrument(level = "trace", skip(fragment_selection_set, schema, request))]
 fn get_overlapping_fragment_types<'a>(
-    all_current_concrete_type_names: &HashSet<String>,
+    all_current_concrete_type_names: &HashSet<SmolStr>,
     fragment_selection_set: &'a [Selection],
-    all_concrete_type_names_for_fragment: &HashSet<String>,
+    all_concrete_type_names_for_fragment: &HashSet<SmolStr>,
     schema: &'a Schema,
     request: &'a Request,
-) -> HashMap<String, IndexMap<String, FieldPlan<'a>>> {
+) -> HashMap<SmolStr, IndexMap<SmolStr, FieldPlan<'a>>> {
     create_field_plans(
         fragment_selection_set,
         &all_current_concrete_type_names
@@ -177,9 +178,9 @@ fn get_overlapping_fragment_types<'a>(
 }
 
 fn merge_hash_maps<'a>(
-    hash_maps: impl Iterator<Item = HashMap<String, IndexMap<String, FieldPlan<'a>>>>,
-) -> HashMap<String, IndexMap<String, FieldPlan<'a>>> {
-    let mut ret: HashMap<String, IndexMap<String, FieldPlan<'a>>> = _d();
+    hash_maps: impl Iterator<Item = HashMap<SmolStr, IndexMap<SmolStr, FieldPlan<'a>>>>,
+) -> HashMap<SmolStr, IndexMap<SmolStr, FieldPlan<'a>>> {
+    let mut ret: HashMap<SmolStr, IndexMap<SmolStr, FieldPlan<'a>>> = _d();
 
     for hash_map in hash_maps {
         for (type_name, mut field_plans) in hash_map {

@@ -4,6 +4,7 @@ use std::mem;
 
 use chrono::NaiveDate;
 use jiff::Timestamp;
+use smol_str::SmolStr;
 use sqlx::postgres::PgValueRef;
 use squalid::{OptionExt, _d};
 use uuid::Uuid;
@@ -26,24 +27,24 @@ pub enum DependencyType {
 }
 
 pub struct ExternalDependency {
-    pub name: String,
+    pub name: SmolStr,
     pub type_: DependencyType,
 }
 
 impl ExternalDependency {
-    pub fn new(name: String, type_: DependencyType) -> Self {
+    pub fn new(name: SmolStr, type_: DependencyType) -> Self {
         Self { name, type_ }
     }
 }
 
 pub struct InternalDependency {
-    pub name: String,
+    pub name: SmolStr,
     pub type_: DependencyType,
     pub resolver: InternalDependencyResolver,
 }
 
 impl InternalDependency {
-    pub fn new(name: String, type_: DependencyType, resolver: InternalDependencyResolver) -> Self {
+    pub fn new(name: SmolStr, type_: DependencyType, resolver: InternalDependencyResolver) -> Self {
         Self {
             name,
             type_,
@@ -62,13 +63,13 @@ pub enum InternalDependencyResolver {
 }
 
 pub struct ColumnGetter {
-    pub table_name: String,
-    pub column_name: String,
-    pub id_column_name: String,
+    pub table_name: SmolStr,
+    pub column_name: SmolStr,
+    pub id_column_name: SmolStr,
 }
 
 impl ColumnGetter {
-    pub fn new(table_name: String, column_name: String, id_column_name: String) -> Self {
+    pub fn new(table_name: SmolStr, column_name: SmolStr, id_column_name: SmolStr) -> Self {
         Self {
             table_name,
             column_name,
@@ -78,19 +79,19 @@ impl ColumnGetter {
 }
 
 pub enum ColumnValueMassager {
-    OptionalString(Box<dyn ColumnValueMassagerInterface<Option<String>>>),
-    String(Box<dyn ColumnValueMassagerInterface<String>>),
+    OptionalString(Box<dyn ColumnValueMassagerInterface<Option<SmolStr>>>),
+    String(Box<dyn ColumnValueMassagerInterface<SmolStr>>),
 }
 
 impl ColumnValueMassager {
-    pub fn as_optional_string(&self) -> &Box<dyn ColumnValueMassagerInterface<Option<String>>> {
+    pub fn as_optional_string(&self) -> &Box<dyn ColumnValueMassagerInterface<Option<SmolStr>>> {
         match self {
             Self::OptionalString(value) => value,
             _ => panic!("Expected optional string"),
         }
     }
 
-    pub fn as_string(&self) -> &Box<dyn ColumnValueMassagerInterface<String>> {
+    pub fn as_string(&self) -> &Box<dyn ColumnValueMassagerInterface<SmolStr>> {
         match self {
             Self::String(value) => value,
             _ => panic!("Expected string"),
@@ -106,23 +107,23 @@ pub trait ColumnValueMassagerInterface<TMassaged>: Send + Sync {
 }
 
 pub struct ArgumentInternalDependencyResolver {
-    pub name: String,
+    pub name: SmolStr,
 }
 
 impl ArgumentInternalDependencyResolver {
-    pub fn new(name: String) -> Self {
+    pub fn new(name: SmolStr) -> Self {
         Self { name }
     }
 }
 
 pub struct ColumnGetterList {
-    pub table_name: String,
-    pub column_name: String,
+    pub table_name: SmolStr,
+    pub column_name: SmolStr,
     pub wheres: Vec<Where>,
 }
 
 impl ColumnGetterList {
-    pub fn new(table_name: String, column_name: String, wheres: Vec<Where>) -> Self {
+    pub fn new(table_name: SmolStr, column_name: SmolStr, wheres: Vec<Where>) -> Self {
         Self {
             table_name,
             column_name,
@@ -132,23 +133,23 @@ impl ColumnGetterList {
 }
 
 pub struct Where {
-    pub column_name: String,
+    pub column_name: SmolStr,
 }
 
 impl Where {
-    pub fn new(column_name: String) -> Self {
+    pub fn new(column_name: SmolStr) -> Self {
         Self { column_name }
     }
 }
 
 #[derive(Debug)]
 pub struct WhereResolved {
-    pub column_name: String,
+    pub column_name: SmolStr,
     pub value: DependencyValue,
 }
 
 impl WhereResolved {
-    pub fn new(column_name: String, value: DependencyValue) -> Self {
+    pub fn new(column_name: SmolStr, value: DependencyValue) -> Self {
         Self { column_name, value }
     }
 }
@@ -156,23 +157,23 @@ impl WhereResolved {
 pub struct LiteralValueInternalDependencyResolver(pub DependencyValue);
 
 pub struct ExternalDependencyValue {
-    pub name: String,
+    pub name: SmolStr,
     pub value: DependencyValue,
 }
 
 #[derive(Clone, Debug)]
 pub enum Id {
     Int(i32),
-    String(String),
+    String(SmolStr),
     Uuid(Uuid),
 }
 
 impl Id {
-    pub fn get_string(&self) -> String {
+    pub fn get_string(&self) -> SmolStr {
         match self {
-            Self::Int(value) => value.to_string(),
+            Self::Int(value) => value.to_smol_str(),
             Self::String(value) => value.clone(),
-            Self::Uuid(value) => value.to_string(),
+            Self::Uuid(value) => value.to_smol_str(),
         }
     }
 
@@ -183,7 +184,7 @@ impl Id {
         }
     }
 
-    pub fn as_string(&self) -> &String {
+    pub fn as_string(&self) -> &SmolStr {
         match self {
             Self::String(value) => value,
             _ => panic!("Expected string"),
@@ -201,12 +202,12 @@ impl Id {
 #[derive(Clone, Debug)]
 pub enum DependencyValue {
     Id(Id),
-    String(String),
+    String(SmolStr),
     List(Vec<DependencyValue>),
     Float(f64),
     OptionalInt(Option<i32>),
     OptionalFloat(Option<f64>),
-    OptionalString(Option<String>),
+    OptionalString(Option<SmolStr>),
     OptionalId(Option<Id>),
     Timestamp(Timestamp),
     Int(i32),
@@ -221,7 +222,7 @@ impl DependencyValue {
         }
     }
 
-    pub fn as_string(&self) -> &String {
+    pub fn as_string(&self) -> &SmolStr {
         match self {
             Self::String(string) => string,
             _ => panic!("Expected string"),
@@ -336,7 +337,7 @@ impl ExternalDependencyValues {
         *self = Self::Full(_d());
     }
 
-    pub fn insert(&mut self, name: String, value: DependencyValue) -> Result<(), Error> {
+    pub fn insert(&mut self, name: SmolStr, value: DependencyValue) -> Result<(), Error> {
         if matches!(self, Self::JustId(_)) {
             self.promote_self_just_id_to_full();
         } else if matches!(self, Self::Empty) {
@@ -352,7 +353,7 @@ impl ExternalDependencyValues {
 
     pub fn insert_any<TValue: Clone + Send + Sync + 'static>(
         &mut self,
-        name: String,
+        name: SmolStr,
         value: TValue,
     ) -> Result<(), Error> {
         if matches!(self, Self::JustId(_)) {
@@ -394,12 +395,12 @@ impl ExternalDependencyValues {
 
 #[derive(Clone, Default)]
 pub struct ExternalDependencyValuesFull {
-    knowns: HashMap<String, DependencyValue>,
+    knowns: HashMap<SmolStr, DependencyValue>,
     anys: AnyHashMap,
 }
 
 impl ExternalDependencyValuesFull {
-    pub fn insert(&mut self, name: String, value: DependencyValue) -> Result<(), Error> {
+    pub fn insert(&mut self, name: SmolStr, value: DependencyValue) -> Result<(), Error> {
         if self.knowns.contains_key(&name) {
             return Err(Error::DependencyAlreadyPopulated(name));
         }
@@ -409,7 +410,7 @@ impl ExternalDependencyValuesFull {
 
     pub fn insert_any<TValue: Clone + Send + Sync + 'static>(
         &mut self,
-        name: String,
+        name: SmolStr,
         value: TValue,
     ) -> Result<(), Error> {
         if self.anys.contains_key(&name) {

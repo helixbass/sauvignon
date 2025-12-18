@@ -1318,14 +1318,14 @@ fn validate_unused_fragments(request: &Request, schema: &Schema) -> Vec<Validati
 #[derive(Default)]
 struct FragmentNamesUsedCollector {}
 
-impl Collector<String, HashSet<String>> for FragmentNamesUsedCollector {
+impl Collector<SmolStr, HashSet<SmolStr>> for FragmentNamesUsedCollector {
     #[instrument(level = "trace", skip(self, fragment_spread, _schema, _request))]
     fn visit_fragment_spread(
         &self,
         fragment_spread: &FragmentSpread,
         _schema: &Schema,
         _request: &Request,
-    ) -> HashSet<String> {
+    ) -> HashSet<SmolStr> {
         [fragment_spread.name.clone()].into()
     }
 }
@@ -1722,12 +1722,12 @@ fn directive_duplicate_validation_error(
 
 #[derive(Debug)]
 pub struct ValidationError {
-    pub message: String,
+    pub message: SmolStr,
     pub locations: Vec<Location>,
 }
 
 impl ValidationError {
-    pub fn new(message: String, locations: Vec<Location>) -> Self {
+    pub fn new(message: SmolStr, locations: Vec<Location>) -> Self {
         Self { message, locations }
     }
 }

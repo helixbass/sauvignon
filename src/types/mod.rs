@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use derive_builder::Builder;
+use smol_str::SmolStr;
 use squalid::{OptionExt, _d};
 
 use crate::{
@@ -11,7 +12,7 @@ use crate::{
 };
 
 pub enum TypeFull {
-    Type(String),
+    Type(SmolStr),
     List(Box<TypeFull>),
     NonNull(Box<TypeFull>),
 }
@@ -68,16 +69,16 @@ pub struct ObjectType {
     #[builder(setter(skip), default = "self.default_typename_field()")]
     pub typename_field: Field,
     #[builder(setter(skip), default = "self.default_introspection_fields()")]
-    pub introspection_fields: Option<HashMap<String, Field>>,
+    pub introspection_fields: Option<HashMap<SmolStr, Field>>,
     #[builder(setter(into))]
-    pub name: String,
+    pub name: SmolStr,
     #[builder(setter(strip_option), default)]
     pub is_top_level_type: Option<OperationType>,
     // TODO: are the fields on a type ordered?
     #[builder(setter(custom))]
-    pub fields: IndexMap<String, Field>,
+    pub fields: IndexMap<SmolStr, Field>,
     #[builder(default)]
-    pub implements: Vec<String>,
+    pub implements: Vec<SmolStr>,
 }
 
 impl ObjectTypeBuilder {
@@ -96,7 +97,7 @@ impl ObjectTypeBuilder {
         Field::new_typename(self.name.clone().unwrap())
     }
 
-    fn default_introspection_fields(&self) -> Option<HashMap<String, Field>> {
+    fn default_introspection_fields(&self) -> Option<HashMap<SmolStr, Field>> {
         self.is_top_level_type
             .flatten()
             .if_is(OperationType::Query)
@@ -224,11 +225,11 @@ impl TypeInterface for IdType {
 #[builder(pattern = "owned")]
 pub struct Field {
     #[builder(setter(into))]
-    pub name: String,
+    pub name: SmolStr,
     pub type_: TypeFull,
     pub resolver: FieldResolver,
     #[builder(setter(custom), default)]
-    pub params: IndexMap<String, Param>,
+    pub params: IndexMap<SmolStr, Param>,
 }
 
 impl FieldBuilder {
@@ -245,10 +246,10 @@ impl FieldBuilder {
 }
 
 impl Field {
-    pub fn new_typename(type_name: String) -> Self {
+    pub fn new_typename(type_name: SmolStr) -> Self {
         FieldBuilder::default()
             .name("__typename")
-            .type_(TypeFull::Type("String".to_owned()))
+            .type_(TypeFull::Type("String".into()))
             .resolver(FieldResolver::new(
                 vec![],
                 vec![InternalDependency::new(
@@ -271,18 +272,18 @@ impl Field {
             .resolver(FieldResolver::new(
                 vec![],
                 vec![InternalDependency::new(
-                    "name".to_owned(),
+                    "name".into(),
                     DependencyType::String,
                     InternalDependencyResolver::Argument(ArgumentInternalDependencyResolver::new(
-                        "name".to_owned(),
+                        "name".into(),
                     )),
                 )],
-                CarverOrPopulator::Populator(ValuePopulator::new("name".to_owned()).into()),
+                CarverOrPopulator::Populator(ValuePopulator::new("name".into()).into()),
             ))
             .params([Param::new(
-                "name".to_owned(),
+                "name".into(),
                 // TODO: presumably non-null?
-                TypeFull::Type("String".to_owned()),
+                TypeFull::Type("String".into()),
             )])
             .build()
             .unwrap()
@@ -298,7 +299,7 @@ impl FieldInterface for Field {
         &self.type_
     }
 
-    fn params(&self) -> &IndexMap<String, Param> {
+    fn params(&self) -> &IndexMap<SmolStr, Param> {
         &self.params
     }
 }
@@ -306,16 +307,16 @@ impl FieldInterface for Field {
 pub trait FieldInterface {
     fn name(&self) -> &str;
     fn type_(&self) -> &TypeFull;
-    fn params(&self) -> &IndexMap<String, Param>;
+    fn params(&self) -> &IndexMap<SmolStr, Param>;
 }
 
-pub fn builtin_types() -> HashMap<String, Type> {
+pub fn builtin_types() -> HashMap<SmolStr, Type> {
     [
-        ("String".to_owned(), string_type()),
-        ("Int".to_owned(), int_type()),
-        ("Float".to_owned(), float_type()),
-        ("__Type".to_owned(), introspection_type_type()),
-        ("ID".to_owned(), id_type()),
+        ("String".into(), string_type()),
+        ("Int".into(), int_type()),
+        ("Float".into(), float_type()),
+        ("__Type".into(), introspection_type_type()),
+        ("ID".into(), id_type()),
     ]
     .into_iter()
     .collect()
@@ -348,25 +349,23 @@ pub fn introspection_type_type() -> Type {
             .fields([
                 FieldBuilder::default()
                     .name("name")
-                    .type_(TypeFull::Type("String".to_owned()))
+                    .type_(TypeFull::Type("String".into()))
                     .resolver(FieldResolver::new(
                         vec![ExternalDependency::new(
-                            "name".to_owned(),
+                            "name".into(),
                             DependencyType::String,
                         )],
                         vec![],
-                        CarverOrPopulator::Carver(Box::new(StringCarver::new("name".to_owned()))),
+                        CarverOrPopulator::Carver(Box::new(StringCarver::new("name".into()))),
                     ))
                     .build()
                     .unwrap(),
                 FieldBuilder::default()
                     .name("interfaces")
-                    .type_(TypeFull::List(Box::new(TypeFull::Type(
-                        "__Type".to_owned(),
-                    ))))
+                    .type_(TypeFull::List(Box::new(TypeFull::Type("__Type".into()))))
                     .resolver(FieldResolver::new(
                         vec![ExternalDependency::new(
-                            "name".to_owned(),
+                            "name".into(),
                             DependencyType::String,
                         )],
                         vec![InternalDependency::new(
@@ -387,7 +386,7 @@ pub fn introspection_type_type() -> Type {
                     ))))
                     .resolver(FieldResolver::new(
                         vec![ExternalDependency::new(
-                            "name".to_owned(),
+                            "name".into(),
                             DependencyType::String,
                         )],
                         vec![InternalDependency::new(
@@ -408,12 +407,12 @@ pub fn introspection_type_type() -> Type {
 }
 
 pub struct Union {
-    pub name: String,
-    pub types: Vec<String>,
+    pub name: SmolStr,
+    pub types: Vec<SmolStr>,
 }
 
 impl Union {
-    pub fn new(name: String, types: Vec<String>) -> Self {
+    pub fn new(name: SmolStr, types: Vec<SmolStr>) -> Self {
         Self { name, types }
     }
 }
@@ -424,12 +423,12 @@ pub struct Interface {
     #[builder(setter(skip), default = "self.default_typename_field()")]
     pub typename_field: InterfaceField,
     #[builder(setter(into))]
-    pub name: String,
+    pub name: SmolStr,
     // TODO: are the fields on a type/interface ordered?
     #[builder(setter(custom))]
-    pub fields: IndexMap<String, InterfaceField>,
+    pub fields: IndexMap<SmolStr, InterfaceField>,
     #[builder(default)]
-    pub implements: Vec<String>,
+    pub implements: Vec<SmolStr>,
 }
 
 impl InterfaceBuilder {
@@ -463,13 +462,13 @@ impl Interface {
 }
 
 pub struct InterfaceField {
-    pub name: String,
+    pub name: SmolStr,
     pub type_: TypeFull,
-    pub params: IndexMap<String, Param>,
+    pub params: IndexMap<SmolStr, Param>,
 }
 
 impl InterfaceField {
-    pub fn new(name: String, type_: TypeFull, params: impl IntoIterator<Item = Param>) -> Self {
+    pub fn new(name: SmolStr, type_: TypeFull, params: impl IntoIterator<Item = Param>) -> Self {
         Self {
             name,
             type_,
@@ -482,8 +481,8 @@ impl InterfaceField {
 
     pub fn new_typename() -> Self {
         Self {
-            name: "__typename".to_owned(),
-            type_: TypeFull::Type("String".to_owned()),
+            name: "__typename".into(),
+            type_: TypeFull::Type("String".into()),
             params: _d(),
         }
     }
@@ -498,7 +497,7 @@ impl FieldInterface for InterfaceField {
         &self.type_
     }
 
-    fn params(&self) -> &IndexMap<String, Param> {
+    fn params(&self) -> &IndexMap<SmolStr, Param> {
         &self.params
     }
 }
@@ -527,7 +526,7 @@ impl<'a> FieldInterface for TypeOrInterfaceField<'a> {
         }
     }
 
-    fn params(&self) -> &IndexMap<String, Param> {
+    fn params(&self) -> &IndexMap<SmolStr, Param> {
         match self {
             Self::Type(type_) => type_.params(),
             Self::Interface(interface) => interface.params(),
@@ -555,39 +554,39 @@ impl<'a> From<&'a DummyUnionTypenameField> for TypeOrInterfaceField<'a> {
 }
 
 pub struct Param {
-    pub name: String,
+    pub name: SmolStr,
     pub type_: TypeFull,
 }
 
 impl Param {
-    pub fn new(name: String, type_: TypeFull) -> Self {
+    pub fn new(name: SmolStr, type_: TypeFull) -> Self {
         Self { name, type_ }
     }
 }
 
 pub struct DummyUnionTypenameField {
-    pub name: String,
+    pub name: SmolStr,
     pub type_: TypeFull,
-    pub params: IndexMap<String, Param>,
+    pub params: IndexMap<SmolStr, Param>,
 }
 
 impl Default for DummyUnionTypenameField {
     fn default() -> Self {
         Self {
-            name: "__typename".to_owned(),
-            type_: TypeFull::Type("String".to_owned()),
+            name: "__typename".into(),
+            type_: TypeFull::Type("String".into()),
             params: _d(),
         }
     }
 }
 
 pub struct Enum {
-    pub name: String,
-    pub variants: IndexSet<String>,
+    pub name: SmolStr,
+    pub variants: IndexSet<SmolStr>,
 }
 
 impl Enum {
-    pub fn new(name: String, variants: impl IntoIterator<Item = String>) -> Self {
+    pub fn new(name: SmolStr, variants: impl IntoIterator<Item = SmolStr>) -> Self {
         Self {
             name,
             variants: variants.into_iter().collect(),

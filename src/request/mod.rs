@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use derive_builder::Builder;
 use rkyv::{Archive, Deserialize, Serialize};
+use smol_str::SmolStr;
 
 use crate::OperationType;
 
@@ -27,7 +28,7 @@ impl Request {
 #[derive(Debug, Archive, Serialize, Deserialize)]
 pub struct Document {
     pub definitions: Vec<ExecutableDefinition>,
-    pub fragments_by_name: HashMap<String, usize>,
+    pub fragments_by_name: HashMap<SmolStr, usize>,
 }
 
 impl Document {
@@ -95,7 +96,7 @@ impl ExecutableDefinition {
 pub struct OperationDefinition {
     pub operation_type: OperationType,
     #[builder(setter(into), default)]
-    pub name: Option<String>,
+    pub name: Option<SmolStr>,
     pub selection_set: Vec<Selection>,
     #[builder(default)]
     pub directives: Vec<Directive>,
@@ -103,16 +104,16 @@ pub struct OperationDefinition {
 
 #[derive(Debug, Archive, Serialize, Deserialize)]
 pub struct FragmentDefinition {
-    pub name: String,
-    pub on: String,
+    pub name: SmolStr,
+    pub on: SmolStr,
     pub selection_set: Vec<Selection>,
     pub directives: Vec<Directive>,
 }
 
 impl FragmentDefinition {
     pub fn new(
-        name: String,
-        on: String,
+        name: SmolStr,
+        on: SmolStr,
         directives: Vec<Directive>,
         selection_set: Vec<Selection>,
     ) -> Self {
@@ -150,9 +151,9 @@ pub enum Selection {
 ))]
 pub struct Field {
     #[builder(setter(into), default)]
-    pub alias: Option<String>,
+    pub alias: Option<SmolStr>,
     #[builder(setter(into))]
-    pub name: String,
+    pub name: SmolStr,
     #[builder(setter(strip_option), default)]
     #[rkyv(omit_bounds)]
     pub selection_set: Option<Vec<Selection>>,
@@ -172,12 +173,12 @@ impl FieldBuilder {
 
 #[derive(Debug, Archive, Serialize, Deserialize)]
 pub struct FragmentSpread {
-    pub name: String,
+    pub name: SmolStr,
     pub directives: Vec<Directive>,
 }
 
 impl FragmentSpread {
-    pub fn new(name: String, directives: Vec<Directive>) -> Self {
+    pub fn new(name: SmolStr, directives: Vec<Directive>) -> Self {
         Self { name, directives }
     }
 }
@@ -198,7 +199,7 @@ impl FragmentSpread {
     )
 ))]
 pub struct InlineFragment {
-    pub on: Option<String>,
+    pub on: Option<SmolStr>,
     #[rkyv(omit_bounds)]
     pub selection_set: Vec<Selection>,
     pub directives: Vec<Directive>,
@@ -206,7 +207,7 @@ pub struct InlineFragment {
 
 impl InlineFragment {
     pub fn new(
-        on: Option<String>,
+        on: Option<SmolStr>,
         directives: Vec<Directive>,
         selection_set: Vec<Selection>,
     ) -> Self {
@@ -220,12 +221,12 @@ impl InlineFragment {
 
 #[derive(Clone, Debug, Archive, Serialize, Deserialize)]
 pub struct Argument {
-    pub name: String,
+    pub name: SmolStr,
     pub value: Value,
 }
 
 impl Argument {
-    pub fn new(name: String, value: Value) -> Self {
+    pub fn new(name: SmolStr, value: Value) -> Self {
         Self { name, value }
     }
 }
@@ -233,20 +234,20 @@ impl Argument {
 #[derive(Clone, Debug, PartialEq, Eq, Archive, Serialize, Deserialize)]
 pub enum Value {
     Int(i32),
-    String(String),
+    String(SmolStr),
     Null,
     Bool(bool),
-    EnumVariant(String),
+    EnumVariant(SmolStr),
 }
 
 #[derive(Debug, Archive, Serialize, Deserialize)]
 pub struct Directive {
-    pub name: String,
+    pub name: SmolStr,
     pub arguments: Option<Vec<Argument>>,
 }
 
 impl Directive {
-    pub fn new(name: String, arguments: Option<Vec<Argument>>) -> Self {
+    pub fn new(name: SmolStr, arguments: Option<Vec<Argument>>) -> Self {
         Self { name, arguments }
     }
 }

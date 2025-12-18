@@ -4,6 +4,7 @@ use std::sync::RwLock;
 
 use itertools::Itertools;
 use rkyv::{rancor, util::AlignedVec};
+use smol_str::SmolStr;
 use squalid::{OptionExt, _d};
 use tracing::{instrument, trace, trace_span};
 
@@ -23,12 +24,12 @@ pub use validation::ValidationError;
 use validation::ValidationRequestOrErrors;
 
 pub struct Schema {
-    pub types: HashMap<String, Type>,
-    pub query_type_name: String,
-    builtin_types: HashMap<String, Type>,
-    pub unions: HashMap<String, Union>,
-    pub interfaces: HashMap<String, Interface>,
-    pub interface_all_concrete_types: HashMap<String, HashSet<String>>,
+    pub types: HashMap<SmolStr, Type>,
+    pub query_type_name: SmolStr,
+    builtin_types: HashMap<SmolStr, Type>,
+    pub unions: HashMap<SmolStr, Union>,
+    pub interfaces: HashMap<SmolStr, Interface>,
+    pub interface_all_concrete_types: HashMap<SmolStr, HashSet<SmolStr>>,
     pub dummy_union_typename_field: DummyUnionTypenameField,
     pub cached_validated_documents: RwLock<HashMap<u64, AlignedVec>>,
 }
@@ -191,7 +192,7 @@ impl Schema {
     pub fn all_concrete_type_names(
         &self,
         type_or_union_or_interface: &TypeOrUnionOrInterface,
-    ) -> HashSet<String> {
+    ) -> HashSet<SmolStr> {
         match type_or_union_or_interface {
             TypeOrUnionOrInterface::Type(type_) => [type_.name().to_owned()].into_iter().collect(),
             TypeOrUnionOrInterface::Union(union) => union.types.iter().cloned().collect(),
@@ -204,7 +205,7 @@ impl Schema {
     pub fn all_concrete_type_names_for_type_or_union_or_interface(
         &self,
         name: &str,
-    ) -> HashSet<String> {
+    ) -> HashSet<SmolStr> {
         self.all_concrete_type_names(&self.type_or_union_or_interface(name))
     }
 }
