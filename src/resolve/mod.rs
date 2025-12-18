@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use heck::ToPascalCase;
+use heck_smol_str::ToPascalCase;
 use smol_str::SmolStr;
 use tracing::instrument;
 

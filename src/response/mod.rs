@@ -1,7 +1,7 @@
 use chrono::NaiveDate;
 use jiff::Timestamp;
 use serde::Serialize;
-use smol_str::SmolStr;
+use smol_str::{format_smolstr, SmolStr};
 use squalid::_d;
 use tracing::instrument;
 
@@ -95,13 +95,13 @@ impl From<f64> for ResponseValue {
 
 impl From<Timestamp> for ResponseValue {
     fn from(value: Timestamp) -> Self {
-        Self::String(value.into())
+        Self::String(format_smolstr!("{}", value))
     }
 }
 
 impl<'a> From<&'a NaiveDate> for ResponseValue {
     fn from(value: &'a NaiveDate) -> Self {
-        Self::String(value.into())
+        Self::String(format_smolstr!("{}", value))
     }
 }
 
