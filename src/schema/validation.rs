@@ -1,6 +1,7 @@
 use std::collections::HashSet;
 
 use itertools::Itertools;
+use smol_str::{format_smolstr, SmolStr, SmolStrBuilder};
 use squalid::{OptionExt, _d};
 use tracing::instrument;
 
@@ -90,13 +91,17 @@ fn validate_operation_name_uniqueness(request: &Request) -> Option<ValidationErr
     duplicates.next().map(|duplicate| {
         let mut locations: Vec<Location> = _d();
         add_all_operation_name_locations(&mut locations, duplicate, request);
-        let mut message = format!("Non-unique operation names: `{}`", duplicate);
+        let mut message = SmolStrBuilder::default();
+        message.push_str(&format_smolstr!(
+            "Non-unique operation names: `{}`",
+            duplicate
+        ));
         while let Some(duplicate) = duplicates.next() {
             add_all_operation_name_locations(&mut locations, duplicate, request);
-            message.push_str(&format!(", `{duplicate}`"));
+            message.push_str(&format_smolstr!(", `{duplicate}`"));
         }
 
-        ValidationError::new(message, locations)
+        ValidationError::new(message.finish(), locations)
     })
 }
 
@@ -582,7 +587,7 @@ fn type_names_exist_validation_error(
     location: Option<Location>,
 ) -> ValidationError {
     ValidationError::new(
-        format!("Unknown type name: `{type_name}`"),
+        format_smolstr!("Unknown type name: `{type_name}`"),
         match location {
             Some(location) => vec![location],
             None => _d(),
@@ -774,7 +779,7 @@ fn selection_field_doesnt_exist_validation_error(
     location: Option<Location>,
 ) -> ValidationError {
     ValidationError::new(
-        format!("Field `{field_name}` doesn't exist on `{type_name}`"),
+        format_smolstr!("Field `{field_name}` doesn't exist on `{type_name}`"),
         match location {
             Some(location) => vec![location],
             None => _d(),
@@ -788,7 +793,7 @@ fn selection_on_scalar_type_fragment_validation_error(
     location: Option<Location>,
 ) -> ValidationError {
     ValidationError::new(
-        format!("Fragment `{fragment_name}` can't be of scalar type `{type_name}`"),
+        format_smolstr!("Fragment `{fragment_name}` can't be of scalar type `{type_name}`"),
         match location {
             Some(location) => vec![location],
             None => _d(),
@@ -801,7 +806,7 @@ fn selection_on_scalar_type_inline_fragment_validation_error(
     location: Option<Location>,
 ) -> ValidationError {
     ValidationError::new(
-        format!("Inline fragment can't be of scalar type `{type_name}`"),
+        format_smolstr!("Inline fragment can't be of scalar type `{type_name}`"),
         match location {
             Some(location) => vec![location],
             None => _d(),
@@ -815,7 +820,7 @@ fn selection_on_scalar_type_validation_error(
     location: Option<Location>,
 ) -> ValidationError {
     ValidationError::new(
-        format!("Field `{field_name}` can't have selection set because it is of scalar type `{type_name}`"),
+        format_smolstr!("Field `{field_name}` can't have selection set because it is of scalar type `{type_name}`"),
         match location {
             Some(location) => vec![location],
             None => _d(),
@@ -829,7 +834,7 @@ fn no_selection_on_object_type_validation_error(
     location: Option<Location>,
 ) -> ValidationError {
     ValidationError::new(
-        format!("Field `{field_name}` must have selection set because it is of non-scalar type `{type_name}`"),
+        format_smolstr!("Field `{field_name}` must have selection set because it is of non-scalar type `{type_name}`"),
         match location {
             Some(location) => vec![location],
             None => _d(),
@@ -963,7 +968,7 @@ fn argument_names_exist_validation_error(
     location: Option<Location>,
 ) -> ValidationError {
     ValidationError::new(
-        format!("Non-existent argument: `{name}`"),
+        format_smolstr!("Non-existent argument: `{name}`"),
         location.into_iter().collect(),
     )
 }
@@ -1102,7 +1107,7 @@ fn no_duplicate_arguments_directive_errors(
 }
 
 fn duplicate_argument_validation_error(name: &str, locations: Vec<Location>) -> ValidationError {
-    ValidationError::new(format!("Duplicate argument: `{name}`"), locations)
+    ValidationError::new(format_smolstr!("Duplicate argument: `{name}`"), locations)
 }
 
 #[instrument(level = "trace", skip(request, schema))]
@@ -1230,7 +1235,7 @@ fn doesnt_have_if_argument(directive: &&Directive) -> bool {
 
 fn required_argument_validation_error(name: &str, location: Option<Location>) -> ValidationError {
     ValidationError::new(
-        format!("Missing required argument `{}`", name),
+        format_smolstr!("Missing required argument `{}`", name),
         location.into_iter().collect(),
     )
 }
@@ -1255,13 +1260,17 @@ fn validate_fragment_name_uniqueness(request: &Request) -> Option<ValidationErro
     duplicates.next().map(|duplicate| {
         let mut locations: Vec<Location> = _d();
         add_all_fragment_name_locations(&mut locations, duplicate, request);
-        let mut message = format!("Non-unique fragment names: `{}`", duplicate);
+        let mut message = SmolStrBuilder::default();
+        message.push_str(&format_smolstr!(
+            "Non-unique fragment names: `{}`",
+            duplicate
+        ));
         while let Some(duplicate) = duplicates.next() {
             add_all_fragment_name_locations(&mut locations, duplicate, request);
-            message.push_str(&format!(", `{duplicate}`"));
+            message.push_str(&format_smolstr!(", `{duplicate}`"));
         }
 
-        ValidationError::new(message, locations)
+        ValidationError::new(message.finish(), locations)
     })
 }
 
@@ -1302,7 +1311,7 @@ fn validate_unused_fragments(request: &Request, schema: &Schema) -> Vec<Validati
         })
         .map(|fragment_definition| {
             ValidationError::new(
-                format!("Unused fragment: `{}`", fragment_definition.name),
+                format_smolstr!("Unused fragment: `{}`", fragment_definition.name),
                 PositionsTracker::current()
                     .map(|positions_tracker| {
                         positions_tracker
@@ -1358,7 +1367,7 @@ impl CollectorTyped<ValidationError, Vec<ValidationError>> for FragmentSpreadsEx
         })).then(|| {
             vec![
                 ValidationError::new(
-                    format!("Non-existent fragment: `{}`", fragment_spread.name),
+                    format_smolstr!("Non-existent fragment: `{}`", fragment_spread.name),
                     PositionsTracker::current()
                         .map(|positions_tracker| {
                             positions_tracker.fragment_spread_location(
@@ -1425,7 +1434,7 @@ impl CollectorTyped<ValidationError, Vec<ValidationError>>
             .is_none()
             .then(|| {
                 vec![ValidationError::new(
-                    format!(
+                    format_smolstr!(
                         "Fragment `{}` has no overlap with parent type `{}`",
                         fragment_spread.name,
                         enclosing_type.name()
@@ -1551,7 +1560,7 @@ impl CollectorTyped<ValidationError, Vec<ValidationError>> for DirectivesExistCo
 
 fn directive_exists_validation_error(directive: &Directive, request: &Request) -> ValidationError {
     ValidationError::new(
-        format!("Non-existent directive: `@{}`", directive.name),
+        format_smolstr!("Non-existent directive: `@{}`", directive.name),
         PositionsTracker::current()
             .map(|positions_tracker| {
                 vec![positions_tracker.directive_location(directive, &request.document)]
@@ -1606,7 +1615,7 @@ impl CollectorTyped<ValidationError, Vec<ValidationError>> for DirectivesPlaceCo
 
 fn directive_place_validation_error(directive: &Directive, request: &Request) -> ValidationError {
     ValidationError::new(
-        format!(
+        format_smolstr!(
             "Directive `@{}` can't be used in this position",
             directive.name
         ),
@@ -1706,7 +1715,7 @@ fn directive_duplicate_validation_error(
     request: &Request,
 ) -> ValidationError {
     ValidationError::new(
-        format!("Directive `@{}` can't be used more than once", name),
+        format_smolstr!("Directive `@{}` can't be used more than once", name),
         PositionsTracker::current()
             .map(|positions_tracker| {
                 directives

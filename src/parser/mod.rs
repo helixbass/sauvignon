@@ -118,7 +118,7 @@ where
                                     _ => break,
                                 }
                             }
-                            Some(Token::Name(chars.iter().collect()))
+                            Some(Token::Name(chars.into_iter().collect()))
                         }
                         '"' => match self.request.next() {
                             Some('"') => match self.request.next() {

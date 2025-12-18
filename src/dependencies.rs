@@ -4,7 +4,7 @@ use std::mem;
 
 use chrono::NaiveDate;
 use jiff::Timestamp;
-use smol_str::SmolStr;
+use smol_str::{SmolStr, ToSmolStr};
 use sqlx::postgres::PgValueRef;
 use squalid::{OptionExt, _d};
 use uuid::Uuid;
@@ -171,9 +171,9 @@ pub enum Id {
 impl Id {
     pub fn get_string(&self) -> SmolStr {
         match self {
-            Self::Int(value) => value.to_smol_str(),
+            Self::Int(value) => value.to_smolstr(),
             Self::String(value) => value.clone(),
-            Self::Uuid(value) => value.to_smol_str(),
+            Self::Uuid(value) => value.to_smolstr(),
         }
     }
 
