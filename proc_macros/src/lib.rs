@@ -2186,8 +2186,8 @@ pub fn enum_string_massager(input: TokenStream) -> TokenStream {
             ) -> Result<::sauvignon::smol_str::SmolStr, Box<dyn ::std::error::Error + Sync + Send>> {
                 <#enum_type as ::sqlx::Decode<::sqlx::Postgres>>::decode(value)
                     .map(|enum_value| {
-                        use ::sauvignon::heck::ToShoutySnakeCase;
-                        format!("{enum_value}").to_shouty_snake_case()
+                        use ::sauvignon::heck_smol_str::ToShoutySnakeCase;
+                        ::sauvignon::smol_str::format_smolstr!("{enum_value}").to_shouty_snake_case()
                     })
             }
         }
@@ -2218,8 +2218,8 @@ pub fn enum_optional_string_massager(input: TokenStream) -> TokenStream {
                 <::std::option::Option<#enum_type> as ::sqlx::Decode<::sqlx::Postgres>>::decode(value)
                     .map(|option_enum_value| {
                         option_enum_value.map(|enum_value| {
-                            use ::sauvignon::heck::ToShoutySnakeCase;
-                            format!("{enum_value}").to_shouty_snake_case()
+                            use ::sauvignon::heck_smol_str::ToShoutySnakeCase;
+                            ::sauvignon::smol_str::format_smolstr!("{enum_value}").to_shouty_snake_case()
                         })
                     })
             }
