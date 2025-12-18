@@ -1,10 +1,11 @@
 use std::collections::HashMap;
 use std::error;
+use std::mem;
 
 use chrono::NaiveDate;
 use jiff::Timestamp;
 use sqlx::postgres::PgValueRef;
-use squalid::OptionExt;
+use squalid::{OptionExt, _d};
 use uuid::Uuid;
 
 use crate::{AnyHashMap, Error};
@@ -297,12 +298,107 @@ impl DependencyValue {
 pub type InternalDependencyValue = ExternalDependencyValue;
 
 #[derive(Clone, Default)]
-pub struct ExternalDependencyValues {
+pub enum ExternalDependencyValues {
+    #[default]
+    Empty,
+    JustId(DependencyValue),
+    Full(ExternalDependencyValuesFull),
+}
+
+impl ExternalDependencyValues {
+    pub fn as_full_mut(&mut self) -> &mut ExternalDependencyValuesFull {
+        match self {
+            Self::Full(value) => value,
+            _ => panic!("Expected full"),
+        }
+    }
+
+    pub fn into_just_id(self) -> DependencyValue {
+        match self {
+            Self::JustId(id_value) => id_value,
+            _ => panic!("Expected just id"),
+        }
+    }
+
+    fn promote_self_just_id_to_full(&mut self) {
+        let mut other = Self::Full(_d());
+        mem::swap(self, &mut other);
+        self.as_full_mut()
+            .insert("id".to_owned(), other.into_just_id())
+            .unwrap();
+    }
+
+    fn promote_self_empty_to_just_id(&mut self, id_value: DependencyValue) {
+        *self = Self::JustId(id_value);
+    }
+
+    fn promote_self_empty_to_full(&mut self) {
+        *self = Self::Full(_d());
+    }
+
+    pub fn insert(&mut self, name: String, value: DependencyValue) -> Result<(), Error> {
+        if matches!(self, Self::JustId(_)) {
+            self.promote_self_just_id_to_full();
+        } else if matches!(self, Self::Empty) {
+            if name == "id" {
+                self.promote_self_empty_to_just_id(value);
+                return Ok(());
+            } else {
+                self.promote_self_empty_to_full();
+            }
+        }
+        self.as_full_mut().insert(name, value)
+    }
+
+    pub fn insert_any<TValue: Clone + Send + Sync + 'static>(
+        &mut self,
+        name: String,
+        value: TValue,
+    ) -> Result<(), Error> {
+        if matches!(self, Self::JustId(_)) {
+            self.promote_self_just_id_to_full();
+        } else if matches!(self, Self::Empty) {
+            self.promote_self_empty_to_full();
+        }
+        self.as_full_mut().insert_any(name, value)
+    }
+
+    pub fn get(&self, name: &str) -> Option<&DependencyValue> {
+        match self {
+            Self::Empty => None,
+            Self::JustId(id_value) => (name == "id").then_some(id_value),
+            Self::Full(full) => full.get(name),
+        }
+    }
+
+    pub fn get_any<TValue: Send + Sync + 'static>(&self, name: &str) -> Option<&TValue> {
+        match self {
+            Self::Empty => None,
+            Self::JustId(_) => None,
+            Self::Full(full) => full.get_any(name),
+        }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        matches!(self, Self::Empty)
+    }
+
+    pub fn len(&self) -> usize {
+        match self {
+            Self::Empty => 0,
+            Self::JustId(_) => 1,
+            Self::Full(full) => full.len(),
+        }
+    }
+}
+
+#[derive(Clone, Default)]
+pub struct ExternalDependencyValuesFull {
     knowns: HashMap<String, DependencyValue>,
     anys: AnyHashMap,
 }
 
-impl ExternalDependencyValues {
+impl ExternalDependencyValuesFull {
     pub fn insert(&mut self, name: String, value: DependencyValue) -> Result<(), Error> {
         if self.knowns.contains_key(&name) {
             return Err(Error::DependencyAlreadyPopulated(name));
@@ -340,4 +436,4 @@ impl ExternalDependencyValues {
     }
 }
 
-pub type InternalDependencyValues = ExternalDependencyValues;
+pub type InternalDependencyValues = ExternalDependencyValuesFull;
