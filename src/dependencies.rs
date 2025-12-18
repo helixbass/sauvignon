@@ -302,7 +302,7 @@ pub type InternalDependencyValue = ExternalDependencyValue;
 pub enum ExternalDependencyValues {
     #[default]
     Empty,
-    JustId(DependencyValue),
+    Single(SmolStr, DependencyValue),
     Full(ExternalDependencyValuesFull),
 }
 
@@ -314,23 +314,22 @@ impl ExternalDependencyValues {
         }
     }
 
-    pub fn into_just_id(self) -> DependencyValue {
+    pub fn into_single(self) -> (SmolStr, DependencyValue) {
         match self {
-            Self::JustId(id_value) => id_value,
-            _ => panic!("Expected just id"),
+            Self::Single(name, value) => (name, value),
+            _ => panic!("Expected single"),
         }
     }
 
-    fn promote_self_just_id_to_full(&mut self) {
+    fn promote_self_single_to_full(&mut self) {
         let mut other = Self::Full(_d());
         mem::swap(self, &mut other);
-        self.as_full_mut()
-            .insert("id".into(), other.into_just_id())
-            .unwrap();
+        let (name, value) = other.into_single();
+        self.as_full_mut().insert(name, value).unwrap();
     }
 
-    fn promote_self_empty_to_just_id(&mut self, id_value: DependencyValue) {
-        *self = Self::JustId(id_value);
+    fn promote_self_empty_to_single(&mut self, name: SmolStr, value: DependencyValue) {
+        *self = Self::Single(name, value);
     }
 
     fn promote_self_empty_to_full(&mut self) {
@@ -338,15 +337,12 @@ impl ExternalDependencyValues {
     }
 
     pub fn insert(&mut self, name: SmolStr, value: DependencyValue) -> Result<(), Error> {
-        if matches!(self, Self::JustId(_)) {
-            self.promote_self_just_id_to_full();
-        } else if matches!(self, Self::Empty) {
-            if name == "id" {
-                self.promote_self_empty_to_just_id(value);
-                return Ok(());
-            } else {
-                self.promote_self_empty_to_full();
-            }
+        if matches!(self, Self::Empty) {
+            self.promote_self_empty_to_single(name, value);
+            return Ok(());
+        }
+        if matches!(self, Self::Single(_, _)) {
+            self.promote_self_single_to_full();
         }
         self.as_full_mut().insert(name, value)
     }
@@ -356,8 +352,8 @@ impl ExternalDependencyValues {
         name: SmolStr,
         value: TValue,
     ) -> Result<(), Error> {
-        if matches!(self, Self::JustId(_)) {
-            self.promote_self_just_id_to_full();
+        if matches!(self, Self::Single(_, _)) {
+            self.promote_self_single_to_full();
         } else if matches!(self, Self::Empty) {
             self.promote_self_empty_to_full();
         }
@@ -367,7 +363,7 @@ impl ExternalDependencyValues {
     pub fn get(&self, name: &str) -> Option<&DependencyValue> {
         match self {
             Self::Empty => None,
-            Self::JustId(id_value) => (name == "id").then_some(id_value),
+            Self::Single(single_name, value) => (name == single_name).then_some(value),
             Self::Full(full) => full.get(name),
         }
     }
@@ -375,7 +371,7 @@ impl ExternalDependencyValues {
     pub fn get_any<TValue: Send + Sync + 'static>(&self, name: &str) -> Option<&TValue> {
         match self {
             Self::Empty => None,
-            Self::JustId(_) => None,
+            Self::Single(_, _) => None,
             Self::Full(full) => full.get_any(name),
         }
     }
@@ -387,7 +383,7 @@ impl ExternalDependencyValues {
     pub fn len(&self) -> usize {
         match self {
             Self::Empty => 0,
-            Self::JustId(_) => 1,
+            Self::Single(_, _) => 1,
             Self::Full(full) => full.len(),
         }
     }
@@ -437,4 +433,4 @@ impl ExternalDependencyValuesFull {
     }
 }
 
-pub type InternalDependencyValues = ExternalDependencyValuesFull;
+pub type InternalDependencyValues = ExternalDependencyValues;
