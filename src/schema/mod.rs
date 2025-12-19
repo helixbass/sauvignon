@@ -19,7 +19,10 @@ use crate::{
     TypeInterface, Union, Value, WhereResolved,
 };
 
+mod sync;
 mod validation;
+
+use sync::compute_sync_response;
 pub use validation::ValidationError;
 use validation::ValidationRequestOrErrors;
 
@@ -220,6 +223,9 @@ async fn compute_response(
     database: (&dyn Database, bool),
 ) -> ResponseValue {
     let query_plan = QueryPlan::new(&request, schema);
+    if database.1 {
+        return compute_sync_response(schema, request, database, query_plan);
+    }
     let response_in_progress = query_plan.initial_response_in_progress();
     let mut fields_in_progress = response_in_progress.fields;
     loop {

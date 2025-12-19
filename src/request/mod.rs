@@ -133,6 +133,15 @@ pub enum Selection {
     InlineFragment(InlineFragment),
 }
 
+impl Selection {
+    pub fn as_field(&self) -> &Field {
+        match self {
+            Self::Field(field) => field,
+            _ => panic!("Expected field"),
+        }
+    }
+}
+
 #[derive(Builder, Debug, Archive, Serialize, Deserialize)]
 #[builder(pattern = "owned")]
 #[rkyv(serialize_bounds(
