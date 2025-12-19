@@ -8,7 +8,7 @@ use tracing::instrument;
 use crate::{
     request, types, Argument, CarverOrPopulator, ColumnToken, ColumnTokens, Database,
     ExternalDependencyValues, InternalDependencyResolver, InternalDependencyValues, OperationType,
-    Request, ResponseValue, Schema, Selection, WhereResolved,
+    Request, ResponseValue, Schema, Selection, WhereResolved, WheresResolved,
 };
 
 pub struct SyncQueryPlan<'a> {
@@ -217,7 +217,7 @@ fn compute_sync_response_fields(
                                         external_dependency_values.get("id").unwrap().clone(),
                                     )
                                 })
-                                .collect::<Vec<_>>(),
+                                .collect::<WheresResolved>(),
                         );
                         match &resolver.carver_or_populator {
                             CarverOrPopulator::PopulatorList(populator) => {

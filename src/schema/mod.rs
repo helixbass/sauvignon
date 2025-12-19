@@ -16,7 +16,7 @@ use crate::{
     InternalDependencyValues, OperationType, OptionalPopulator, OptionalPopulatorInterface,
     Populator, PopulatorInterface, PopulatorListInterface, PositionsTracker, QueryPlan, Request,
     Response, ResponseValue, ResponseValueOrInProgress, Result as SauvignonResult, Type,
-    TypeInterface, Union, Value, WhereResolved,
+    TypeInterface, Union, Value, WhereResolved, WheresResolved,
 };
 
 mod sync;
@@ -533,7 +533,7 @@ async fn populate_internal_dependencies(
                                             external_dependency_values.get("id").unwrap().clone(),
                                         )
                                     })
-                                    .collect::<Vec<_>>(),
+                                    .collect::<WheresResolved>(),
                             )
                             .await
                     })
