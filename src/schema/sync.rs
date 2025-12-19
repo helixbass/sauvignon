@@ -6,7 +6,9 @@ use squalid::{OptionExt, _d};
 use tracing::instrument;
 
 use crate::{
-    request, types, Argument, Database, OperationType, Request, ResponseValue, Schema, Selection,
+    request, types, Argument, CarverOrPopulator, Database, ExternalDependencyValues,
+    InternalDependencyResolver, InternalDependencyValues, OperationType, Request, ResponseValue,
+    Schema, Selection,
 };
 
 pub struct SyncQueryPlan<'a> {
@@ -120,7 +122,69 @@ fn compute_sync_response(
         query_plan
             .field_plans
             .into_iter()
-            .map(|(name, field_plan)| (name,))
+            .map(|(name, field_plan)| {
+                (name, {
+                    let external_dependency_values = &ExternalDependencyValues::Empty;
+                    let resolver = &field_plan.field_type.resolver;
+                    assert_eq!(resolver.internal_dependencies.len(), 1);
+                    let internal_dependency = &resolver.internal_dependencies[0];
+                    match &internal_dependency.resolver {
+                        InternalDependencyResolver::ColumnGetter(column_getter) => {
+                            let value = database.get_column_sync(
+                                &column_getter.table_name,
+                                &column_getter.column_name,
+                                external_dependency_values.get("id").unwrap(),
+                                &column_getter.id_column_name,
+                                internal_dependency.type_,
+                            );
+                            match &resolver.carver_or_populator {
+                                CarverOrPopulator::Carver(carver) => carver.carve(
+                                    &ExternalDependencyValues::Empty,
+                                    &InternalDependencyValues::Single(
+                                        internal_dependency.name.clone(),
+                                        value,
+                                    ),
+                                ),
+                                CarverOrPopulator::Populator(populator) => {
+                                    let populator = populator.as_values();
+                                    let keys = &populator.keys;
+                                    assert_eq!(keys.len(), 1);
+                                    let first_key = keys.iter().next().unwrap();
+                                    assert_eq!(first_key.0, internal_dependency.name);
+                                    assert_eq!(first_key.1, "id");
+                                }
+                                _ => unimplemented!(),
+                            }
+                        }
+                        InternalDependencyResolver::ColumnGetterList(column_getter_list) => {
+                            let list = database.get_column_list_sync(
+                                &column_getter_list.table_name,
+                                &column_getter_list.column_name,
+                                internal_dependency.type_,
+                                // TODO: optimize this to not allocate Vec
+                                // for single-where case
+                                &column_getter_list
+                                    .wheres
+                                    .iter()
+                                    .map(|where_| {
+                                        WhereResolved::new(
+                                            where_.column_name.clone(),
+                                            // TODO: this is punting on where's specifying
+                                            // values
+                                            external_dependency_values.get("id").unwrap().clone(),
+                                        )
+                                    })
+                                    .collect::<Vec<_>>(),
+                            );
+                            match &resolver.carver_or_populator {
+                                CarverOrPopulator::PopulatorList(populator) => {}
+                                _ => unimplemented!(),
+                            }
+                        }
+                        _ => unimplemented!(),
+                    }
+                })
+            })
             .collect(),
     )
 }

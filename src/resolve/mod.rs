@@ -400,6 +400,15 @@ pub enum Populator {
     Dyn(Box<dyn PopulatorInterface>),
 }
 
+impl Populator {
+    pub fn as_values(&self) -> &ValuesPopulator {
+        match self {
+            Self::Values(populator) => populator,
+            _ => panic!("expected values populator"),
+        }
+    }
+}
+
 impl PopulatorInterface for Populator {
     fn populate(
         &self,
