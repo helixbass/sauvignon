@@ -51,7 +51,7 @@ pub trait Carver: Send + Sync {
         &self,
         external_dependencies: &ExternalDependencyValues,
         internal_dependencies: &InternalDependencyValues,
-    ) -> ResponseValue;
+    ) -> ResponseValue<'static>;
 }
 
 pub struct StringCarver {
@@ -73,7 +73,7 @@ impl Carver for StringCarver {
         &self,
         external_dependencies: &ExternalDependencyValues,
         internal_dependencies: &InternalDependencyValues,
-    ) -> ResponseValue {
+    ) -> ResponseValue<'static> {
         ResponseValue::String(
             internal_dependencies
                 .get(&self.name)
@@ -104,7 +104,7 @@ impl Carver for OptionalIntCarver {
         &self,
         external_dependencies: &ExternalDependencyValues,
         internal_dependencies: &InternalDependencyValues,
-    ) -> ResponseValue {
+    ) -> ResponseValue<'static> {
         internal_dependencies
             .get(&self.name)
             .or_else(|| external_dependencies.get(&self.name))
@@ -133,7 +133,7 @@ impl Carver for OptionalFloatCarver {
         &self,
         external_dependencies: &ExternalDependencyValues,
         internal_dependencies: &InternalDependencyValues,
-    ) -> ResponseValue {
+    ) -> ResponseValue<'static> {
         internal_dependencies
             .get(&self.name)
             .or_else(|| external_dependencies.get(&self.name))
@@ -162,7 +162,7 @@ impl Carver for OptionalEnumValueCarver {
         &self,
         external_dependencies: &ExternalDependencyValues,
         internal_dependencies: &InternalDependencyValues,
-    ) -> ResponseValue {
+    ) -> ResponseValue<'static> {
         match internal_dependencies
             .get(&self.name)
             .or_else(|| external_dependencies.get(&self.name))
@@ -194,7 +194,7 @@ impl Carver for EnumValueCarver {
         &self,
         external_dependencies: &ExternalDependencyValues,
         internal_dependencies: &InternalDependencyValues,
-    ) -> ResponseValue {
+    ) -> ResponseValue<'static> {
         ResponseValue::EnumValue(
             internal_dependencies
                 .get(&self.name)
@@ -225,7 +225,7 @@ impl Carver for TimestampCarver {
         &self,
         external_dependencies: &ExternalDependencyValues,
         internal_dependencies: &InternalDependencyValues,
-    ) -> ResponseValue {
+    ) -> ResponseValue<'static> {
         internal_dependencies
             .get(&self.name)
             .or_else(|| external_dependencies.get(&self.name))
@@ -254,7 +254,7 @@ impl Carver for IdCarver {
         &self,
         external_dependencies: &ExternalDependencyValues,
         internal_dependencies: &InternalDependencyValues,
-    ) -> ResponseValue {
+    ) -> ResponseValue<'static> {
         match internal_dependencies
             .get(&self.name)
             .or_else(|| external_dependencies.get(&self.name))
@@ -287,7 +287,7 @@ impl Carver for OptionalStringCarver {
         &self,
         external_dependencies: &ExternalDependencyValues,
         internal_dependencies: &InternalDependencyValues,
-    ) -> ResponseValue {
+    ) -> ResponseValue<'static> {
         internal_dependencies
             .get(&self.name)
             .or_else(|| external_dependencies.get(&self.name))
@@ -317,7 +317,7 @@ impl Carver for IntCarver {
         &self,
         external_dependencies: &ExternalDependencyValues,
         internal_dependencies: &InternalDependencyValues,
-    ) -> ResponseValue {
+    ) -> ResponseValue<'static> {
         ResponseValue::Int(
             internal_dependencies
                 .get(&self.name)
@@ -348,7 +348,7 @@ impl Carver for DateCarver {
         &self,
         external_dependencies: &ExternalDependencyValues,
         internal_dependencies: &InternalDependencyValues,
-    ) -> ResponseValue {
+    ) -> ResponseValue<'static> {
         internal_dependencies
             .get(&self.name)
             .or_else(|| external_dependencies.get(&self.name))
@@ -363,7 +363,7 @@ pub trait CarverList: Send + Sync {
         &self,
         external_dependencies: &ExternalDependencyValues,
         internal_dependencies: &InternalDependencyValues,
-    ) -> Vec<ResponseValue>;
+    ) -> Vec<ResponseValue<'static>>;
 }
 
 pub struct EnumValueCarverList {
@@ -385,7 +385,7 @@ impl CarverList for EnumValueCarverList {
         &self,
         _external_dependencies: &ExternalDependencyValues,
         internal_dependencies: &InternalDependencyValues,
-    ) -> Vec<ResponseValue> {
+    ) -> Vec<ResponseValue<'static>> {
         internal_dependencies
             .get(&pluralize(&self.singular))
             .unwrap()

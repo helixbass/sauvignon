@@ -111,11 +111,11 @@ impl<'a> SyncFieldPlan<'a> {
 }
 
 #[instrument(level = "trace", skip(schema, request, database))]
-pub fn compute_sync_response(
+pub fn compute_sync_response<'a>(
     schema: &Schema,
     request: &Request,
-    database: &dyn Database,
-) -> ResponseValue {
+    database: &'a dyn Database,
+) -> ResponseValue<'a> {
     let query_plan = SyncQueryPlan::new(request, schema);
 
     ResponseValue::Map(compute_sync_response_fields(
@@ -130,12 +130,12 @@ pub fn compute_sync_response(
     level = "trace",
     skip(field_plans, schema, database, external_dependency_values)
 )]
-fn compute_sync_response_fields(
+fn compute_sync_response_fields<'a>(
     field_plans: &IndexMap<SmolStr, SyncFieldPlan<'_>>,
     schema: &Schema,
-    database: &dyn Database,
+    database: &'a dyn Database,
     external_dependency_values: ExternalDependencyValues,
-) -> IndexMap<SmolStr, ResponseValue> {
+) -> IndexMap<SmolStr, ResponseValue<'a>> {
     field_plans
         .into_iter()
         .map(|(name, field_plan)| {

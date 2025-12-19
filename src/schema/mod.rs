@@ -95,7 +95,11 @@ impl Schema {
     }
 
     #[instrument(level = "debug", skip(self, database))]
-    pub async fn request(&self, document_str: &str, database: &dyn Database) -> Response {
+    pub async fn request<'a>(
+        &self,
+        document_str: &str,
+        database: &'a dyn Database,
+    ) -> Response<'a> {
         let document_str_hash = get_hash(document_str);
         let cached_validated_document = self
             .cached_validated_documents
@@ -217,11 +221,11 @@ impl Schema {
 }
 
 #[instrument(level = "debug", skip(schema, request, database))]
-async fn compute_response(
+async fn compute_response<'a>(
     schema: &Schema,
     request: &Request,
-    database: (&dyn Database, bool),
-) -> ResponseValue {
+    database: (&'a dyn Database, bool),
+) -> ResponseValue<'a> {
     if database.1 {
         return compute_sync_response(schema, request, database.0);
     }
@@ -239,11 +243,11 @@ async fn compute_response(
 }
 
 #[instrument(level = "trace", skip(fields_in_progress, database, schema))]
-fn progress_fields<'a>(
-    fields_in_progress: FieldsInProgress<'a>,
-    database: (&'a dyn Database, bool),
+fn progress_fields<'a, 'b>(
+    fields_in_progress: FieldsInProgress<'a, 'b>,
+    database: (&'b dyn Database, bool),
     schema: &'a Schema,
-) -> Pin<Box<dyn Future<Output = (bool, FieldsInProgress<'a>)> + 'a + Send>> {
+) -> Pin<Box<dyn Future<Output = (bool, FieldsInProgress<'a, 'b>)> + 'a + 'b + Send>> {
     Box::pin(async move {
         let is_done = fields_in_progress
             .values()
@@ -641,13 +645,13 @@ async fn populate_internal_dependencies(
         field_plan
     )
 )]
-fn to_recursing_after_populating<'a>(
+fn to_recursing_after_populating<'a, 'b>(
     external_dependency_values: &ExternalDependencyValues,
     internal_dependency_values: &InternalDependencyValues,
     populator: &Populator,
     resolved_concrete_type_name: &str,
     field_plan: &'a FieldPlan<'a>,
-) -> ResponseValueOrInProgress<'a> {
+) -> ResponseValueOrInProgress<'a, 'b> {
     let populated = populator.populate(&external_dependency_values, &internal_dependency_values);
     let fields_in_progress = fields_in_progress_new(
         &field_plan.selection_set_by_type.as_ref().unwrap()[resolved_concrete_type_name],
@@ -669,13 +673,13 @@ fn to_recursing_after_populating<'a>(
         field_plan
     )
 )]
-fn to_recursing_after_optionally_populating<'a>(
+fn to_recursing_after_optionally_populating<'a, 'b>(
     external_dependency_values: &ExternalDependencyValues,
     internal_dependency_values: &InternalDependencyValues,
     populator: &OptionalPopulator,
     resolved_concrete_type_name: &str,
     field_plan: &'a FieldPlan<'a>,
-) -> ResponseValueOrInProgress<'a> {
+) -> ResponseValueOrInProgress<'a, 'b> {
     let Some(populated) =
         populator.populate(&external_dependency_values, &internal_dependency_values)
     else {

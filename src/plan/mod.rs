@@ -31,7 +31,7 @@ impl<'a> QueryPlan<'a> {
         }
     }
 
-    pub fn initial_response_in_progress(&self) -> ResponseInProgress<'_> {
+    pub fn initial_response_in_progress<'b>(&'a self) -> ResponseInProgress<'a, 'b> {
         ResponseInProgress::new(fields_in_progress_new(&self.field_plans, &_d()))
     }
 }

@@ -13,21 +13,21 @@ use crate::{
 };
 
 #[derive(Serialize)]
-pub struct Response {
+pub struct Response<'a> {
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub errors: Vec<ResponseError>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub data: Option<ResponseValue>,
+    pub data: Option<ResponseValue<'a>>,
 }
 
-impl Response {
-    pub fn new(data: Option<ResponseValue>, errors: Vec<ResponseError>) -> Self {
+impl<'a> Response<'a> {
+    pub fn new(data: Option<ResponseValue<'a>>, errors: Vec<ResponseError>) -> Self {
         Self { data, errors }
     }
 }
 
-impl From<ResponseValue> for Response {
-    fn from(value: ResponseValue) -> Self {
+impl<'a> From<ResponseValue<'a>> for Response<'a> {
+    fn from(value: ResponseValue<'a>) -> Self {
         Self {
             data: Some(value),
             errors: _d(),
@@ -35,7 +35,7 @@ impl From<ResponseValue> for Response {
     }
 }
 
-impl From<Vec<ResponseError>> for Response {
+impl From<Vec<ResponseError>> for Response<'_> {
     fn from(value: Vec<ResponseError>) -> Self {
         Self {
             data: _d(),
@@ -57,7 +57,7 @@ pub enum ResponseValue<'a> {
     EnumValue(SmolStr),
     Uuid(Uuid),
     ListIter(ResponseValueListIterWrapper<'a>),
-    MapIter(ResponseValueMapIter),
+    // MapIter(ResponseValueMapIter),
 }
 
 pub struct ResponseValueListIterWrapper<'a>(Box<dyn CloneResponseValueIterator<'a> + 'a>);
@@ -120,45 +120,45 @@ impl<'a, TIterator: Iterator<Item = ResponseValue<'a>> + Clone + Send + Sync>
     }
 }
 
-pub struct ResponseValueMapIter(Box<dyn CloneResponseValueMapIterator>);
+// pub struct ResponseValueMapIter(Box<dyn CloneResponseValueMapIterator>);
 
-impl Serialize for ResponseValueMapIter {
-    fn serialize<TSerializer>(
-        &self,
-        serializer: TSerializer,
-    ) -> Result<TSerializer::Ok, TSerializer::Error>
-    where
-        TSerializer: Serializer,
-    {
-        serializer.collect_map(self.0.cloned())
-    }
-}
+// impl Serialize for ResponseValueMapIter {
+//     fn serialize<TSerializer>(
+//         &self,
+//         serializer: TSerializer,
+//     ) -> Result<TSerializer::Ok, TSerializer::Error>
+//     where
+//         TSerializer: Serializer,
+//     {
+//         serializer.collect_map(self.0.cloned())
+//     }
+// }
 
-pub struct ResponseValueMapIterInner<TIterator: Iterator<Item = (SmolStr, ResponseValue)> + Clone> {
-    iterator: TIterator,
-}
+// pub struct ResponseValueMapIterInner<TIterator: Iterator<Item = (SmolStr, ResponseValue)> + Clone> {
+//     iterator: TIterator,
+// }
 
-impl<TIterator: Iterator<Item = (SmolStr, ResponseValue)> + Clone>
-    ResponseValueMapIterInner<TIterator>
-{
-    pub fn new(iterator: TIterator) -> Self {
-        Self { iterator }
-    }
-}
+// impl<TIterator: Iterator<Item = (SmolStr, ResponseValue)> + Clone>
+//     ResponseValueMapIterInner<TIterator>
+// {
+//     pub fn new(iterator: TIterator) -> Self {
+//         Self { iterator }
+//     }
+// }
 
-pub trait CloneResponseValueMapIterator: Send + Sync {
-    fn cloned<'a>(&'a self) -> Box<dyn Iterator<Item = (SmolStr, ResponseValue)> + 'a>;
-}
+// pub trait CloneResponseValueMapIterator: Send + Sync {
+//     fn cloned<'a>(&'a self) -> Box<dyn Iterator<Item = (SmolStr, ResponseValue)> + 'a>;
+// }
 
-impl<TIterator: Iterator<Item = (SmolStr, ResponseValue)> + Clone + Send + Sync>
-    CloneResponseValueMapIterator for ResponseValueMapIterInner<TIterator>
-{
-    fn cloned<'a>(&'a self) -> Box<dyn Iterator<Item = (SmolStr, ResponseValue)> + 'a> {
-        Box::new(self.iterator.clone())
-    }
-}
+// impl<TIterator: Iterator<Item = (SmolStr, ResponseValue)> + Clone + Send + Sync>
+//     CloneResponseValueMapIterator for ResponseValueMapIterInner<TIterator>
+// {
+//     fn cloned<'a>(&'a self) -> Box<dyn Iterator<Item = (SmolStr, ResponseValue)> + 'a> {
+//         Box::new(self.iterator.clone())
+//     }
+// }
 
-impl From<FieldsInProgress<'_>> for ResponseValue {
+impl<'a, 'b> From<FieldsInProgress<'a, 'b>> for ResponseValue<'b> {
     fn from(fields_in_progress: FieldsInProgress) -> Self {
         Self::Map(
             fields_in_progress
@@ -179,37 +179,37 @@ impl From<FieldsInProgress<'_>> for ResponseValue {
     }
 }
 
-impl From<bool> for ResponseValue {
+impl From<bool> for ResponseValue<'_> {
     fn from(value: bool) -> Self {
         Self::Boolean(value)
     }
 }
 
-impl From<i32> for ResponseValue {
+impl From<i32> for ResponseValue<'_> {
     fn from(value: i32) -> Self {
         Self::Int(value)
     }
 }
 
-impl From<f64> for ResponseValue {
+impl From<f64> for ResponseValue<'_> {
     fn from(value: f64) -> Self {
         Self::Float(value)
     }
 }
 
-impl From<Timestamp> for ResponseValue {
+impl From<Timestamp> for ResponseValue<'_> {
     fn from(value: Timestamp) -> Self {
         Self::String(format_smolstr!("{}", value))
     }
 }
 
-impl<'a> From<&'a NaiveDate> for ResponseValue {
+impl<'a> From<&'a NaiveDate> for ResponseValue<'_> {
     fn from(value: &'a NaiveDate) -> Self {
         Self::String(format_smolstr!("{}", value))
     }
 }
 
-impl<TInner: Into<ResponseValue>> From<Option<TInner>> for ResponseValue {
+impl<'a, TInner: Into<ResponseValue<'a>>> From<Option<TInner>> for ResponseValue<'a> {
     fn from(value: Option<TInner>) -> Self {
         match value {
             None => Self::Null,
@@ -218,19 +218,19 @@ impl<TInner: Into<ResponseValue>> From<Option<TInner>> for ResponseValue {
     }
 }
 
-impl<TInner: Into<ResponseValue>> From<Vec<TInner>> for ResponseValue {
+impl<'a, TInner: Into<ResponseValue<'a>>> From<Vec<TInner>> for ResponseValue<'a> {
     fn from(value: Vec<TInner>) -> Self {
         Self::List(value.into_iter().map(Into::into).collect())
     }
 }
 
-pub type FieldsInProgress<'a> = IndexMap<SmolStr, ResponseValueOrInProgress<'a>>;
+pub type FieldsInProgress<'a, 'b> = IndexMap<SmolStr, ResponseValueOrInProgress<'a, 'b>>;
 
 #[instrument(level = "trace", skip(field_plans, external_dependency_values))]
-pub fn fields_in_progress_new<'a>(
+pub fn fields_in_progress_new<'a, 'b>(
     field_plans: &'a IndexMap<SmolStr, FieldPlan<'a>>,
     external_dependency_values: &ExternalDependencyValues,
-) -> FieldsInProgress<'a> {
+) -> FieldsInProgress<'a, 'b> {
     // TODO: this looks like a map_values()
     field_plans
         .into_iter()
@@ -246,21 +246,21 @@ pub fn fields_in_progress_new<'a>(
         .collect()
 }
 
-pub struct ResponseInProgress<'a> {
-    pub fields: FieldsInProgress<'a>,
+pub struct ResponseInProgress<'a, 'b> {
+    pub fields: FieldsInProgress<'a, 'b>,
 }
 
-impl<'a> ResponseInProgress<'a> {
-    pub fn new(fields: FieldsInProgress<'a>) -> Self {
+impl<'a, 'b> ResponseInProgress<'a, 'b> {
+    pub fn new(fields: FieldsInProgress<'a, 'b>) -> Self {
         Self { fields }
     }
 }
 
-pub enum ResponseValueOrInProgress<'a> {
-    ResponseValue(ResponseValue),
+pub enum ResponseValueOrInProgress<'a, 'b> {
+    ResponseValue(ResponseValue<'b>),
     InProgress(InProgress<'a>),
-    InProgressRecursing(InProgressRecursing<'a>),
-    InProgressRecursingList(InProgressRecursingList<'a>),
+    InProgressRecursing(InProgressRecursing<'a, 'b>),
+    InProgressRecursingList(InProgressRecursingList<'a, 'b>),
 }
 
 pub struct InProgress<'a> {
@@ -280,17 +280,17 @@ impl<'a> InProgress<'a> {
     }
 }
 
-pub struct InProgressRecursing<'a> {
+pub struct InProgressRecursing<'a, 'b> {
     pub field_plan: &'a FieldPlan<'a>,
     pub populated: ExternalDependencyValues,
-    pub selection: FieldsInProgress<'a>,
+    pub selection: FieldsInProgress<'a, 'b>,
 }
 
-impl<'a> InProgressRecursing<'a> {
+impl<'a, 'b> InProgressRecursing<'a, 'b> {
     pub fn new(
         field_plan: &'a FieldPlan<'a>,
         populated: ExternalDependencyValues,
-        selection: FieldsInProgress<'a>,
+        selection: FieldsInProgress<'a, 'b>,
     ) -> Self {
         Self {
             field_plan,
@@ -300,17 +300,17 @@ impl<'a> InProgressRecursing<'a> {
     }
 }
 
-pub struct InProgressRecursingList<'a> {
+pub struct InProgressRecursingList<'a, 'b> {
     pub field_plan: &'a FieldPlan<'a>,
     pub populated: Vec<ExternalDependencyValues>,
-    pub selections: Vec<FieldsInProgress<'a>>,
+    pub selections: Vec<FieldsInProgress<'a, 'b>>,
 }
 
-impl<'a> InProgressRecursingList<'a> {
+impl<'a, 'b> InProgressRecursingList<'a, 'b> {
     pub fn new(
         field_plan: &'a FieldPlan<'a>,
         populated: Vec<ExternalDependencyValues>,
-        selections: Vec<FieldsInProgress<'a>>,
+        selections: Vec<FieldsInProgress<'a, 'b>>,
     ) -> Self {
         Self {
             field_plan,

@@ -107,7 +107,7 @@ impl Carver for CanadianCityQuoteCarver {
         &self,
         _external_dependencies: &ExternalDependencyValues,
         internal_dependencies: &InternalDependencyValues,
-    ) -> ResponseValue {
+    ) -> ResponseValue<'static> {
         ResponseValue::EnumValue(
             CanadianCity::from_str(internal_dependencies.get("city").unwrap().as_string())
                 .unwrap()
