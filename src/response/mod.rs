@@ -1,3 +1,5 @@
+use std::mem;
+
 use chrono::NaiveDate;
 use jiff::Timestamp;
 use serde::{Serialize, Serializer};
@@ -44,23 +46,31 @@ impl From<Vec<ResponseError>> for Response {
 
 #[derive(Serialize)]
 #[serde(untagged)]
-pub enum ResponseValue {
+pub enum ResponseValue<'a> {
     Null,
-    List(Vec<ResponseValue>),
-    Map(IndexMap<SmolStr, ResponseValue>),
+    List(Vec<ResponseValue<'a>>),
+    Map(IndexMap<SmolStr, ResponseValue<'a>>),
     String(SmolStr),
     Boolean(bool),
     Int(i32),
     Float(f64),
     EnumValue(SmolStr),
     Uuid(Uuid),
-    ListIter(ResponseValueListIter),
+    ListIter(ResponseValueListIterWrapper<'a>),
     MapIter(ResponseValueMapIter),
 }
 
-pub struct ResponseValueListIter(Box<dyn CloneResponseValueIterator>);
+pub struct ResponseValueListIterWrapper<'a>(Box<dyn CloneResponseValueIterator<'a> + 'a>);
 
-impl Serialize for ResponseValueListIter {
+impl<'a> ResponseValueListIterWrapper<'a> {
+    fn from_inner<TIterator: Iterator<Item = ResponseValue<'a>> + Clone + Send + Sync + 'a>(
+        value: ResponseValueListIter<'a, TIterator>,
+    ) -> Self {
+        Self(Box::new(value))
+    }
+}
+
+impl Serialize for ResponseValueListIterWrapper<'_> {
     fn serialize<TSerializer>(
         &self,
         serializer: TSerializer,
@@ -68,28 +78,44 @@ impl Serialize for ResponseValueListIter {
     where
         TSerializer: Serializer,
     {
-        serializer.collect_seq(self.0.cloned())
+        // TODO: is there a way to avoid `unsafe` here?
+        // safety: `.collect_seq()` immediately consumes
+        // the entire iterator
+        unsafe {
+            serializer.collect_seq(
+                mem::transmute::<
+                    _,
+                    &'static Box<dyn CloneResponseValueIterator<'static> + 'static>,
+                >(&self.0)
+                .cloned()
+            )
+        }
     }
 }
 
-pub struct ResponseValueListIterInner<TIterator: Iterator<Item = ResponseValue> + Clone> {
+pub struct ResponseValueListIter<
+    'a,
+    TIterator: Iterator<Item = ResponseValue<'a>> + Clone + Send + Sync,
+> {
     iterator: TIterator,
 }
 
-impl<TIterator: Iterator<Item = ResponseValue> + Clone> ResponseValueListIterInner<TIterator> {
+impl<'a, TIterator: Iterator<Item = ResponseValue<'a>> + Clone + Send + Sync>
+    ResponseValueListIter<'a, TIterator>
+{
     pub fn new(iterator: TIterator) -> Self {
         Self { iterator }
     }
 }
 
-pub trait CloneResponseValueIterator: Send + Sync {
-    fn cloned<'a>(&'a self) -> Box<dyn Iterator<Item = ResponseValue> + 'a>;
+pub trait CloneResponseValueIterator<'a>: Send + Sync {
+    fn cloned(&'a self) -> Box<dyn Iterator<Item = ResponseValue<'a>> + 'a>;
 }
 
-impl<TIterator: Iterator<Item = ResponseValue> + Clone + Send + Sync> CloneResponseValueIterator
-    for ResponseValueListIterInner<TIterator>
+impl<'a, TIterator: Iterator<Item = ResponseValue<'a>> + Clone + Send + Sync>
+    CloneResponseValueIterator<'a> for ResponseValueListIter<'a, TIterator>
 {
-    fn cloned<'a>(&'a self) -> Box<dyn Iterator<Item = ResponseValue> + 'a> {
+    fn cloned(&'a self) -> Box<dyn Iterator<Item = ResponseValue<'a>> + 'a> {
         Box::new(self.iterator.clone())
     }
 }
