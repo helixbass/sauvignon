@@ -1,6 +1,6 @@
 use chrono::NaiveDate;
 use jiff::Timestamp;
-use serde::Serialize;
+use serde::{Serialize, Serializer};
 use smol_str::{format_smolstr, SmolStr};
 use squalid::_d;
 use tracing::instrument;
@@ -54,7 +54,77 @@ pub enum ResponseValue {
     Float(f64),
     EnumValue(SmolStr),
     Uuid(Uuid),
+    ListIter(ResponseValueListIter),
+    MapIter(ResponseValueMapIter),
 }
+
+pub struct ResponseValueListIter(Box<dyn CloneResponseValueIterator>);
+
+impl Serialize for ResponseValueListIter {
+    fn serialize<TSerializer>(
+        &self,
+        serializer: TSerializer,
+    ) -> Result<TSerializer::Ok, TSerializer::Error>
+    where
+        TSerializer: Serializer,
+    {
+        // serializer.collect_seq(&*self.0)
+        serializer.collect_seq(self.0.cloned())
+    }
+}
+
+// pub trait BoxDynIteratorResponseValue {
+//     fn cloned(&self) -> Box<dyn Iterator<Item = ResponseValue>>;
+// }
+
+pub struct ResponseValueListIterInner<TIterator: Iterator<Item = ResponseValue> + Clone> {
+    iterator: TIterator,
+}
+
+impl<TIterator: Iterator<Item = ResponseValue> + Clone> ResponseValueListIterInner<TIterator> {
+    pub fn new(iterator: TIterator) -> Self {
+        Self { iterator }
+    }
+
+    // pub fn cloned<'a>(&'a self) -> Box<dyn Iterator<Item = ResponseValue> + 'a> {
+    //     Box::new(self.iterator.clone())
+    // }
+}
+
+pub trait CloneResponseValueIterator {
+    fn cloned<'a>(&'a self) -> Box<dyn Iterator<Item = ResponseValue> + 'a>;
+}
+
+impl<TIterator: Iterator<Item = ResponseValue> + Clone> CloneResponseValueIterator
+    for ResponseValueListIterInner<TIterator>
+{
+    fn cloned<'a>(&'a self) -> Box<dyn Iterator<Item = ResponseValue> + 'a> {
+        Box::new(self.iterator.clone())
+    }
+}
+
+// pub struct ResponseValueListIter(Box<dyn Iterator<Item = ResponseValue>>);
+
+// impl ResponseValueListIter {
+//     pub fn cloned(&self) -> Box<dyn Iterator<Item = ResponseValue>> {
+//         unimplemented!()
+//     }
+// }
+
+// impl Serialize for ResponseValueListIter {
+//     fn serialize<TSerializer>(
+//         &self,
+//         serializer: TSerializer,
+//     ) -> Result<TSerializer::Ok, TSerializer::Error>
+//     where
+//         TSerializer: Serializer,
+//     {
+//         // serializer.collect_seq(&*self.0)
+//         serializer.collect_seq(self.cloned())
+//     }
+// }
+
+pub struct ResponseValueMapIter(Box<dyn Iterator<Item = (SmolStr, ResponseValue)>>);
 
 impl From<FieldsInProgress<'_>> for ResponseValue {
     fn from(fields_in_progress: FieldsInProgress) -> Self {
