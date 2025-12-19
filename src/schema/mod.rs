@@ -475,13 +475,14 @@ async fn populate_internal_dependencies(
                         _ => unreachable!(),
                     };
                     if is_database_sync {
-                        database.get_column_sync(
-                            &column_getter.table_name,
-                            &column_getter.column_name,
-                            row_id,
-                            &column_getter.id_column_name,
-                            internal_dependency.type_,
-                        )
+                        unimplemented!()
+                        // database.get_column_sync(
+                        //     &column_getter.table_name,
+                        //     &column_getter.column_name,
+                        //     row_id,
+                        //     &column_getter.id_column_name,
+                        //     internal_dependency.type_,
+                        // )
                     } else {
                         database
                             .get_column(
@@ -497,23 +498,24 @@ async fn populate_internal_dependencies(
                 InternalDependencyResolver::LiteralValue(literal_value) => literal_value.0.clone(),
                 InternalDependencyResolver::ColumnGetterList(column_getter_list) => {
                     DependencyValue::List(if is_database_sync {
-                        database.get_column_list_sync(
-                            &column_getter_list.table_name,
-                            &column_getter_list.column_name,
-                            internal_dependency.type_,
-                            &column_getter_list
-                                .wheres
-                                .iter()
-                                .map(|where_| {
-                                    WhereResolved::new(
-                                        where_.column_name.clone(),
-                                        // TODO: this is punting on where's specifying
-                                        // values
-                                        external_dependency_values.get("id").unwrap().clone(),
-                                    )
-                                })
-                                .collect::<Vec<_>>(),
-                        )
+                        unimplemented!()
+                        // database.get_column_list_sync(
+                        //     &column_getter_list.table_name,
+                        //     &column_getter_list.column_name,
+                        //     internal_dependency.type_,
+                        //     &column_getter_list
+                        //         .wheres
+                        //         .iter()
+                        //         .map(|where_| {
+                        //             WhereResolved::new(
+                        //                 where_.column_name.clone(),
+                        //                 // TODO: this is punting on where's specifying
+                        //                 // values
+                        //                 external_dependency_values.get("id").unwrap().clone(),
+                        //             )
+                        //         })
+                        //         .collect::<Vec<_>>(),
+                        // )
                     } else {
                         database
                             .get_column_list(
