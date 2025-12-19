@@ -126,7 +126,10 @@ pub fn compute_sync_response(
     ))
 }
 
-#[instrument(level = "trace", skip(field_plans, schema, database))]
+#[instrument(
+    level = "trace",
+    skip(field_plans, schema, database, external_dependency_values)
+)]
 fn compute_sync_response_fields(
     field_plans: &IndexMap<SmolStr, SyncFieldPlan<'_>>,
     schema: &Schema,
