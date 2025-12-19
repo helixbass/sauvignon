@@ -4,6 +4,7 @@ use std::mem;
 
 use chrono::NaiveDate;
 use jiff::Timestamp;
+use smallvec::SmallVec;
 use smol_str::{SmolStr, ToSmolStr};
 use sqlx::postgres::PgValueRef;
 use squalid::{OptionExt, _d};
@@ -153,6 +154,8 @@ impl WhereResolved {
         Self { column_name, value }
     }
 }
+
+pub type WheresResolved = SmallVec<[WhereResolved; 2]>;
 
 pub struct LiteralValueInternalDependencyResolver(pub DependencyValue);
 

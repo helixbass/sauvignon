@@ -6,9 +6,9 @@ use squalid::{OptionExt, _d};
 use tracing::instrument;
 
 use crate::{
-    request, types, Argument, CarverOrPopulator, Database, ExternalDependencyValues,
-    InternalDependencyResolver, InternalDependencyValues, OperationType, Request, ResponseValue,
-    Schema, Selection, WhereResolved,
+    request, types, Argument, CarverOrPopulator, ColumnToken, ColumnTokens, Database,
+    ExternalDependencyValues, InternalDependencyResolver, InternalDependencyValues, OperationType,
+    Request, ResponseValue, Schema, Selection, WhereResolved, WheresResolved,
 };
 
 pub struct SyncQueryPlan<'a> {
@@ -16,10 +16,12 @@ pub struct SyncQueryPlan<'a> {
 }
 
 impl<'a> SyncQueryPlan<'a> {
-    #[instrument(level = "trace", skip(request, schema))]
-    pub fn new(request: &'a Request, schema: &'a Schema) -> Self {
+    #[instrument(level = "trace", skip(request, schema, database))]
+    pub fn new(request: &'a Request, schema: &'a Schema, database: &dyn Database) -> Self {
         let chosen_operation = request.chosen_operation();
         assert_eq!(chosen_operation.operation_type, OperationType::Query);
+
+        let column_tokens = database.column_tokens().unwrap();
 
         Self {
             field_plans: create_field_plans(
@@ -27,6 +29,7 @@ impl<'a> SyncQueryPlan<'a> {
                 &[schema.query_type_name.clone()].into_iter().collect(),
                 schema,
                 request,
+                column_tokens,
             )
             .remove(&schema.query_type_name)
             .unwrap(),
@@ -34,12 +37,13 @@ impl<'a> SyncQueryPlan<'a> {
     }
 }
 
-#[instrument(level = "trace", skip(selection_set, schema, request))]
+#[instrument(level = "trace", skip(selection_set, schema, request, column_tokens))]
 fn create_field_plans<'a>(
     selection_set: &'a [Selection],
     all_current_concrete_type_names: &HashSet<SmolStr>,
     schema: &'a Schema,
     request: &'a Request,
+    column_tokens: &ColumnTokens,
 ) -> HashMap<SmolStr, IndexMap<SmolStr, SyncFieldPlan<'a>>> {
     let mut by_concrete_type: HashMap<SmolStr, IndexMap<SmolStr, SyncFieldPlan<'a>>> = _d();
 
@@ -61,6 +65,7 @@ fn create_field_plans<'a>(
                                     .field(&field.name),
                                 schema,
                                 request,
+                                column_tokens,
                             ),
                         )
                         .assert_none();
@@ -77,15 +82,20 @@ pub struct SyncFieldPlan<'a> {
     pub field_type: &'a types::Field,
     pub selection_set_by_type: Option<HashMap<SmolStr, IndexMap<SmolStr, SyncFieldPlan<'a>>>>,
     pub arguments: Option<IndexMap<SmolStr, Argument>>,
+    pub column_token: ColumnToken,
 }
 
 impl<'a> SyncFieldPlan<'a> {
-    #[instrument(level = "trace", skip(request_field, field_type, schema, request))]
+    #[instrument(
+        level = "trace",
+        skip(request_field, field_type, schema, request, column_tokens)
+    )]
     pub fn new(
         request_field: &'a request::Field,
         field_type: &'a types::Field,
         schema: &'a Schema,
         request: &'a Request,
+        column_tokens: &ColumnTokens,
     ) -> Self {
         Self {
             name: request_field.name.clone(),
@@ -98,6 +108,7 @@ impl<'a> SyncFieldPlan<'a> {
                     ),
                     schema,
                     request,
+                    column_tokens,
                 )
             }),
             arguments: request_field.arguments.as_ref().map(|arguments| {
@@ -106,6 +117,15 @@ impl<'a> SyncFieldPlan<'a> {
                     .map(|argument| (argument.name.clone(), argument.clone()))
                     .collect()
             }),
+            column_token: match &field_type.resolver.internal_dependencies[0].resolver {
+                InternalDependencyResolver::ColumnGetter(column_getter) => {
+                    column_tokens[&column_getter.table_name][&column_getter.column_name]
+                }
+                InternalDependencyResolver::ColumnGetterList(column_getter_list) => {
+                    column_tokens[&column_getter_list.table_name][&column_getter_list.column_name]
+                }
+                _ => unimplemented!(),
+            },
         }
     }
 }
@@ -116,7 +136,7 @@ pub fn compute_sync_response(
     request: &Request,
     database: &dyn Database,
 ) -> ResponseValue {
-    let query_plan = SyncQueryPlan::new(request, schema);
+    let query_plan = SyncQueryPlan::new(request, schema, database);
 
     ResponseValue::Map(compute_sync_response_fields(
         &query_plan.field_plans,
@@ -146,8 +166,7 @@ fn compute_sync_response_fields(
                 match &internal_dependency.resolver {
                     InternalDependencyResolver::ColumnGetter(column_getter) => {
                         let value = database.get_column_sync(
-                            &column_getter.table_name,
-                            &column_getter.column_name,
+                            field_plan.column_token,
                             external_dependency_values.get("id").unwrap().as_id(),
                             &column_getter.id_column_name,
                             internal_dependency.type_,
@@ -183,8 +202,7 @@ fn compute_sync_response_fields(
                         // from .get_column_list_sync() to avoid
                         // allocating giant Vec?
                         let list = database.get_column_list_sync(
-                            &column_getter_list.table_name,
-                            &column_getter_list.column_name,
+                            field_plan.column_token,
                             internal_dependency.type_,
                             // TODO: optimize this to not allocate Vec
                             // for single-where case
@@ -199,7 +217,7 @@ fn compute_sync_response_fields(
                                         external_dependency_values.get("id").unwrap().clone(),
                                     )
                                 })
-                                .collect::<Vec<_>>(),
+                                .collect::<WheresResolved>(),
                         );
                         match &resolver.carver_or_populator {
                             CarverOrPopulator::PopulatorList(populator) => {
