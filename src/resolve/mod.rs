@@ -1,11 +1,11 @@
 use std::collections::HashMap;
 
 use heck_smol_str::ToPascalCase;
-use smol_str::SmolStr;
+use smol_str::{SmolStr, ToSmolStr};
 use tracing::instrument;
 
 use crate::{
-    pluralize, singularize, ExternalDependency, ExternalDependencyValues, InternalDependency,
+    pluralize, singularize, ExternalDependency, ExternalDependencyValues, Id, InternalDependency,
     InternalDependencyValues, ResponseValue,
 };
 
@@ -255,14 +255,16 @@ impl Carver for IdCarver {
         external_dependencies: &ExternalDependencyValues,
         internal_dependencies: &InternalDependencyValues,
     ) -> ResponseValue {
-        ResponseValue::String(
-            internal_dependencies
-                .get(&self.name)
-                .or_else(|| external_dependencies.get(&self.name))
-                .unwrap()
-                .as_id()
-                .get_string(),
-        )
+        match internal_dependencies
+            .get(&self.name)
+            .or_else(|| external_dependencies.get(&self.name))
+            .unwrap()
+            .as_id()
+        {
+            Id::String(str) => ResponseValue::String(str.clone()),
+            Id::Int(int) => ResponseValue::String(int.to_smolstr()),
+            Id::Uuid(uuid) => ResponseValue::Uuid(*uuid),
+        }
     }
 }
 
