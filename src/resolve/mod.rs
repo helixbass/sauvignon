@@ -1,11 +1,11 @@
 use std::collections::HashMap;
 
 use heck_smol_str::ToPascalCase;
-use smol_str::SmolStr;
+use smol_str::{SmolStr, ToSmolStr};
 use tracing::instrument;
 
 use crate::{
-    pluralize, singularize, ExternalDependency, ExternalDependencyValues, InternalDependency,
+    pluralize, singularize, ExternalDependency, ExternalDependencyValues, Id, InternalDependency,
     InternalDependencyValues, ResponseValue,
 };
 
@@ -65,10 +65,10 @@ impl StringCarver {
 }
 
 impl Carver for StringCarver {
-    #[instrument(
-        level = "trace",
-        skip(self, external_dependencies, internal_dependencies)
-    )]
+    // #[instrument(
+    //     level = "trace",
+    //     skip(self, external_dependencies, internal_dependencies)
+    // )]
     fn carve(
         &self,
         external_dependencies: &ExternalDependencyValues,
@@ -96,10 +96,10 @@ impl OptionalIntCarver {
 }
 
 impl Carver for OptionalIntCarver {
-    #[instrument(
-        level = "trace",
-        skip(self, external_dependencies, internal_dependencies)
-    )]
+    // #[instrument(
+    //     level = "trace",
+    //     skip(self, external_dependencies, internal_dependencies)
+    // )]
     fn carve(
         &self,
         external_dependencies: &ExternalDependencyValues,
@@ -125,10 +125,10 @@ impl OptionalFloatCarver {
 }
 
 impl Carver for OptionalFloatCarver {
-    #[instrument(
-        level = "trace",
-        skip(self, external_dependencies, internal_dependencies)
-    )]
+    // #[instrument(
+    //     level = "trace",
+    //     skip(self, external_dependencies, internal_dependencies)
+    // )]
     fn carve(
         &self,
         external_dependencies: &ExternalDependencyValues,
@@ -154,10 +154,10 @@ impl OptionalEnumValueCarver {
 }
 
 impl Carver for OptionalEnumValueCarver {
-    #[instrument(
-        level = "trace",
-        skip(self, external_dependencies, internal_dependencies)
-    )]
+    // #[instrument(
+    //     level = "trace",
+    //     skip(self, external_dependencies, internal_dependencies)
+    // )]
     fn carve(
         &self,
         external_dependencies: &ExternalDependencyValues,
@@ -186,10 +186,10 @@ impl EnumValueCarver {
 }
 
 impl Carver for EnumValueCarver {
-    #[instrument(
-        level = "trace",
-        skip(self, external_dependencies, internal_dependencies)
-    )]
+    // #[instrument(
+    //     level = "trace",
+    //     skip(self, external_dependencies, internal_dependencies)
+    // )]
     fn carve(
         &self,
         external_dependencies: &ExternalDependencyValues,
@@ -217,10 +217,10 @@ impl TimestampCarver {
 }
 
 impl Carver for TimestampCarver {
-    #[instrument(
-        level = "trace",
-        skip(self, external_dependencies, internal_dependencies)
-    )]
+    // #[instrument(
+    //     level = "trace",
+    //     skip(self, external_dependencies, internal_dependencies)
+    // )]
     fn carve(
         &self,
         external_dependencies: &ExternalDependencyValues,
@@ -246,23 +246,25 @@ impl IdCarver {
 }
 
 impl Carver for IdCarver {
-    #[instrument(
-        level = "trace",
-        skip(self, external_dependencies, internal_dependencies)
-    )]
+    // #[instrument(
+    //     level = "trace",
+    //     skip(self, external_dependencies, internal_dependencies)
+    // )]
     fn carve(
         &self,
         external_dependencies: &ExternalDependencyValues,
         internal_dependencies: &InternalDependencyValues,
     ) -> ResponseValue {
-        ResponseValue::String(
-            internal_dependencies
-                .get(&self.name)
-                .or_else(|| external_dependencies.get(&self.name))
-                .unwrap()
-                .as_id()
-                .get_string(),
-        )
+        match internal_dependencies
+            .get(&self.name)
+            .or_else(|| external_dependencies.get(&self.name))
+            .unwrap()
+            .as_id()
+        {
+            Id::String(str) => ResponseValue::String(str.clone()),
+            Id::Int(int) => ResponseValue::String(int.to_smolstr()),
+            Id::Uuid(uuid) => ResponseValue::Uuid(*uuid),
+        }
     }
 }
 
@@ -277,10 +279,10 @@ impl OptionalStringCarver {
 }
 
 impl Carver for OptionalStringCarver {
-    #[instrument(
-        level = "trace",
-        skip(self, external_dependencies, internal_dependencies)
-    )]
+    // #[instrument(
+    //     level = "trace",
+    //     skip(self, external_dependencies, internal_dependencies)
+    // )]
     fn carve(
         &self,
         external_dependencies: &ExternalDependencyValues,
@@ -307,10 +309,10 @@ impl IntCarver {
 }
 
 impl Carver for IntCarver {
-    #[instrument(
-        level = "trace",
-        skip(self, external_dependencies, internal_dependencies)
-    )]
+    // #[instrument(
+    //     level = "trace",
+    //     skip(self, external_dependencies, internal_dependencies)
+    // )]
     fn carve(
         &self,
         external_dependencies: &ExternalDependencyValues,
@@ -338,10 +340,10 @@ impl DateCarver {
 }
 
 impl Carver for DateCarver {
-    #[instrument(
-        level = "trace",
-        skip(self, external_dependencies, internal_dependencies)
-    )]
+    // #[instrument(
+    //     level = "trace",
+    //     skip(self, external_dependencies, internal_dependencies)
+    // )]
     fn carve(
         &self,
         external_dependencies: &ExternalDependencyValues,
@@ -375,10 +377,10 @@ impl EnumValueCarverList {
 }
 
 impl CarverList for EnumValueCarverList {
-    #[instrument(
-        level = "trace",
-        skip(self, _external_dependencies, internal_dependencies)
-    )]
+    // #[instrument(
+    //     level = "trace",
+    //     skip(self, _external_dependencies, internal_dependencies)
+    // )]
     fn carve(
         &self,
         _external_dependencies: &ExternalDependencyValues,
@@ -398,6 +400,15 @@ pub enum Populator {
     Value(ValuePopulator),
     Values(ValuesPopulator),
     Dyn(Box<dyn PopulatorInterface>),
+}
+
+impl Populator {
+    pub fn as_values(&self) -> &ValuesPopulator {
+        match self {
+            Self::Values(populator) => populator,
+            _ => panic!("expected values populator"),
+        }
+    }
 }
 
 impl PopulatorInterface for Populator {
@@ -657,6 +668,15 @@ impl OptionalPopulatorInterface for OptionalValuesPopulator {
 pub enum PopulatorList {
     Value(ValuePopulatorList),
     Dyn(Box<dyn PopulatorListInterface>),
+}
+
+impl PopulatorList {
+    pub fn as_value(&self) -> &ValuePopulatorList {
+        match self {
+            Self::Value(populator) => populator,
+            _ => panic!("Expected value"),
+        }
+    }
 }
 
 impl PopulatorListInterface for PopulatorList {

@@ -4,6 +4,7 @@ use serde::Serialize;
 use smol_str::{format_smolstr, SmolStr};
 use squalid::_d;
 use tracing::instrument;
+use uuid::Uuid;
 
 use crate::{
     ExternalDependencyValues, FieldPlan, IndexMap, Location, ParseOrLexError, ValidationError,
@@ -52,6 +53,7 @@ pub enum ResponseValue {
     Int(i32),
     Float(f64),
     EnumValue(SmolStr),
+    Uuid(Uuid),
 }
 
 impl From<FieldsInProgress<'_>> for ResponseValue {
