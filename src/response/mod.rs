@@ -68,14 +68,9 @@ impl Serialize for ResponseValueListIter {
     where
         TSerializer: Serializer,
     {
-        // serializer.collect_seq(&*self.0)
         serializer.collect_seq(self.0.cloned())
     }
 }
-
-// pub trait BoxDynIteratorResponseValue {
-//     fn cloned(&self) -> Box<dyn Iterator<Item = ResponseValue>>;
-// }
 
 pub struct ResponseValueListIterInner<TIterator: Iterator<Item = ResponseValue> + Clone> {
     iterator: TIterator,
@@ -85,10 +80,6 @@ impl<TIterator: Iterator<Item = ResponseValue> + Clone> ResponseValueListIterInn
     pub fn new(iterator: TIterator) -> Self {
         Self { iterator }
     }
-
-    // pub fn cloned<'a>(&'a self) -> Box<dyn Iterator<Item = ResponseValue> + 'a> {
-    //     Box::new(self.iterator.clone())
-    // }
 }
 
 pub trait CloneResponseValueIterator {
@@ -103,28 +94,43 @@ impl<TIterator: Iterator<Item = ResponseValue> + Clone> CloneResponseValueIterat
     }
 }
 
-// pub struct ResponseValueListIter(Box<dyn Iterator<Item = ResponseValue>>);
+pub struct ResponseValueMapIter(Box<dyn CloneResponseValueMapIterator>);
 
-// impl ResponseValueListIter {
-//     pub fn cloned(&self) -> Box<dyn Iterator<Item = ResponseValue>> {
-//         unimplemented!()
-//     }
-// }
+impl Serialize for ResponseValueMapIter {
+    fn serialize<TSerializer>(
+        &self,
+        serializer: TSerializer,
+    ) -> Result<TSerializer::Ok, TSerializer::Error>
+    where
+        TSerializer: Serializer,
+    {
+        serializer.collect_map(self.0.cloned())
+    }
+}
 
-// impl Serialize for ResponseValueListIter {
-//     fn serialize<TSerializer>(
-//         &self,
-//         serializer: TSerializer,
-//     ) -> Result<TSerializer::Ok, TSerializer::Error>
-//     where
-//         TSerializer: Serializer,
-//     {
-//         // serializer.collect_seq(&*self.0)
-//         serializer.collect_seq(self.cloned())
-//     }
-// }
+pub struct ResponseValueMapIterInner<TIterator: Iterator<Item = (SmolStr, ResponseValue)> + Clone> {
+    iterator: TIterator,
+}
 
-pub struct ResponseValueMapIter(Box<dyn Iterator<Item = (SmolStr, ResponseValue)>>);
+impl<TIterator: Iterator<Item = (SmolStr, ResponseValue)> + Clone>
+    ResponseValueMapIterInner<TIterator>
+{
+    pub fn new(iterator: TIterator) -> Self {
+        Self { iterator }
+    }
+}
+
+pub trait CloneResponseValueMapIterator {
+    fn cloned<'a>(&'a self) -> Box<dyn Iterator<Item = (SmolStr, ResponseValue)> + 'a>;
+}
+
+impl<TIterator: Iterator<Item = (SmolStr, ResponseValue)> + Clone> CloneResponseValueMapIterator
+    for ResponseValueMapIterInner<TIterator>
+{
+    fn cloned<'a>(&'a self) -> Box<dyn Iterator<Item = (SmolStr, ResponseValue)> + 'a> {
+        Box::new(self.iterator.clone())
+    }
+}
 
 impl From<FieldsInProgress<'_>> for ResponseValue {
     fn from(fields_in_progress: FieldsInProgress) -> Self {
