@@ -82,11 +82,11 @@ impl<TIterator: Iterator<Item = ResponseValue> + Clone> ResponseValueListIterInn
     }
 }
 
-pub trait CloneResponseValueIterator {
+pub trait CloneResponseValueIterator: Send + Sync {
     fn cloned<'a>(&'a self) -> Box<dyn Iterator<Item = ResponseValue> + 'a>;
 }
 
-impl<TIterator: Iterator<Item = ResponseValue> + Clone> CloneResponseValueIterator
+impl<TIterator: Iterator<Item = ResponseValue> + Clone + Send + Sync> CloneResponseValueIterator
     for ResponseValueListIterInner<TIterator>
 {
     fn cloned<'a>(&'a self) -> Box<dyn Iterator<Item = ResponseValue> + 'a> {
@@ -120,12 +120,12 @@ impl<TIterator: Iterator<Item = (SmolStr, ResponseValue)> + Clone>
     }
 }
 
-pub trait CloneResponseValueMapIterator {
+pub trait CloneResponseValueMapIterator: Send + Sync {
     fn cloned<'a>(&'a self) -> Box<dyn Iterator<Item = (SmolStr, ResponseValue)> + 'a>;
 }
 
-impl<TIterator: Iterator<Item = (SmolStr, ResponseValue)> + Clone> CloneResponseValueMapIterator
-    for ResponseValueMapIterInner<TIterator>
+impl<TIterator: Iterator<Item = (SmolStr, ResponseValue)> + Clone + Send + Sync>
+    CloneResponseValueMapIterator for ResponseValueMapIterInner<TIterator>
 {
     fn cloned<'a>(&'a self) -> Box<dyn Iterator<Item = (SmolStr, ResponseValue)> + 'a> {
         Box::new(self.iterator.clone())
