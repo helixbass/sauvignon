@@ -222,10 +222,10 @@ async fn compute_response(
     request: &Request,
     database: (&dyn Database, bool),
 ) -> ResponseValue {
-    let query_plan = QueryPlan::new(&request, schema);
     if database.1 {
-        return compute_sync_response(schema, request, database, query_plan);
+        return compute_sync_response(schema, request, database.0);
     }
+    let query_plan = QueryPlan::new(&request, schema);
     let response_in_progress = query_plan.initial_response_in_progress();
     let mut fields_in_progress = response_in_progress.fields;
     loop {
