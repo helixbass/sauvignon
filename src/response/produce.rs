@@ -12,9 +12,9 @@ use crate::{
     Argument, Carver, CarverList, CarverOrPopulator, ColumnGetter, ColumnGetterList, Database,
     DependencyType, DependencyValue, ExternalDependencyValues, FieldPlan, Id, InternalDependency,
     InternalDependencyResolver, InternalDependencyValues, OptionalPopulator,
-    OptionalUnionOrInterfaceTypePopulator, Populator, PopulatorInterface, PopulatorList,
-    PopulatorListInterface, QueryPlan, ResponseValue, Schema, Type, UnionOrInterfaceTypePopulator,
-    Value, WhereResolved, WheresResolved,
+    OptionalPopulatorInterface, OptionalUnionOrInterfaceTypePopulator, Populator,
+    PopulatorInterface, PopulatorList, PopulatorListInterface, QueryPlan, ResponseValue, Schema,
+    Type, UnionOrInterfaceTypePopulator, Value, WhereResolved, WheresResolved,
 };
 
 type IndexInProduced = usize;
@@ -1068,7 +1068,6 @@ fn optionally_populate_union_or_interface_object<'a: 'b, 'b>(
 fn optionally_populate_object<'a: 'b, 'b>(
     external_dependency_values: &ExternalDependencyValues,
     internal_dependency_values: &InternalDependencyValues,
-    type_name: &str,
     populator: &OptionalPopulator,
     produced: &mut Vec<Produced>,
     parent_object_index: IndexInProduced,
