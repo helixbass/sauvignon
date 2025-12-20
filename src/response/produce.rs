@@ -133,19 +133,18 @@ pub async fn produce_response(
                             external_dependency_values,
                         },
                     ) => {
-                        let populated = populator.populate(
+                        populate_list(
                             external_dependency_values,
                             &[(
                                 async_instruction.is_internal_dependency_of.dependency_name,
                                 DependencyValue::List(ids),
                             )]
+                            .into_iter()
                             .collect(),
-                        );
-                        produced.push(Produced::FieldNewListOfObjects {
+                            populator,
+                            &mut produced,
                             parent_object_index,
-                            index_of_field_in_object,
-                            field_name: field_name.clone(),
-                        });
+                        );
                     }
                     _ => unimplemented!(),
                 }
@@ -235,37 +234,17 @@ fn make_progress_selection_set(
                             );
                         }
                         CarverOrPopulator::PopulatorList(populator) => {
-                            let populated = populator
-                                .populate(&external_dependency_values, &internal_dependency_values);
-                            // TODO: this presumably needs to maybe also be
-                            // eg FieldNewListOfScalars?
-                            produced.push(Produced::FieldNewListOfObjects {
+                            populate_list(
+                                external_dependency_values,
+                                &internal_dependency_values,
+                                populator,
+                                produced,
                                 parent_object_index,
                                 index_of_field_in_object,
-                                field_name: field_name.clone(),
-                            });
-                            let parent_list_index = produced.len() - 1;
-
-                            let type_name = field_plan.field_type.type_.name();
-                            let selection_set =
-                                &field_plan.selection_set_by_type.as_ref().unwrap()[type_name];
-                            populated.into_iter().enumerate().for_each(
-                                |(index_in_list, external_dependency_values)| {
-                                    produced.push(Produced::ListItemNewObject {
-                                        parent_list_index,
-                                        index_in_list,
-                                    });
-                                    let parent_object_index = produced.len() - 1;
-
-                                    make_progress_selection_set(
-                                        selection_set,
-                                        parent_object_index,
-                                        &external_dependency_values,
-                                        produced,
-                                        current_async_instructions,
-                                        schema,
-                                    );
-                                },
+                                field_name,
+                                field_plan,
+                                current_async_instructions,
+                                schema,
                             );
                         }
                         _ => unimplemented!(),
@@ -325,6 +304,63 @@ fn make_progress_selection_set(
             }
         },
     );
+}
+
+#[instrument(
+    level = "trace",
+    skip(
+        external_dependency_values,
+        internal_dependency_values,
+        populator,
+        produced,
+        field_plan,
+        current_async_instructions,
+        schema,
+    )
+)]
+fn populate_list(
+    external_dependency_values: &ExternalDependencyValues,
+    internal_dependency_values: &InternalDependencyValues,
+    populator: &PopulatorList,
+    produced: &mut Vec<Produced>,
+    parent_object_index: IndexInProduced,
+    index_of_field_in_object: usize,
+    field_name: &SmolStr,
+    field_plan: &FieldPlan<'_>,
+    current_async_instructions: &mut Vec<AsyncInstruction>,
+    schema: &Schema,
+) {
+    let populated = populator.populate(external_dependency_values, &internal_dependency_values);
+    // TODO: this presumably needs to maybe also be
+    // eg FieldNewListOfScalars?
+    produced.push(Produced::FieldNewListOfObjects {
+        parent_object_index,
+        index_of_field_in_object,
+        field_name: field_name.clone(),
+    });
+    let parent_list_index = produced.len() - 1;
+
+    let type_name = field_plan.field_type.type_.name();
+    let selection_set = &field_plan.selection_set_by_type.as_ref().unwrap()[type_name];
+    populated
+        .into_iter()
+        .enumerate()
+        .for_each(|(index_in_list, external_dependency_values)| {
+            produced.push(Produced::ListItemNewObject {
+                parent_list_index,
+                index_in_list,
+            });
+            let parent_object_index = produced.len() - 1;
+
+            make_progress_selection_set(
+                selection_set,
+                parent_object_index,
+                &external_dependency_values,
+                produced,
+                current_async_instructions,
+                schema,
+            );
+        });
 }
 
 #[instrument(
