@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use futures::future;
 use indexmap::IndexMap;
 use itertools::Itertools;
-use smallvec::SmallVec;
+use smallvec::{smallvec, SmallVec};
 use smol_str::SmolStr;
 use squalid::_d;
 use tracing::{instrument, trace_span};
@@ -82,8 +82,10 @@ enum AsyncStepResponse {
     Column(DependencyValue),
 }
 
+type AsyncSteps = SmallVec<[AsyncStep; 4]>;
+
 struct AsyncInstruction<'a> {
-    pub step: AsyncStep,
+    pub steps: AsyncSteps,
     pub is_internal_dependency_of: IsInternalDependencyOf<'a>,
 }
 
@@ -141,26 +143,38 @@ pub async fn produce_response(
             break;
         }
 
-        let responses = future::join_all(
-            current_async_instructions
-                .iter()
-                .map(|async_instruction| async_instruction.step.run(database)),
-        )
+        let responses = future::join_all(current_async_instructions.iter().flat_map(
+            |async_instruction| {
+                async_instruction
+                    .steps
+                    .iter()
+                    .map(|step| step.run(database))
+            },
+        ))
         .await;
 
         let mut next_async_instructions: Vec<AsyncInstruction<'_>> = _d();
-        responses
+        let mut responses = responses.into_iter();
+        current_async_instructions
             .into_iter()
-            .zip(current_async_instructions)
-            .for_each(|(response, async_instruction)| {
+            .for_each(|async_instruction| {
+                enum StepResponses {
+                    Single(AsyncStepResponse),
+                    Two(AsyncStepResponse, AsyncStepResponse),
+                }
+                let step_responses = match async_instruction.steps.len() {
+                    1 => StepResponses::Single(responses.next().unwrap()),
+                    2 => StepResponses::Two(responses.next().unwrap(), responses.next().unwrap()),
+                    _ => unimplemented!(),
+                };
                 match (
-                    response,
+                    step_responses,
                     async_instruction
                         .is_internal_dependency_of
                         .is_internal_dependency_of,
                 ) {
                     (
-                        AsyncStepResponse::ListOfIds(ids),
+                        StepResponses::Single(AsyncStepResponse::ListOfIds(ids)),
                         IsInternalDependencyOfInner::ObjectFieldListOfObjects {
                             parent_object_index,
                             index_of_field_in_object,
@@ -189,7 +203,7 @@ pub async fn produce_response(
                         );
                     }
                     (
-                        AsyncStepResponse::Column(column_value),
+                        StepResponses::Single(AsyncStepResponse::Column(column_value)),
                         IsInternalDependencyOfInner::ObjectFieldScalar {
                             parent_object_index,
                             index_of_field_in_object,
@@ -214,7 +228,7 @@ pub async fn produce_response(
                         });
                     }
                     (
-                        AsyncStepResponse::Column(column_value),
+                        StepResponses::Single(AsyncStepResponse::Column(column_value)),
                         IsInternalDependencyOfInner::ObjectFieldObject {
                             parent_object_index,
                             index_of_field_in_object,
@@ -375,11 +389,11 @@ fn make_progress_selection_set<'a: 'b, 'b>(
                             match &internal_dependency.resolver {
                                 InternalDependencyResolver::ColumnGetter(column_getter) => {
                                     current_async_instructions.push(AsyncInstruction {
-                                        step: column_getter_step(
+                                        steps: smallvec![column_getter_step(
                                             column_getter,
                                             internal_dependency,
                                             &external_dependency_values,
-                                        ),
+                                        )],
                                         is_internal_dependency_of: IsInternalDependencyOf {
                                             dependency_name: internal_dependency.name.clone(),
                                             is_internal_dependency_of: IsInternalDependencyOfInner::ObjectFieldScalar {
@@ -409,11 +423,11 @@ fn make_progress_selection_set<'a: 'b, 'b>(
                             match &internal_dependency.resolver {
                                 InternalDependencyResolver::ColumnGetter(column_getter) => {
                                     current_async_instructions.push(AsyncInstruction {
-                                        step: column_getter_step(
+                                        steps: smallvec![column_getter_step(
                                             column_getter,
                                             internal_dependency,
                                             &external_dependency_values,
-                                        ),
+                                        )],
                                         is_internal_dependency_of: IsInternalDependencyOf {
                                             dependency_name: internal_dependency.name.clone(),
                                             is_internal_dependency_of: IsInternalDependencyOfInner::ObjectFieldObject {
@@ -435,7 +449,39 @@ fn make_progress_selection_set<'a: 'b, 'b>(
                             unimplemented!()
                         }
                         CarverOrPopulator::UnionOrInterfaceTypePopulator(type_populator, populator) => {
-                            unimplemented!()
+                            assert_eq!(
+                                field_plan
+                                    .field_type
+                                    .resolver
+                                    .internal_dependencies.len(),
+                                2
+                            );
+                            let internal_dependency =
+                                &field_plan.field_type.resolver.internal_dependencies[0];
+                            match &internal_dependency.resolver {
+                                InternalDependencyResolver::ColumnGetter(column_getter) => {
+                                    current_async_instructions.push(AsyncInstruction {
+                                        steps: smallvec![column_getter_step(
+                                            column_getter,
+                                            internal_dependency,
+                                            &external_dependency_values,
+                                        )],
+                                        is_internal_dependency_of: IsInternalDependencyOf {
+                                            dependency_name: internal_dependency.name.clone(),
+                                            is_internal_dependency_of: IsInternalDependencyOfInner::ObjectFieldObject {
+                                                parent_object_index,
+                                                populator,
+                                                external_dependency_values: external_dependency_values
+                                                    .clone(),
+                                                index_of_field_in_object,
+                                                field_name: field_name.clone(),
+                                                field_plan,
+                                            },
+                                        },
+                                    });
+                                }
+                                _ => unreachable!("probably not?"),
+                            }
                         }
                         CarverOrPopulator::OptionalUnionOrInterfaceTypePopulator(type_populator, populator) => {
                             unimplemented!()
@@ -453,7 +499,7 @@ fn make_progress_selection_set<'a: 'b, 'b>(
                             match &internal_dependency.resolver {
                                 InternalDependencyResolver::ColumnGetterList(column_getter_list) => {
                                     current_async_instructions.push(AsyncInstruction {
-                                        step: AsyncStep::ListOfIds {
+                                        steps: smallvec![AsyncStep::ListOfIds {
                                             table_name: column_getter_list.table_name.clone(),
                                             column_name: column_getter_list.column_name.clone(),
                                             dependency_type: internal_dependency.type_,
@@ -472,7 +518,7 @@ fn make_progress_selection_set<'a: 'b, 'b>(
                                                     )
                                                 })
                                                 .collect::<WheresResolved>(),
-                                        },
+                                        }],
                                         is_internal_dependency_of: IsInternalDependencyOf {
                                             dependency_name: internal_dependency.name.clone(),
                                             is_internal_dependency_of:
@@ -500,109 +546,6 @@ fn make_progress_selection_set<'a: 'b, 'b>(
                         ) => {
                             unimplemented!()
                         }
-                    }
-                    let internal_dependency =
-                        &field_plan.field_type.resolver.internal_dependencies[0];
-                    match &internal_dependency.resolver {
-                        InternalDependencyResolver::ColumnGetter(column_getter) => {
-                            current_async_instructions.push(AsyncInstruction {
-                                step: AsyncStep::Column {
-                                    table_name: column_getter.table_name.clone(),
-                                    column_name: column_getter.column_name.clone(),
-                                    id_column_name: column_getter.id_column_name.clone(),
-                                    dependency_type: internal_dependency.type_,
-                                    id: external_dependency_values
-                                        .get("id")
-                                        .unwrap()
-                                        .as_id()
-                                        .clone(),
-                                },
-                                is_internal_dependency_of: IsInternalDependencyOf {
-                                    dependency_name: internal_dependency.name.clone(),
-                                    is_internal_dependency_of:
-                                        match &field_plan
-                                                .field_type
-                                                .resolver
-                                                .carver_or_populator {
-                                            CarverOrPopulator::Carver(carver) => {
-                                                IsInternalDependencyOfInner::ObjectFieldScalar {
-                                                    parent_object_index,
-                                                    carver,
-                                                    external_dependency_values: external_dependency_values
-                                                        .clone(),
-                                                    index_of_field_in_object,
-                                                    field_name: field_name.clone(),
-                                                }
-                                            }
-                                            CarverOrPopulator::Populator(populator) => {
-                                                IsInternalDependencyOfInner::ObjectFieldObject {
-                                                    parent_object_index,
-                                                    populator,
-                                                    external_dependency_values: external_dependency_values
-                                                        .clone(),
-                                                    index_of_field_in_object,
-                                                    field_name: field_name.clone(),
-                                                    field_plan,
-                                                }
-                                            }
-                                            CarverOrPopulator::UnionOrInterfaceTypePopulator(type_populator, populator) => {
-                                                unimplemented!()
-                                            }
-                                            CarverOrPopulator::OptionalPopulator(populator) => {
-                                                unimplemented!()
-                                            }
-                                            CarverOrPopulator::OptionalUnionOrInterfaceTypePopulator(type_populator, populator) => {
-                                                unimplemented!()
-                                            }
-                                            _ => unreachable!()
-                                        }
-                                },
-                            });
-                        }
-                        InternalDependencyResolver::ColumnGetterList(column_getter_list) => {
-                            current_async_instructions.push(AsyncInstruction {
-                                step: AsyncStep::ListOfIds {
-                                    table_name: column_getter_list.table_name.clone(),
-                                    column_name: column_getter_list.column_name.clone(),
-                                    dependency_type: internal_dependency.type_,
-                                    wheres: column_getter_list
-                                        .wheres
-                                        .iter()
-                                        .map(|where_| {
-                                            WhereResolved::new(
-                                                where_.column_name.clone(),
-                                                // TODO: this is punting on where's specifying
-                                                // values
-                                                external_dependency_values
-                                                    .get("id")
-                                                    .unwrap()
-                                                    .clone(),
-                                            )
-                                        })
-                                        .collect::<WheresResolved>(),
-                                },
-                                is_internal_dependency_of: IsInternalDependencyOf {
-                                    dependency_name: internal_dependency.name.clone(),
-                                    // TODO: presumably also handle list of
-                                    // scalars here?
-                                    is_internal_dependency_of:
-                                        IsInternalDependencyOfInner::ObjectFieldListOfObjects {
-                                            parent_object_index,
-                                            populator: field_plan
-                                                .field_type
-                                                .resolver
-                                                .carver_or_populator
-                                                .as_populator_list(),
-                                            external_dependency_values: external_dependency_values
-                                                .clone(),
-                                            index_of_field_in_object,
-                                            field_name: field_name.clone(),
-                                            field_plan,
-                                        },
-                                },
-                            });
-                        }
-                        _ => unreachable!(),
                     }
                 }
             }
