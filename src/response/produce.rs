@@ -28,6 +28,13 @@ enum AsyncStep {
         table_name: SmolStr,
         other_columns: SmallVec<[SmolStr; 8]>,
     },
+    Column {
+        table_name: SmolStr,
+        column_name: SmolStr,
+        id_column_name: SmolStr,
+        dependency_type: DependencyType,
+        id: Id,
+    },
 }
 
 impl AsyncStep {
@@ -48,12 +55,30 @@ impl AsyncStep {
                 table_name,
                 other_columns,
             } => unimplemented!(),
+            Self::Column {
+                table_name,
+                column_name,
+                id_column_name,
+                dependency_type,
+                id,
+            } => AsyncStepResponse::Column(
+                database
+                    .get_column(
+                        table_name,
+                        column_name,
+                        id,
+                        id_column_name,
+                        *dependency_type,
+                    )
+                    .await,
+            ),
         }
     }
 }
 
 enum AsyncStepResponse {
     ListOfIds(Vec<DependencyValue>),
+    Column(DependencyValue),
 }
 
 struct AsyncInstruction<'a> {
@@ -69,8 +94,10 @@ struct IsInternalDependencyOf<'a> {
 enum IsInternalDependencyOfInner<'a> {
     ObjectFieldScalar {
         parent_object_index: IndexInProduced,
+        index_of_field_in_object: usize,
         carver: &'a Box<dyn Carver>,
-        external_dependency_values: &'a ExternalDependencyValues,
+        external_dependency_values: ExternalDependencyValues,
+        field_name: SmolStr,
     },
     ObjectFieldObject {
         parent_object_index: IndexInProduced,
@@ -156,6 +183,31 @@ pub async fn produce_response(
                             &mut next_async_instructions,
                             schema,
                         );
+                    }
+                    (
+                        AsyncStepResponse::Column(column_value),
+                        IsInternalDependencyOfInner::ObjectFieldScalar {
+                            parent_object_index,
+                            index_of_field_in_object,
+                            carver,
+                            external_dependency_values,
+                            field_name,
+                        },
+                    ) => {
+                        produced.push(Produced::FieldScalar {
+                            parent_object_index,
+                            index_of_field_in_object,
+                            field_name: field_name.clone(),
+                            value: carver.carve(
+                                &external_dependency_values,
+                                &[(
+                                    async_instruction.is_internal_dependency_of.dependency_name,
+                                    column_value,
+                                )]
+                                .into_iter()
+                                .collect(),
+                            ),
+                        });
                     }
                     _ => unimplemented!(),
                 }
@@ -274,7 +326,39 @@ fn make_progress_selection_set<'a: 'b, 'b>(
                     let internal_dependency =
                         &field_plan.field_type.resolver.internal_dependencies[0];
                     match &internal_dependency.resolver {
-                        InternalDependencyResolver::ColumnGetter(_) => unimplemented!(),
+                        InternalDependencyResolver::ColumnGetter(column_getter) => {
+                            current_async_instructions.push(AsyncInstruction {
+                                step: AsyncStep::Column {
+                                    table_name: column_getter.table_name.clone(),
+                                    column_name: column_getter.column_name.clone(),
+                                    id_column_name: column_getter.id_column_name.clone(),
+                                    dependency_type: internal_dependency.type_,
+                                    id: external_dependency_values
+                                        .get("id")
+                                        .unwrap()
+                                        .as_id()
+                                        .clone(),
+                                },
+                                is_internal_dependency_of: IsInternalDependencyOf {
+                                    dependency_name: internal_dependency.name.clone(),
+                                    // TODO: presumably also handle nested
+                                    // object here?
+                                    is_internal_dependency_of:
+                                        IsInternalDependencyOfInner::ObjectFieldScalar {
+                                            parent_object_index,
+                                            carver: field_plan
+                                                .field_type
+                                                .resolver
+                                                .carver_or_populator
+                                                .as_carver(),
+                                            external_dependency_values: external_dependency_values
+                                                .clone(),
+                                            index_of_field_in_object,
+                                            field_name: field_name.clone(),
+                                        },
+                                },
+                            });
+                        }
                         InternalDependencyResolver::ColumnGetterList(column_getter_list) => {
                             current_async_instructions.push(AsyncInstruction {
                                 step: AsyncStep::ListOfIds {

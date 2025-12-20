@@ -473,10 +473,7 @@ async fn populate_internal_dependencies(
             internal_dependency.name.clone(),
             match &internal_dependency.resolver {
                 InternalDependencyResolver::ColumnGetter(column_getter) => {
-                    let row_id = match external_dependency_values.get("id").unwrap() {
-                        DependencyValue::Id(id) => id,
-                        _ => unreachable!(),
-                    };
+                    let row_id = external_dependency_values.get("id").unwrap().as_id();
                     if is_database_sync {
                         unimplemented!()
                         // database.get_column_sync(
