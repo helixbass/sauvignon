@@ -144,7 +144,11 @@ impl From<Vec<Produced>> for ResponseValue {
             }
         }
 
-        ResponseValue::Map(construct_object(0, &mut objects_by_index))
+        ResponseValue::Map(construct_object(
+            0,
+            &mut objects_by_index,
+            &mut lists_of_objects_by_index,
+        ))
 
         // let mut completed_objects_by_index: HashMap<usize, Vec<(SmolStr, ResponseValue)>> = _d();
         // Self::Map(construct_object(
@@ -156,6 +160,7 @@ impl From<Vec<Produced>> for ResponseValue {
 fn construct_object(
     object_index: usize,
     objects_by_index: &mut HashMap<IndexInProduced, Vec<ObjectFieldStuff>>,
+    lists_of_objects_by_index: &mut HashMap<IndexInProduced, Vec<ListOfObjectsItemStuff>>,
 ) -> IndexMap<SmolStr, ResponseValue> {
     let mut fields = objects_by_index.remove(&object_index).unwrap();
     // TODO: simultaneously check that we have consecutive expected
@@ -169,10 +174,36 @@ fn construct_object(
                 match object_field_stuff.value_stub {
                     FieldValueStub::Value(value) => value,
                     FieldValueStub::ObjectIndexInProduced(index_in_produced) => {
-                        ResponseValue::Map(construct_object(index_in_produced, objects_by_index))
+                        ResponseValue::Map(construct_object(
+                            index_in_produced,
+                            objects_by_index,
+                            lists_of_objects_by_index,
+                        ))
                     }
                     FieldValueStub::ListIndexInProduced(index_in_produced) => {
-                        ResponseValue::List(unimplemented!())
+                        // TODO: in reality I assume here you'd know
+                        // list-of-objects vs list-of-scalars?
+                        ResponseValue::List({
+                            let mut items = lists_of_objects_by_index
+                                .remove(&index_in_produced)
+                                .unwrap();
+                            // TODO: like above also here simultaneously check
+                            // that we have consecutive expected
+                            // index_of_field_in_object's?
+                            items.sort_by_key(|list_of_objects_item_stuff| {
+                                list_of_objects_item_stuff.index_in_list
+                            });
+                            items
+                                .into_iter()
+                                .map(|list_of_objects_item_stuff| {
+                                    ResponseValue::Map(construct_object(
+                                        list_of_objects_item_stuff.object_index_in_produced,
+                                        objects_by_index,
+                                        lists_of_objects_by_index,
+                                    ))
+                                })
+                                .collect()
+                        })
                     }
                 },
             )
