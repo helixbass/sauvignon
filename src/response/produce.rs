@@ -6,7 +6,8 @@ use smol_str::SmolStr;
 use squalid::_d;
 use tracing::instrument;
 
-use crate::{Database, ExternalDependencyValues, QueryPlan, ResponseValue, Schema, DependencyValue, InternalDependency, InternalDependencyResolver, InternalDependencyValues};
+use crate::{Database, ExternalDependencyValues, QueryPlan, ResponseValue, Schema, DependencyValue, InternalDependency, InternalDependencyResolver, InternalDependencyValues,
+CarverOrPopulator, PopulatorInterface};
 
 type IndexInProduced = usize;
 
@@ -50,7 +51,7 @@ pub async fn produce_response(
     query_plan: &QueryPlan<'_>,
 ) -> ResponseValue {
     let mut produced: Vec<Produced> = _d();
-    produced.push(Produced::NewRootObject {});
+    produced.push(Produced::NewRootObject);
 
     let mut next_async_instructions: Vec<AsyncInstruction> = _d();
 
@@ -62,10 +63,39 @@ pub async fn produce_response(
                 field_plan.field_type.resolver.internal_dependencies.iter().all(|internal_dependency| {
                     internal_dependency.resolver.can_be_resolved_synchronously()
                 });
-            if can_resolve_all_internal_dependencies_synchronously {
-                let internal_dependencies: InternalDependencyValues = field_plan.field_type.resolver.internal_dependencies.iter().map(|internal_dependency| {
-                    get_internal_dependency_value_synchronous(&field_plan.arguments, &external_dependency_values, internal_dependency, schema)
-                }).collect();
+            match can_resolve_all_internal_dependencies_synchronously {
+                true => {
+                    let internal_dependency_values: InternalDependencyValues = field_plan.field_type.resolver.internal_dependencies.iter().map(|internal_dependency| {
+                        get_internal_dependency_value_synchronous(&field_plan.arguments, &external_dependency_values, internal_dependency, schema)
+                    }).collect();
+                    match &field_plan.field_type.resolver.carver_or_populator {
+                        CarverOrPopulator::Carver(carver) => {
+                            produced.push(Produced::FieldScalar {
+                                parent_object_index,
+                                index_of_field_in_object,
+                                field_name: field_name.clone(),
+                                value: carver.carve(
+                                    &external_dependency_values,
+                                    &internal_dependency_values,
+                                ),
+                            });
+                        }
+                        CarverOrPopulator::Populator(populator) => {
+                            let populated = populator.populate(&external_dependency_values, &internal_dependency_values);
+                            produced.push(Produced::FieldNewObject {
+                                parent_object_index,
+                                index_of_field_in_object,
+                                field_name: field_name.clone(),
+                            });
+                        }
+                        CarverOrPopulator::PopulatorList(populator) => {
+                        }
+                        _ => unimplemented!(),
+                    }
+                }
+                false => {
+                    unimplemented!()
+                }
             }
             match field_plan.selection_set_by_type.is_none() {
                 true => produced.push(
@@ -185,15 +215,11 @@ fn get_internal_dependency_value_synchronous(
 }
 
 enum Produced {
-    NewRootObject {
-        type_: SmolStr,
-    },
+    NewRootObject,
     FieldNewObject {
         parent_object_index: IndexInProduced,
         index_of_field_in_object: usize,
         field_name: SmolStr,
-        type_: SmolStr,
-        external_dependency_values_for_its_fields: ExternalDependencyValues,
     },
     FieldNewListOfObjects {
         parent_object_index: IndexInProduced,
@@ -204,8 +230,6 @@ enum Produced {
     ListItemNewObject {
         parent_list_index: IndexInProduced,
         index_in_list: usize,
-        type_: SmolStr,
-        external_dependency_values_for_its_fields: ExternalDependencyValues,
     },
     FieldScalar {
         parent_object_index: IndexInProduced,
@@ -241,28 +265,26 @@ impl From<Vec<Produced>> for ResponseValue {
 
         for (index, step) in produced.into_iter().enumerate() {
             match step {
+                Produced::NewRootObject => {
+                    assert_eq!(index, 0);
+
+                    objects_by_index.insert(index, _d());
+                }
                 Produced::FieldNewObject {
                     parent_object_index,
                     index_of_field_in_object,
                     field_name,
-                    type_,
-                    external_dependency_values_for_its_fields,
                 } => {
                     objects_by_index.insert(index, _d());
 
-                    match parent_object_index {
-                        None => {
-                            assert_eq!(index, 0);
-                        }
-                        Some(parent_object_index) => objects_by_index
-                            .get_mut(&parent_object_index)
-                            .unwrap()
-                            .push(ObjectFieldStuff {
-                                field_name,
-                                index_of_field_in_object,
-                                value_stub: FieldValueStub::ObjectIndexInProduced(index),
-                            }),
-                    }
+                    objects_by_index
+                        .get_mut(&parent_object_index)
+                        .unwrap()
+                        .push(ObjectFieldStuff {
+                            field_name,
+                            index_of_field_in_object,
+                            value_stub: FieldValueStub::ObjectIndexInProduced(index),
+                        });
                 }
                 Produced::FieldNewListOfObjects {
                     parent_object_index,
@@ -283,8 +305,6 @@ impl From<Vec<Produced>> for ResponseValue {
                 Produced::ListItemNewObject {
                     parent_list_index,
                     index_in_list,
-                    type_,
-                    external_dependency_values_for_its_fields,
                 } => {
                     objects_by_index.insert(index, _d());
 
