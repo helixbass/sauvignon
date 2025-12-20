@@ -1262,6 +1262,11 @@ enum Produced {
         index_in_list: usize,
         value: ResponseValue,
     },
+    FieldNewNull {
+        parent_object_index: IndexInProduced,
+        index_of_field_in_object: usize,
+        field_name: SmolStr,
+    },
 }
 
 struct ObjectFieldStuff {
@@ -1389,6 +1394,20 @@ impl From<Vec<Produced>> for ResponseValue {
                             field_name,
                             index_of_field_in_object,
                             value_stub: FieldValueStub::Value(value),
+                        });
+                }
+                Produced::FieldNewNull {
+                    parent_object_index,
+                    index_of_field_in_object,
+                    field_name,
+                } => {
+                    objects_by_index
+                        .get_mut(&parent_object_index)
+                        .unwrap()
+                        .push(ObjectFieldStuff {
+                            field_name,
+                            index_of_field_in_object,
+                            value_stub: FieldValueStub::Value(ResponseValue::Null),
                         });
                 }
             }
