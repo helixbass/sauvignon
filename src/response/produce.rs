@@ -138,8 +138,20 @@ fn make_progress_selection_set(
                                 index_of_field_in_object,
                                 field_name: field_name.clone(),
                             });
-                            // TODO: presumably queue up object fields?
-                            unimplemented!()
+                            let parent_object_index = produced.len() - 1;
+
+                            let type_name = field_plan.field_type.type_.name();
+                            let selection_set =
+                                &field_plan.selection_set_by_type.as_ref().unwrap()[type_name];
+
+                            make_progress_selection_set(
+                                selection_set,
+                                parent_object_index,
+                                &external_dependency_values,
+                                produced,
+                                next_async_instructions,
+                                schema,
+                            );
                         }
                         CarverOrPopulator::PopulatorList(populator) => {
                             let populated = populator
