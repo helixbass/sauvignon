@@ -10,8 +10,8 @@ use tracing::{instrument, trace_span};
 use crate::{
     Argument, Carver, CarverOrPopulator, Database, DependencyType, DependencyValue,
     ExternalDependencyValues, FieldPlan, Id, InternalDependency, InternalDependencyResolver,
-    InternalDependencyValues, Populator, PopulatorInterface, PopulatorListInterface, QueryPlan,
-    ResponseValue, Schema, Type, Value,
+    InternalDependencyValues, Populator, PopulatorInterface, PopulatorList, PopulatorListInterface,
+    QueryPlan, ResponseValue, Schema, Type, Value,
 };
 
 type IndexInProduced = usize;
@@ -43,8 +43,13 @@ enum IsInternalDependencyOfInner<'a> {
         external_dependency_values: &'a ExternalDependencyValues,
     },
     ObjectFieldObject {
-        new_object_index: IndexInProduced,
+        parent_object_index: IndexInProduced,
         populator: &'a Populator,
+        external_dependency_values: &'a ExternalDependencyValues,
+    },
+    ObjectFieldListOfObjects {
+        parent_object_index: IndexInProduced,
+        populator: &'a PopulatorList,
         external_dependency_values: &'a ExternalDependencyValues,
     },
 }
@@ -191,7 +196,40 @@ fn make_progress_selection_set(
                     }
                 }
                 false => {
-                    unimplemented!()
+                    assert_eq!(
+                        field_plan.field_type.resolver.internal_dependencies.len(),
+                        1
+                    );
+                    let internal_dependency =
+                        &field_plan.field_type.resolver.internal_dependencies[0];
+                    match &internal_dependency.resolver {
+                        InternalDependencyResolver::ColumnGetter(_) => unimplemented!(),
+                        InternalDependencyResolver::ColumnGetterList(column_getter_list) => {
+                            assert!(column_getter_list.wheres.is_empty());
+                            assert_eq!(column_getter_list.column_name, "id");
+                            next_async_instructions.push(AsyncInstruction {
+                                step: AsyncStep::ListOfIds {
+                                    table_name: column_getter_list.table_name.clone(),
+                                },
+                                is_internal_dependency_of: IsInternalDependencyOf {
+                                    dependency_name: internal_dependency.name.clone(),
+                                    // TODO: presumably also handle list of
+                                    // scalars here?
+                                    is_internal_dependency_of:
+                                        IsInternalDependencyOfInner::ObjectFieldListOfObjects {
+                                            parent_object_index,
+                                            populator: field_plan
+                                                .field_type
+                                                .resolver
+                                                .carver_or_populator
+                                                .as_populator_list(),
+                                            external_dependency_values,
+                                        },
+                                },
+                            });
+                        }
+                        _ => unreachable!(),
+                    }
                 }
             }
         },
