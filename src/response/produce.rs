@@ -31,6 +31,7 @@ enum AsyncStep {
 }
 
 impl AsyncStep {
+    #[instrument(level = "trace", skip(self, database))]
     pub async fn run(&self, database: &dyn Database) -> AsyncStepResponse {
         match self {
             Self::ListOfIds {
@@ -92,23 +93,63 @@ pub async fn produce_response(
     let mut produced: Vec<Produced> = _d();
     produced.push(Produced::NewRootObject);
 
+    let mut current_async_instructions: Vec<AsyncInstruction> = _d();
+    make_progress_selection_set(
+        &query_plan.field_plans,
+        0,
+        &ExternalDependencyValues::Empty,
+        &mut produced,
+        &mut current_async_instructions,
+        schema,
+    );
     loop {
-        let mut next_async_instructions: Vec<AsyncInstruction> = _d();
-
-        make_progress_selection_set(
-            &query_plan.field_plans,
-            0,
-            &ExternalDependencyValues::Empty,
-            &mut produced,
-            &mut next_async_instructions,
-            schema,
-        );
-
-        if next_async_instructions.is_empty() {
+        if current_async_instructions.is_empty() {
             break;
         }
 
-        let responses = future::join_all().await;
+        let responses = future::join_all(
+            current_async_instructions
+                .iter()
+                .map(|async_instruction| async_instruction.step.run(database)),
+        )
+        .await;
+
+        let mut next_async_instructions: Vec<AsyncInstruction> = _d();
+        responses
+            .into_iter()
+            .zip(current_async_instructions)
+            .for_each(|(response, async_instruction)| {
+                match (
+                    response,
+                    async_instruction
+                        .is_internal_dependency_of
+                        .is_internal_dependency_of,
+                ) {
+                    (
+                        AsyncStepResponse::ListOfIds(ids),
+                        IsInternalDependencyOfInner::ObjectFieldListOfObjects {
+                            parent_object_index,
+                            populator,
+                            external_dependency_values,
+                        },
+                    ) => {
+                        let populated = populator.populate(
+                            external_dependency_values,
+                            &[(
+                                async_instruction.is_internal_dependency_of.dependency_name,
+                                DependencyValue::List(ids),
+                            )]
+                            .collect(),
+                        );
+                        produced.push(Produced::FieldNewListOfObjects {
+                            parent_object_index,
+                            index_of_field_in_object,
+                            field_name: field_name.clone(),
+                        });
+                    }
+                    _ => unimplemented!(),
+                }
+            });
     }
 
     produced.into()
@@ -120,7 +161,7 @@ pub async fn produce_response(
         field_plans,
         external_dependency_values,
         produced,
-        next_async_instructions,
+        current_async_instructions,
         schema,
     )
 )]
@@ -129,7 +170,7 @@ fn make_progress_selection_set(
     parent_object_index: usize,
     external_dependency_values: &ExternalDependencyValues,
     produced: &mut Vec<Produced>,
-    next_async_instructions: &mut Vec<AsyncInstruction>,
+    current_async_instructions: &mut Vec<AsyncInstruction>,
     schema: &Schema,
 ) {
     field_plans.into_iter().enumerate().for_each(
@@ -189,7 +230,7 @@ fn make_progress_selection_set(
                                 parent_object_index,
                                 &external_dependency_values,
                                 produced,
-                                next_async_instructions,
+                                current_async_instructions,
                                 schema,
                             );
                         }
@@ -221,7 +262,7 @@ fn make_progress_selection_set(
                                         parent_object_index,
                                         &external_dependency_values,
                                         produced,
-                                        next_async_instructions,
+                                        current_async_instructions,
                                         schema,
                                     );
                                 },
@@ -240,7 +281,7 @@ fn make_progress_selection_set(
                     match &internal_dependency.resolver {
                         InternalDependencyResolver::ColumnGetter(_) => unimplemented!(),
                         InternalDependencyResolver::ColumnGetterList(column_getter_list) => {
-                            next_async_instructions.push(AsyncInstruction {
+                            current_async_instructions.push(AsyncInstruction {
                                 step: AsyncStep::ListOfIds {
                                     table_name: column_getter_list.table_name.clone(),
                                     column_name: column_getter_list.column_name.clone(),
