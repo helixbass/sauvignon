@@ -145,6 +145,15 @@ enum IsInternalDependencyOfInner<'a> {
         field_name: SmolStr,
         field_plan: &'a FieldPlan<'a>,
     },
+    ObjectFieldOptionalUnionOrInterfaceObject {
+        parent_object_index: IndexInProduced,
+        index_of_field_in_object: usize,
+        type_populator: &'a Box<dyn OptionalUnionOrInterfaceTypePopulator>,
+        populator: &'a Populator,
+        external_dependency_values: ExternalDependencyValues,
+        field_name: SmolStr,
+        field_plan: &'a FieldPlan<'a>,
+    },
 }
 
 #[instrument(level = "trace", skip(schema, database, query_plan))]
@@ -374,6 +383,48 @@ pub async fn produce_response(
                             )]
                             .into_iter()
                             .collect(),
+                            populator,
+                            &mut produced,
+                            parent_object_index,
+                            index_of_field_in_object,
+                            &field_name,
+                            field_plan,
+                            &mut next_async_instructions,
+                            schema,
+                        );
+                    }
+                    (
+                        StepResponses::Two(
+                            AsyncStepResponse::Column(first_column_value),
+                            AsyncStepResponse::Column(second_column_value),
+                        ),
+                        IsInternalDependencyOfInner::ObjectFieldOptionalUnionOrInterfaceObject {
+                            parent_object_index,
+                            index_of_field_in_object,
+                            type_populator,
+                            populator,
+                            external_dependency_values,
+                            field_name,
+                            field_plan,
+                        },
+                    ) => {
+                        optionally_populate_union_or_interface_object(
+                            &external_dependency_values,
+                            &[
+                                (
+                                    async_instruction.is_internal_dependency_of.dependency_names[0]
+                                        .clone(),
+                                    first_column_value,
+                                ),
+                                (
+                                    async_instruction.is_internal_dependency_of.dependency_names[1]
+                                        .clone(),
+                                    second_column_value,
+                                ),
+                            ]
+                            .into_iter()
+                            .collect(),
+                            type_populator,
                             populator,
                             &mut produced,
                             parent_object_index,
@@ -666,7 +717,50 @@ fn make_progress_selection_set<'a: 'b, 'b>(
                             }
                         }
                         CarverOrPopulator::OptionalUnionOrInterfaceTypePopulator(type_populator, populator) => {
-                            unimplemented!()
+                            let internal_dependencies =
+                                &field_plan
+                                    .field_type
+                                    .resolver
+                                    .internal_dependencies;
+                            assert_eq!(
+                                internal_dependencies.len(),
+                                2
+                            );
+                            match (
+                                &internal_dependencies[0].resolver,
+                                &internal_dependencies[1].resolver
+                            ) {
+                                (InternalDependencyResolver::ColumnGetter(first_column_getter), InternalDependencyResolver::ColumnGetter(second_column_getter)) => {
+                                    current_async_instructions.push(AsyncInstruction {
+                                        steps: smallvec![
+                                            column_getter_step(
+                                                first_column_getter,
+                                                &internal_dependencies[0],
+                                                &external_dependency_values,
+                                            ),
+                                            column_getter_step(
+                                                second_column_getter,
+                                                &internal_dependencies[1],
+                                                &external_dependency_values,
+                                            ),
+                                        ],
+                                        is_internal_dependency_of: IsInternalDependencyOf {
+                                            dependency_names: smallvec![internal_dependencies[0].name.clone(), internal_dependencies[1].name.clone()],
+                                            is_internal_dependency_of: IsInternalDependencyOfInner::ObjectFieldOptionalUnionOrInterfaceObject {
+                                                parent_object_index,
+                                                type_populator,
+                                                populator,
+                                                external_dependency_values: external_dependency_values
+                                                    .clone(),
+                                                index_of_field_in_object,
+                                                field_name: field_name.clone(),
+                                                field_plan,
+                                            },
+                                        },
+                                    });
+                                }
+                                _ => unreachable!("probably not?"),
+                            }
                         }
                         CarverOrPopulator::PopulatorList(populator) => {
                             assert_eq!(
