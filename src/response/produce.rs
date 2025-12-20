@@ -9,7 +9,7 @@ use squalid::_d;
 use tracing::{instrument, trace_span};
 
 use crate::{
-    Argument, Carver, CarverOrPopulator, Database, DependencyType, DependencyValue,
+    Argument, Carver, CarverOrPopulator, ColumnGetter, Database, DependencyType, DependencyValue,
     ExternalDependencyValues, FieldPlan, Id, InternalDependency, InternalDependencyResolver,
     InternalDependencyValues, Populator, PopulatorInterface, PopulatorList, PopulatorListInterface,
     QueryPlan, ResponseValue, Schema, Type, UnionOrInterfaceTypePopulator, Value, WhereResolved,
@@ -358,10 +358,149 @@ fn make_progress_selection_set<'a: 'b, 'b>(
                     }
                 }
                 false => {
-                    assert_eq!(
-                        field_plan.field_type.resolver.internal_dependencies.len(),
-                        1
-                    );
+                    match &field_plan
+                            .field_type
+                            .resolver
+                            .carver_or_populator {
+                        CarverOrPopulator::Carver(carver) => {
+                            assert_eq!(
+                                field_plan
+                                    .field_type
+                                    .resolver
+                                    .internal_dependencies.len(),
+                                1
+                            );
+                            let internal_dependency =
+                                &field_plan.field_type.resolver.internal_dependencies[0];
+                            match &internal_dependency.resolver {
+                                InternalDependencyResolver::ColumnGetter(column_getter) => {
+                                    current_async_instructions.push(AsyncInstruction {
+                                        step: column_getter_step(
+                                            column_getter,
+                                            internal_dependency,
+                                            &external_dependency_values,
+                                        ),
+                                        is_internal_dependency_of: IsInternalDependencyOf {
+                                            dependency_name: internal_dependency.name.clone(),
+                                            is_internal_dependency_of: IsInternalDependencyOfInner::ObjectFieldScalar {
+                                                parent_object_index,
+                                                carver,
+                                                external_dependency_values: external_dependency_values
+                                                    .clone(),
+                                                index_of_field_in_object,
+                                                field_name: field_name.clone(),
+                                            },
+                                        },
+                                    });
+                                }
+                                _ => unreachable!("probably not?"),
+                            }
+                        }
+                        CarverOrPopulator::Populator(populator) => {
+                            assert_eq!(
+                                field_plan
+                                    .field_type
+                                    .resolver
+                                    .internal_dependencies.len(),
+                                1
+                            );
+                            let internal_dependency =
+                                &field_plan.field_type.resolver.internal_dependencies[0];
+                            match &internal_dependency.resolver {
+                                InternalDependencyResolver::ColumnGetter(column_getter) => {
+                                    current_async_instructions.push(AsyncInstruction {
+                                        step: column_getter_step(
+                                            column_getter,
+                                            internal_dependency,
+                                            &external_dependency_values,
+                                        ),
+                                        is_internal_dependency_of: IsInternalDependencyOf {
+                                            dependency_name: internal_dependency.name.clone(),
+                                            is_internal_dependency_of: IsInternalDependencyOfInner::ObjectFieldObject {
+                                                parent_object_index,
+                                                populator,
+                                                external_dependency_values: external_dependency_values
+                                                    .clone(),
+                                                index_of_field_in_object,
+                                                field_name: field_name.clone(),
+                                                field_plan,
+                                            },
+                                        },
+                                    });
+                                }
+                                _ => unreachable!("probably not?"),
+                            }
+                        }
+                        CarverOrPopulator::OptionalPopulator(populator) => {
+                            unimplemented!()
+                        }
+                        CarverOrPopulator::UnionOrInterfaceTypePopulator(type_populator, populator) => {
+                            unimplemented!()
+                        }
+                        CarverOrPopulator::OptionalUnionOrInterfaceTypePopulator(type_populator, populator) => {
+                            unimplemented!()
+                        }
+                        CarverOrPopulator::PopulatorList(populator) => {
+                            assert_eq!(
+                                field_plan
+                                    .field_type
+                                    .resolver
+                                    .internal_dependencies.len(),
+                                1
+                            );
+                            let internal_dependency =
+                                &field_plan.field_type.resolver.internal_dependencies[0];
+                            match &internal_dependency.resolver {
+                                InternalDependencyResolver::ColumnGetterList(column_getter_list) => {
+                                    current_async_instructions.push(AsyncInstruction {
+                                        step: AsyncStep::ListOfIds {
+                                            table_name: column_getter_list.table_name.clone(),
+                                            column_name: column_getter_list.column_name.clone(),
+                                            dependency_type: internal_dependency.type_,
+                                            wheres: column_getter_list
+                                                .wheres
+                                                .iter()
+                                                .map(|where_| {
+                                                    WhereResolved::new(
+                                                        where_.column_name.clone(),
+                                                        // TODO: this is punting on where's specifying
+                                                        // values
+                                                        external_dependency_values
+                                                            .get("id")
+                                                            .unwrap()
+                                                            .clone(),
+                                                    )
+                                                })
+                                                .collect::<WheresResolved>(),
+                                        },
+                                        is_internal_dependency_of: IsInternalDependencyOf {
+                                            dependency_name: internal_dependency.name.clone(),
+                                            is_internal_dependency_of:
+                                                IsInternalDependencyOfInner::ObjectFieldListOfObjects {
+                                                    parent_object_index,
+                                                    populator,
+                                                    external_dependency_values: external_dependency_values
+                                                        .clone(),
+                                                    index_of_field_in_object,
+                                                    field_name: field_name.clone(),
+                                                    field_plan,
+                                                },
+                                        },
+                                    });
+                                }
+                                _ => unreachable!("probably not?"),
+                            }
+                        }
+                        CarverOrPopulator::CarverList(carver) => {
+                            unimplemented!()
+                        }
+                        CarverOrPopulator::UnionOrInterfaceTypePopulatorList(
+                            type_populator,
+                            populator,
+                        ) => {
+                            unimplemented!()
+                        }
+                    }
                     let internal_dependency =
                         &field_plan.field_type.resolver.internal_dependencies[0];
                     match &internal_dependency.resolver {
@@ -469,6 +608,24 @@ fn make_progress_selection_set<'a: 'b, 'b>(
             }
         },
     );
+}
+
+fn column_getter_step(
+    column_getter: &ColumnGetter,
+    internal_dependency: &InternalDependency,
+    external_dependency_values: &ExternalDependencyValues,
+) -> AsyncStep {
+    AsyncStep::Column {
+        table_name: column_getter.table_name.clone(),
+        column_name: column_getter.column_name.clone(),
+        id_column_name: column_getter.id_column_name.clone(),
+        dependency_type: internal_dependency.type_,
+        id: external_dependency_values
+            .get("id")
+            .unwrap()
+            .as_id()
+            .clone(),
+    }
 }
 
 #[instrument(
