@@ -81,7 +81,7 @@ enum IsInternalDependencyOfInner<'a> {
         parent_object_index: IndexInProduced,
         index_of_field_in_object: usize,
         populator: &'a PopulatorList,
-        external_dependency_values: &'a ExternalDependencyValues,
+        external_dependency_values: ExternalDependencyValues,
         field_name: SmolStr,
         field_plan: &'a FieldPlan<'a>,
     },
@@ -96,11 +96,11 @@ pub async fn produce_response(
     let mut produced: Vec<Produced> = _d();
     produced.push(Produced::NewRootObject);
 
-    let mut current_async_instructions: Vec<AsyncInstruction> = _d();
+    let mut current_async_instructions: Vec<AsyncInstruction<'_>> = _d();
     make_progress_selection_set(
         &query_plan.field_plans,
         0,
-        &ExternalDependencyValues::Empty,
+        ExternalDependencyValues::Empty,
         &mut produced,
         &mut current_async_instructions,
         schema,
@@ -117,7 +117,7 @@ pub async fn produce_response(
         )
         .await;
 
-        let mut next_async_instructions: Vec<AsyncInstruction> = _d();
+        let mut next_async_instructions: Vec<AsyncInstruction<'_>> = _d();
         responses
             .into_iter()
             .zip(current_async_instructions)
@@ -140,7 +140,7 @@ pub async fn produce_response(
                         },
                     ) => {
                         populate_list(
-                            external_dependency_values,
+                            &external_dependency_values,
                             &[(
                                 async_instruction.is_internal_dependency_of.dependency_name,
                                 DependencyValue::List(ids),
@@ -177,12 +177,12 @@ pub async fn produce_response(
         schema,
     )
 )]
-fn make_progress_selection_set(
-    field_plans: &IndexMap<SmolStr, FieldPlan<'_>>,
+fn make_progress_selection_set<'a: 'b, 'b>(
+    field_plans: &'a IndexMap<SmolStr, FieldPlan<'a>>,
     parent_object_index: usize,
-    external_dependency_values: &ExternalDependencyValues,
+    external_dependency_values: ExternalDependencyValues,
     produced: &mut Vec<Produced>,
-    current_async_instructions: &mut Vec<AsyncInstruction>,
+    current_async_instructions: &'b mut Vec<AsyncInstruction<'a>>,
     schema: &Schema,
 ) {
     field_plans.into_iter().enumerate().for_each(
@@ -243,7 +243,7 @@ fn make_progress_selection_set(
                             make_progress_selection_set(
                                 selection_set,
                                 parent_object_index,
-                                &external_dependency_values,
+                                populated,
                                 produced,
                                 current_async_instructions,
                                 schema,
@@ -251,7 +251,7 @@ fn make_progress_selection_set(
                         }
                         CarverOrPopulator::PopulatorList(populator) => {
                             populate_list(
-                                external_dependency_values,
+                                &external_dependency_values,
                                 &internal_dependency_values,
                                 populator,
                                 produced,
@@ -309,7 +309,8 @@ fn make_progress_selection_set(
                                                 .resolver
                                                 .carver_or_populator
                                                 .as_populator_list(),
-                                            external_dependency_values,
+                                            external_dependency_values: external_dependency_values
+                                                .clone(),
                                             index_of_field_in_object,
                                             field_name: field_name.clone(),
                                             field_plan,
@@ -337,7 +338,7 @@ fn make_progress_selection_set(
         schema,
     )
 )]
-fn populate_list(
+fn populate_list<'a: 'b, 'b>(
     external_dependency_values: &ExternalDependencyValues,
     internal_dependency_values: &InternalDependencyValues,
     populator: &PopulatorList,
@@ -345,8 +346,8 @@ fn populate_list(
     parent_object_index: IndexInProduced,
     index_of_field_in_object: usize,
     field_name: &SmolStr,
-    field_plan: &FieldPlan<'_>,
-    current_async_instructions: &mut Vec<AsyncInstruction>,
+    field_plan: &'a FieldPlan<'a>,
+    current_async_instructions: &'b mut Vec<AsyncInstruction<'a>>,
     schema: &Schema,
 ) {
     let populated = populator.populate(external_dependency_values, &internal_dependency_values);
@@ -374,7 +375,7 @@ fn populate_list(
             make_progress_selection_set(
                 selection_set,
                 parent_object_index,
-                &external_dependency_values,
+                external_dependency_values,
                 produced,
                 current_async_instructions,
                 schema,
