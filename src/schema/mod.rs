@@ -9,8 +9,8 @@ use squalid::{OptionExt, _d};
 use tracing::{instrument, trace, trace_span};
 
 use crate::{
-    builtin_types, fields_in_progress_new, get_hash, parse, CarverOrPopulator, Database,
-    DependencyType, DependencyValue, Document, DummyUnionTypenameField, Error,
+    builtin_types, fields_in_progress_new, get_hash, parse, produce_response, CarverOrPopulator,
+    Database, DependencyType, DependencyValue, Document, DummyUnionTypenameField, Error,
     ExternalDependencyValues, FieldPlan, FieldsInProgress, Id, InProgress, InProgressRecursing,
     InProgressRecursingList, IndexMap, Interface, InternalDependencyResolver,
     InternalDependencyValues, OperationType, OptionalPopulator, OptionalPopulatorInterface,
@@ -226,6 +226,8 @@ async fn compute_response(
         return compute_sync_response(schema, request, database.0);
     }
     let query_plan = QueryPlan::new(&request, schema);
+    produce_response(schema, database, &query_plan).await;
+    unimplemented!();
     let response_in_progress = query_plan.initial_response_in_progress();
     let mut fields_in_progress = response_in_progress.fields;
     loop {
