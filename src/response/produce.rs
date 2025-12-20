@@ -6,7 +6,7 @@ use smol_str::SmolStr;
 use squalid::_d;
 use tracing::instrument;
 
-use crate::{Database, ExternalDependencyValues, QueryPlan, ResponseValue, Schema, DependencyValue, InternalDependency, InternalDependencyResolver};
+use crate::{Database, ExternalDependencyValues, QueryPlan, ResponseValue, Schema, DependencyValue, InternalDependency, InternalDependencyResolver, InternalDependencyValues};
 
 type IndexInProduced = usize;
 
@@ -55,7 +55,7 @@ pub async fn produce_response(
     let mut next_async_instructions: Vec<AsyncInstruction> = _d();
 
     let parent_object_index = 0;
-    let external_dependencies = ExternalDependencyValues::Empty;
+    let external_dependency_values = ExternalDependencyValues::Empty;
     query_plan.field_plans.iter().enumerate().for_each(
         |(index_of_field_in_object, (field_name, field_plan))| {
             let can_resolve_all_internal_dependencies_synchronously =
@@ -63,7 +63,9 @@ pub async fn produce_response(
                     internal_dependency.resolver.can_be_resolved_synchronously()
                 });
             if can_resolve_all_internal_dependencies_synchronously {
-                let internal_dependencies = 
+                let internal_dependencies: InternalDependencyValues = field_plan.field_type.resolver.internal_dependencies.iter().map(|internal_dependency| {
+                    get_internal_dependency_value_synchronous(&field_plan.arguments, &external_dependency_values, internal_dependency, schema)
+                }).collect();
             }
             match field_plan.selection_set_by_type.is_none() {
                 true => produced.push(
