@@ -89,8 +89,10 @@ struct AsyncInstruction<'a> {
     pub is_internal_dependency_of: IsInternalDependencyOf<'a>,
 }
 
+type DependencyNames = SmallVec<[SmolStr; 4]>;
+
 struct IsInternalDependencyOf<'a> {
-    pub dependency_name: SmolStr,
+    pub dependency_names: DependencyNames,
     pub is_internal_dependency_of: IsInternalDependencyOfInner<'a>,
 }
 
@@ -114,6 +116,15 @@ enum IsInternalDependencyOfInner<'a> {
         parent_object_index: IndexInProduced,
         index_of_field_in_object: usize,
         populator: &'a PopulatorList,
+        external_dependency_values: ExternalDependencyValues,
+        field_name: SmolStr,
+        field_plan: &'a FieldPlan<'a>,
+    },
+    ObjectFieldUnionOrInterfaceObject {
+        parent_object_index: IndexInProduced,
+        index_of_field_in_object: usize,
+        type_populator: &'a Box<dyn UnionOrInterfaceTypePopulator>,
+        populator: &'a Populator,
         external_dependency_values: ExternalDependencyValues,
         field_name: SmolStr,
         field_plan: &'a FieldPlan<'a>,
@@ -187,7 +198,7 @@ pub async fn produce_response(
                         populate_list(
                             &external_dependency_values,
                             &[(
-                                async_instruction.is_internal_dependency_of.dependency_name,
+                                async_instruction.is_internal_dependency_of.dependency_names[0],
                                 DependencyValue::List(ids),
                             )]
                             .into_iter()
@@ -219,7 +230,7 @@ pub async fn produce_response(
                             value: carver.carve(
                                 &external_dependency_values,
                                 &[(
-                                    async_instruction.is_internal_dependency_of.dependency_name,
+                                    async_instruction.is_internal_dependency_of.dependency_names[0],
                                     column_value,
                                 )]
                                 .into_iter()
@@ -241,7 +252,7 @@ pub async fn produce_response(
                         populate_object(
                             &external_dependency_values,
                             &[(
-                                async_instruction.is_internal_dependency_of.dependency_name,
+                                async_instruction.is_internal_dependency_of.dependency_names[0],
                                 column_value,
                             )]
                             .into_iter()
@@ -395,7 +406,7 @@ fn make_progress_selection_set<'a: 'b, 'b>(
                                             &external_dependency_values,
                                         )],
                                         is_internal_dependency_of: IsInternalDependencyOf {
-                                            dependency_name: internal_dependency.name.clone(),
+                                            dependency_names: smallvec![internal_dependency.name.clone()],
                                             is_internal_dependency_of: IsInternalDependencyOfInner::ObjectFieldScalar {
                                                 parent_object_index,
                                                 carver,
@@ -429,7 +440,7 @@ fn make_progress_selection_set<'a: 'b, 'b>(
                                             &external_dependency_values,
                                         )],
                                         is_internal_dependency_of: IsInternalDependencyOf {
-                                            dependency_name: internal_dependency.name.clone(),
+                                            dependency_names: smallvec![internal_dependency.name.clone()],
                                             is_internal_dependency_of: IsInternalDependencyOfInner::ObjectFieldObject {
                                                 parent_object_index,
                                                 populator,
@@ -449,27 +460,38 @@ fn make_progress_selection_set<'a: 'b, 'b>(
                             unimplemented!()
                         }
                         CarverOrPopulator::UnionOrInterfaceTypePopulator(type_populator, populator) => {
-                            assert_eq!(
-                                field_plan
+                            let internal_dependencies =
+                                &field_plan
                                     .field_type
                                     .resolver
-                                    .internal_dependencies.len(),
+                                    .internal_dependencies;
+                            assert_eq!(
+                                internal_dependencies.len(),
                                 2
                             );
-                            let internal_dependency =
-                                &field_plan.field_type.resolver.internal_dependencies[0];
-                            match &internal_dependency.resolver {
-                                InternalDependencyResolver::ColumnGetter(column_getter) => {
+                            match (
+                                &internal_dependencies[0].resolver,
+                                &internal_dependencies[1].resolver
+                            ) {
+                                (InternalDependencyResolver::ColumnGetter(first_column_getter), InternalDependencyResolver::ColumnGetter(second_column_getter)) => {
                                     current_async_instructions.push(AsyncInstruction {
-                                        steps: smallvec![column_getter_step(
-                                            column_getter,
-                                            internal_dependency,
-                                            &external_dependency_values,
-                                        )],
+                                        steps: smallvec![
+                                            column_getter_step(
+                                                first_column_getter,
+                                                &internal_dependencies[0],
+                                                &external_dependency_values,
+                                            ),
+                                            column_getter_step(
+                                                second_column_getter,
+                                                &internal_dependencies[1],
+                                                &external_dependency_values,
+                                            ),
+                                        ],
                                         is_internal_dependency_of: IsInternalDependencyOf {
-                                            dependency_name: internal_dependency.name.clone(),
-                                            is_internal_dependency_of: IsInternalDependencyOfInner::ObjectFieldObject {
+                                            dependency_names: smallvec![internal_dependencies[0].name.clone(), internal_dependencies[1].name.clone()],
+                                            is_internal_dependency_of: IsInternalDependencyOfInner::ObjectFieldUnionOrInterfaceObject {
                                                 parent_object_index,
+                                                type_populator,
                                                 populator,
                                                 external_dependency_values: external_dependency_values
                                                     .clone(),
@@ -520,7 +542,7 @@ fn make_progress_selection_set<'a: 'b, 'b>(
                                                 .collect::<WheresResolved>(),
                                         }],
                                         is_internal_dependency_of: IsInternalDependencyOf {
-                                            dependency_name: internal_dependency.name.clone(),
+                                            dependency_names: smallvec![internal_dependency.name.clone()],
                                             is_internal_dependency_of:
                                                 IsInternalDependencyOfInner::ObjectFieldListOfObjects {
                                                     parent_object_index,
