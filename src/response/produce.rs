@@ -198,7 +198,8 @@ pub async fn produce_response(
                         populate_list(
                             &external_dependency_values,
                             &[(
-                                async_instruction.is_internal_dependency_of.dependency_names[0],
+                                async_instruction.is_internal_dependency_of.dependency_names[0]
+                                    .clone(),
                                 DependencyValue::List(ids),
                             )]
                             .into_iter()
@@ -230,7 +231,8 @@ pub async fn produce_response(
                             value: carver.carve(
                                 &external_dependency_values,
                                 &[(
-                                    async_instruction.is_internal_dependency_of.dependency_names[0],
+                                    async_instruction.is_internal_dependency_of.dependency_names[0]
+                                        .clone(),
                                     column_value,
                                 )]
                                 .into_iter()
@@ -252,7 +254,8 @@ pub async fn produce_response(
                         populate_object(
                             &external_dependency_values,
                             &[(
-                                async_instruction.is_internal_dependency_of.dependency_names[0],
+                                async_instruction.is_internal_dependency_of.dependency_names[0]
+                                    .clone(),
                                 column_value,
                             )]
                             .into_iter()
