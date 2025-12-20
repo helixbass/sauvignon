@@ -9,7 +9,7 @@ use tracing::{instrument, trace_span};
 
 use crate::{
     Argument, Carver, CarverOrPopulator, Database, DependencyType, DependencyValue,
-    ExternalDependencyValues, Id, InternalDependency, InternalDependencyResolver,
+    ExternalDependencyValues, FieldPlan, Id, InternalDependency, InternalDependencyResolver,
     InternalDependencyValues, Populator, PopulatorInterface, PopulatorListInterface, QueryPlan,
     ResponseValue, Schema, Type, Value,
 };
@@ -60,9 +60,39 @@ pub async fn produce_response(
 
     let mut next_async_instructions: Vec<AsyncInstruction> = _d();
 
-    let parent_object_index = 0;
-    let external_dependency_values = ExternalDependencyValues::Empty;
-    query_plan.field_plans.iter().enumerate().for_each(
+    make_progress_selection_set(
+        &query_plan.field_plans,
+        0,
+        &ExternalDependencyValues::Empty,
+        &mut produced,
+        &mut next_async_instructions,
+        schema,
+    );
+
+    unimplemented!();
+
+    produced.into()
+}
+
+#[instrument(
+    level = "trace",
+    skip(
+        field_plans,
+        external_dependency_values,
+        produced,
+        next_async_instructions,
+        schema,
+    )
+)]
+fn make_progress_selection_set(
+    field_plans: &IndexMap<SmolStr, FieldPlan<'_>>,
+    parent_object_index: usize,
+    external_dependency_values: &ExternalDependencyValues,
+    produced: &mut Vec<Produced>,
+    next_async_instructions: &mut Vec<AsyncInstruction>,
+    schema: &Schema,
+) {
+    field_plans.into_iter().enumerate().for_each(
         |(index_of_field_in_object, (field_name, field_plan))| {
             let can_resolve_all_internal_dependencies_synchronously = field_plan
                 .field_type
@@ -119,6 +149,18 @@ pub async fn produce_response(
                                 index_of_field_in_object,
                                 field_name: field_name.clone(),
                             });
+                            let type_name = field_plan.field_type.type_.name();
+                            let selection_set =
+                                &field_plan.selection_set_by_type.as_ref().unwrap()[type_name];
+                            populated
+                                .into_iter()
+                                .for_each(|external_dependency_values| {
+                                    make_progress_selection_set(
+                                        selection_set,
+                                        produced,
+                                        next_async_instructions,
+                                    );
+                                });
                         }
                         _ => unimplemented!(),
                     }
@@ -129,10 +171,6 @@ pub async fn produce_response(
             }
         },
     );
-
-    unimplemented!();
-
-    produced.into()
 }
 
 #[instrument(
