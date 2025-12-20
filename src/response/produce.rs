@@ -144,15 +144,44 @@ impl From<Vec<Produced>> for ResponseValue {
             }
         }
 
-        let mut completed_objects_by_index: HashMap<usize, Vec<(SmolStr, ResponseValue)>> = _d();
-        Self::Map(construct_object(
-            completed_objects_by_index.remove(&0).unwrap(),
-        ))
+        ResponseValue::Map(construct_object(0, &mut objects_by_index))
+
+        // let mut completed_objects_by_index: HashMap<usize, Vec<(SmolStr, ResponseValue)>> = _d();
+        // Self::Map(construct_object(
+        //     completed_objects_by_index.remove(&0).unwrap(),
+        // ))
     }
 }
 
 fn construct_object(
-    fields: impl IntoIterator<Item = (SmolStr, ResponseValue)>,
+    object_index: usize,
+    objects_by_index: &mut HashMap<IndexInProduced, Vec<ObjectFieldStuff>>,
 ) -> IndexMap<SmolStr, ResponseValue> {
-    fields.into_iter().collect()
+    let mut fields = objects_by_index.remove(&object_index).unwrap();
+    // TODO: simultaneously check that we have consecutive expected
+    // index_of_field_in_object's?
+    fields.sort_by_key(|field| field.index_of_field_in_object);
+    fields
+        .into_iter()
+        .map(|object_field_stuff| {
+            (
+                object_field_stuff.field_name,
+                match object_field_stuff.value_stub {
+                    FieldValueStub::Value(value) => value,
+                    FieldValueStub::ObjectIndexInProduced(index_in_produced) => {
+                        ResponseValue::Map(construct_object(index_in_produced, objects_by_index))
+                    }
+                    FieldValueStub::ListIndexInProduced(index_in_produced) => {
+                        ResponseValue::List(unimplemented!())
+                    }
+                },
+            )
+        })
+        .collect()
 }
+
+// fn construct_object(
+//     fields: impl IntoIterator<Item = (SmolStr, ResponseValue)>,
+// ) -> IndexMap<SmolStr, ResponseValue> {
+//     fields.into_iter().collect()
+// }
