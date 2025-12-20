@@ -412,7 +412,7 @@ impl FromIterator<(SmolStr, DependencyValue)> for ExternalDependencyValues {
     {
         let mut ret = Self::default();
         iterator.into_iter().for_each(|(key, value)| {
-            ret.insert(key, value);
+            ret.insert(key, value).unwrap();
         });
         ret
     }
