@@ -11,9 +11,10 @@ use tracing::{instrument, trace_span};
 use crate::{
     Argument, Carver, CarverList, CarverOrPopulator, ColumnGetter, ColumnGetterList, Database,
     DependencyType, DependencyValue, ExternalDependencyValues, FieldPlan, Id, InternalDependency,
-    InternalDependencyResolver, InternalDependencyValues, Populator, PopulatorInterface,
-    PopulatorList, PopulatorListInterface, QueryPlan, ResponseValue, Schema, Type,
-    UnionOrInterfaceTypePopulator, Value, WhereResolved, WheresResolved,
+    InternalDependencyResolver, InternalDependencyValues, OptionalPopulator,
+    OptionalUnionOrInterfaceTypePopulator, Populator, PopulatorInterface, PopulatorList,
+    PopulatorListInterface, QueryPlan, ResponseValue, Schema, Type, UnionOrInterfaceTypePopulator,
+    Value, WhereResolved, WheresResolved,
 };
 
 type IndexInProduced = usize;
@@ -135,6 +136,14 @@ enum IsInternalDependencyOfInner<'a> {
         carver: &'a Box<dyn CarverList>,
         external_dependency_values: ExternalDependencyValues,
         field_name: SmolStr,
+    },
+    ObjectFieldOptionalObject {
+        parent_object_index: IndexInProduced,
+        index_of_field_in_object: usize,
+        populator: &'a OptionalPopulator,
+        external_dependency_values: ExternalDependencyValues,
+        field_name: SmolStr,
+        field_plan: &'a FieldPlan<'a>,
     },
 }
 
@@ -345,6 +354,36 @@ pub async fn produce_response(
                             &field_name,
                         );
                     }
+                    (
+                        StepResponses::Single(AsyncStepResponse::Column(column_value)),
+                        IsInternalDependencyOfInner::ObjectFieldOptionalObject {
+                            parent_object_index,
+                            index_of_field_in_object,
+                            populator,
+                            external_dependency_values,
+                            field_name,
+                            field_plan,
+                        },
+                    ) => {
+                        optionally_populate_object(
+                            &external_dependency_values,
+                            &[(
+                                async_instruction.is_internal_dependency_of.dependency_names[0]
+                                    .clone(),
+                                column_value,
+                            )]
+                            .into_iter()
+                            .collect(),
+                            populator,
+                            &mut produced,
+                            parent_object_index,
+                            index_of_field_in_object,
+                            &field_name,
+                            field_plan,
+                            &mut next_async_instructions,
+                            schema,
+                        );
+                    }
                     _ => unimplemented!(),
                 }
             });
@@ -546,7 +585,39 @@ fn make_progress_selection_set<'a: 'b, 'b>(
                             }
                         }
                         CarverOrPopulator::OptionalPopulator(populator) => {
-                            unimplemented!()
+                            assert_eq!(
+                                field_plan
+                                    .field_type
+                                    .resolver
+                                    .internal_dependencies.len(),
+                                1
+                            );
+                            let internal_dependency =
+                                &field_plan.field_type.resolver.internal_dependencies[0];
+                            match &internal_dependency.resolver {
+                                InternalDependencyResolver::ColumnGetter(column_getter) => {
+                                    current_async_instructions.push(AsyncInstruction {
+                                        steps: smallvec![column_getter_step(
+                                            column_getter,
+                                            internal_dependency,
+                                            &external_dependency_values,
+                                        )],
+                                        is_internal_dependency_of: IsInternalDependencyOf {
+                                            dependency_names: smallvec![internal_dependency.name.clone()],
+                                            is_internal_dependency_of: IsInternalDependencyOfInner::ObjectFieldOptionalObject {
+                                                parent_object_index,
+                                                populator,
+                                                external_dependency_values: external_dependency_values
+                                                    .clone(),
+                                                index_of_field_in_object,
+                                                field_name: field_name.clone(),
+                                                field_plan,
+                                            },
+                                        },
+                                    });
+                                }
+                                _ => unreachable!("probably not?"),
+                            }
                         }
                         CarverOrPopulator::UnionOrInterfaceTypePopulator(type_populator, populator) => {
                             let internal_dependencies =
@@ -884,7 +955,34 @@ fn populate_concrete_or_union_or_interface_object<'a: 'b, 'b>(
     current_async_instructions: &'b mut Vec<AsyncInstruction<'a>>,
     schema: &Schema,
 ) {
-    let populated = populator.populate(external_dependency_values, internal_dependency_values);
+    post_populate_concrete_or_union_or_interface_object(
+        type_name,
+        populator.populate(external_dependency_values, internal_dependency_values),
+        produced,
+        parent_object_index,
+        index_of_field_in_object,
+        field_name,
+        field_plan,
+        current_async_instructions,
+        schema,
+    )
+}
+
+#[instrument(
+    level = "trace",
+    skip(populated, produced, field_plan, current_async_instructions, schema,)
+)]
+fn post_populate_concrete_or_union_or_interface_object<'a: 'b, 'b>(
+    type_name: &str,
+    populated: ExternalDependencyValues,
+    produced: &mut Vec<Produced>,
+    parent_object_index: IndexInProduced,
+    index_of_field_in_object: usize,
+    field_name: &SmolStr,
+    field_plan: &'a FieldPlan<'a>,
+    current_async_instructions: &'b mut Vec<AsyncInstruction<'a>>,
+    schema: &Schema,
+) {
     produced.push(Produced::FieldNewObject {
         parent_object_index,
         index_of_field_in_object,
@@ -902,6 +1000,105 @@ fn populate_concrete_or_union_or_interface_object<'a: 'b, 'b>(
         current_async_instructions,
         schema,
     );
+}
+
+#[instrument(
+    level = "trace",
+    skip(
+        external_dependency_values,
+        internal_dependency_values,
+        type_populator,
+        populator,
+        produced,
+        field_plan,
+        current_async_instructions,
+        schema,
+    )
+)]
+fn optionally_populate_union_or_interface_object<'a: 'b, 'b>(
+    external_dependency_values: &ExternalDependencyValues,
+    internal_dependency_values: &InternalDependencyValues,
+    type_populator: &Box<dyn OptionalUnionOrInterfaceTypePopulator>,
+    populator: &Populator,
+    produced: &mut Vec<Produced>,
+    parent_object_index: IndexInProduced,
+    index_of_field_in_object: usize,
+    field_name: &SmolStr,
+    field_plan: &'a FieldPlan<'a>,
+    current_async_instructions: &'b mut Vec<AsyncInstruction<'a>>,
+    schema: &Schema,
+) {
+    let Some(type_name) =
+        type_populator.populate(external_dependency_values, internal_dependency_values)
+    else {
+        produced.push(Produced::FieldNewNull {
+            parent_object_index,
+            index_of_field_in_object,
+            field_name: field_name.clone(),
+        });
+        return;
+    };
+    populate_concrete_or_union_or_interface_object(
+        external_dependency_values,
+        internal_dependency_values,
+        &type_name,
+        populator,
+        produced,
+        parent_object_index,
+        index_of_field_in_object,
+        field_name,
+        field_plan,
+        current_async_instructions,
+        schema,
+    )
+}
+
+#[instrument(
+    level = "trace",
+    skip(
+        external_dependency_values,
+        internal_dependency_values,
+        populator,
+        produced,
+        field_plan,
+        current_async_instructions,
+        schema,
+    )
+)]
+fn optionally_populate_object<'a: 'b, 'b>(
+    external_dependency_values: &ExternalDependencyValues,
+    internal_dependency_values: &InternalDependencyValues,
+    type_name: &str,
+    populator: &OptionalPopulator,
+    produced: &mut Vec<Produced>,
+    parent_object_index: IndexInProduced,
+    index_of_field_in_object: usize,
+    field_name: &SmolStr,
+    field_plan: &'a FieldPlan<'a>,
+    current_async_instructions: &'b mut Vec<AsyncInstruction<'a>>,
+    schema: &Schema,
+) {
+    let Some(populated) =
+        populator.populate(external_dependency_values, internal_dependency_values)
+    else {
+        produced.push(Produced::FieldNewNull {
+            parent_object_index,
+            index_of_field_in_object,
+            field_name: field_name.clone(),
+        });
+        return;
+    };
+    post_populate_concrete_or_union_or_interface_object(
+        field_plan.field_type.type_.name(),
+        populated,
+        produced,
+        parent_object_index,
+        index_of_field_in_object,
+        field_name,
+        field_plan,
+        current_async_instructions,
+        schema,
+    )
 }
 
 #[instrument(
