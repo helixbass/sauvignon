@@ -12,7 +12,8 @@ use crate::{
     Argument, Carver, CarverOrPopulator, Database, DependencyType, DependencyValue,
     ExternalDependencyValues, FieldPlan, Id, InternalDependency, InternalDependencyResolver,
     InternalDependencyValues, Populator, PopulatorInterface, PopulatorList, PopulatorListInterface,
-    QueryPlan, ResponseValue, Schema, Type, Value, WhereResolved, WheresResolved,
+    QueryPlan, ResponseValue, Schema, Type, UnionOrInterfaceTypePopulator, Value, WhereResolved,
+    WheresResolved,
 };
 
 type IndexInProduced = usize;
@@ -338,6 +339,21 @@ fn make_progress_selection_set<'a: 'b, 'b>(
                                 schema,
                             );
                         }
+                        CarverOrPopulator::UnionOrInterfaceTypePopulator(type_populator, populator) => {
+                            populate_union_or_interface_object(
+                                &external_dependency_values,
+                                &internal_dependency_values,
+                                type_populator,
+                                populator,
+                                produced,
+                                parent_object_index,
+                                index_of_field_in_object,
+                                field_name,
+                                field_plan,
+                                current_async_instructions,
+                                schema,
+                            )
+                        }
                         _ => unimplemented!(),
                     }
                 }
@@ -536,6 +552,88 @@ fn populate_object<'a: 'b, 'b>(
     current_async_instructions: &'b mut Vec<AsyncInstruction<'a>>,
     schema: &Schema,
 ) {
+    populate_concrete_or_union_or_interface_object(
+        external_dependency_values,
+        internal_dependency_values,
+        field_plan.field_type.type_.name(),
+        populator,
+        produced,
+        parent_object_index,
+        index_of_field_in_object,
+        field_name,
+        field_plan,
+        current_async_instructions,
+        schema,
+    )
+}
+
+#[instrument(
+    level = "trace",
+    skip(
+        external_dependency_values,
+        internal_dependency_values,
+        type_populator,
+        populator,
+        produced,
+        field_plan,
+        current_async_instructions,
+        schema,
+    )
+)]
+fn populate_union_or_interface_object<'a: 'b, 'b>(
+    external_dependency_values: &ExternalDependencyValues,
+    internal_dependency_values: &InternalDependencyValues,
+    type_populator: &Box<dyn UnionOrInterfaceTypePopulator>,
+    populator: &Populator,
+    produced: &mut Vec<Produced>,
+    parent_object_index: IndexInProduced,
+    index_of_field_in_object: usize,
+    field_name: &SmolStr,
+    field_plan: &'a FieldPlan<'a>,
+    current_async_instructions: &'b mut Vec<AsyncInstruction<'a>>,
+    schema: &Schema,
+) {
+    let type_name = type_populator.populate(external_dependency_values, internal_dependency_values);
+    populate_concrete_or_union_or_interface_object(
+        external_dependency_values,
+        internal_dependency_values,
+        &type_name,
+        populator,
+        produced,
+        parent_object_index,
+        index_of_field_in_object,
+        field_name,
+        field_plan,
+        current_async_instructions,
+        schema,
+    )
+}
+
+#[instrument(
+    level = "trace",
+    skip(
+        external_dependency_values,
+        internal_dependency_values,
+        populator,
+        produced,
+        field_plan,
+        current_async_instructions,
+        schema,
+    )
+)]
+fn populate_concrete_or_union_or_interface_object<'a: 'b, 'b>(
+    external_dependency_values: &ExternalDependencyValues,
+    internal_dependency_values: &InternalDependencyValues,
+    type_name: &str,
+    populator: &Populator,
+    produced: &mut Vec<Produced>,
+    parent_object_index: IndexInProduced,
+    index_of_field_in_object: usize,
+    field_name: &SmolStr,
+    field_plan: &'a FieldPlan<'a>,
+    current_async_instructions: &'b mut Vec<AsyncInstruction<'a>>,
+    schema: &Schema,
+) {
     let populated = populator.populate(external_dependency_values, internal_dependency_values);
     produced.push(Produced::FieldNewObject {
         parent_object_index,
@@ -544,7 +642,6 @@ fn populate_object<'a: 'b, 'b>(
     });
     let parent_object_index = produced.len() - 1;
 
-    let type_name = field_plan.field_type.type_.name();
     let selection_set = &field_plan.selection_set_by_type.as_ref().unwrap()[type_name];
 
     make_progress_selection_set(
