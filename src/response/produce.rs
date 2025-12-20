@@ -9,11 +9,11 @@ use squalid::_d;
 use tracing::{instrument, trace_span};
 
 use crate::{
-    Argument, Carver, CarverOrPopulator, ColumnGetter, Database, DependencyType, DependencyValue,
-    ExternalDependencyValues, FieldPlan, Id, InternalDependency, InternalDependencyResolver,
-    InternalDependencyValues, Populator, PopulatorInterface, PopulatorList, PopulatorListInterface,
-    QueryPlan, ResponseValue, Schema, Type, UnionOrInterfaceTypePopulator, Value, WhereResolved,
-    WheresResolved,
+    Argument, Carver, CarverList, CarverOrPopulator, ColumnGetter, Database, DependencyType,
+    DependencyValue, ExternalDependencyValues, FieldPlan, Id, InternalDependency,
+    InternalDependencyResolver, InternalDependencyValues, Populator, PopulatorInterface,
+    PopulatorList, PopulatorListInterface, QueryPlan, ResponseValue, Schema, Type,
+    UnionOrInterfaceTypePopulator, Value, WhereResolved, WheresResolved,
 };
 
 type IndexInProduced = usize;
@@ -425,15 +425,15 @@ fn make_progress_selection_set<'a: 'b, 'b>(
                             )
                         }
                         CarverOrPopulator::CarverList(carver) => {
-                            produced.push(Produced::FieldScalar {
+                            carve_list(
+                                &external_dependency_values,
+                                &internal_dependency_values,
+                                carver,
+                                produced,
                                 parent_object_index,
                                 index_of_field_in_object,
-                                field_name: field_name.clone(),
-                                value: carver.carve(
-                                    &external_dependency_values,
-                                    &internal_dependency_values,
-                                ),
-                            });
+                                field_name,
+                            )
                         }
                         _ => unimplemented!(),
                     }
@@ -674,8 +674,6 @@ fn populate_list<'a: 'b, 'b>(
     schema: &Schema,
 ) {
     let populated = populator.populate(external_dependency_values, &internal_dependency_values);
-    // TODO: this presumably needs to maybe also be
-    // eg FieldNewListOfScalars?
     produced.push(Produced::FieldNewListOfObjects {
         parent_object_index,
         index_of_field_in_object,
@@ -830,6 +828,43 @@ fn populate_concrete_or_union_or_interface_object<'a: 'b, 'b>(
         current_async_instructions,
         schema,
     );
+}
+
+#[instrument(
+    level = "trace",
+    skip(
+        external_dependency_values,
+        internal_dependency_values,
+        carver,
+        produced,
+    )
+)]
+fn carve_list<'a: 'b, 'b>(
+    external_dependency_values: &ExternalDependencyValues,
+    internal_dependency_values: &InternalDependencyValues,
+    carver: &Box<dyn CarverList>,
+    produced: &mut Vec<Produced>,
+    parent_object_index: IndexInProduced,
+    index_of_field_in_object: usize,
+    field_name: &SmolStr,
+) {
+    produced.push(Produced::FieldNewListOfScalars {
+        parent_object_index,
+        index_of_field_in_object,
+        field_name: field_name.clone(),
+    });
+    let parent_list_index = produced.len() - 1;
+    let item_values = carver.carve(external_dependency_values, internal_dependency_values);
+    item_values
+        .into_iter()
+        .enumerate()
+        .for_each(|(index_in_list, item_value)| {
+            produced.push(Produced::ListItemScalar {
+                parent_list_index,
+                index_in_list,
+                value: item_value,
+            });
+        });
 }
 
 #[instrument(
