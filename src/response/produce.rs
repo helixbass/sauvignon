@@ -9,8 +9,8 @@ use squalid::_d;
 use tracing::{instrument, trace_span};
 
 use crate::{
-    Argument, Carver, CarverList, CarverOrPopulator, ColumnGetter, Database, DependencyType,
-    DependencyValue, ExternalDependencyValues, FieldPlan, Id, InternalDependency,
+    Argument, Carver, CarverList, CarverOrPopulator, ColumnGetter, ColumnGetterList, Database,
+    DependencyType, DependencyValue, ExternalDependencyValues, FieldPlan, Id, InternalDependency,
     InternalDependencyResolver, InternalDependencyValues, Populator, PopulatorInterface,
     PopulatorList, PopulatorListInterface, QueryPlan, ResponseValue, Schema, Type,
     UnionOrInterfaceTypePopulator, Value, WhereResolved, WheresResolved,
@@ -19,7 +19,7 @@ use crate::{
 type IndexInProduced = usize;
 
 enum AsyncStep {
-    ListOfIds {
+    ListOfColumn {
         table_name: SmolStr,
         column_name: SmolStr,
         dependency_type: DependencyType,
@@ -42,12 +42,12 @@ impl AsyncStep {
     #[instrument(level = "trace", skip(self, database))]
     pub async fn run(&self, database: &dyn Database) -> AsyncStepResponse {
         match self {
-            Self::ListOfIds {
+            Self::ListOfColumn {
                 table_name,
                 column_name,
                 dependency_type,
                 wheres,
-            } => AsyncStepResponse::ListOfIds(
+            } => AsyncStepResponse::ListOfColumn(
                 database
                     .get_column_list(table_name, column_name, *dependency_type, wheres)
                     .await,
@@ -78,7 +78,7 @@ impl AsyncStep {
 }
 
 enum AsyncStepResponse {
-    ListOfIds(Vec<DependencyValue>),
+    ListOfColumn(Vec<DependencyValue>),
     Column(DependencyValue),
 }
 
@@ -128,6 +128,13 @@ enum IsInternalDependencyOfInner<'a> {
         external_dependency_values: ExternalDependencyValues,
         field_name: SmolStr,
         field_plan: &'a FieldPlan<'a>,
+    },
+    ObjectFieldListOfScalars {
+        parent_object_index: IndexInProduced,
+        index_of_field_in_object: usize,
+        carver: &'a Box<dyn CarverList>,
+        external_dependency_values: ExternalDependencyValues,
+        field_name: SmolStr,
     },
 }
 
@@ -185,7 +192,7 @@ pub async fn produce_response(
                         .is_internal_dependency_of,
                 ) {
                     (
-                        StepResponses::Single(AsyncStepResponse::ListOfIds(ids)),
+                        StepResponses::Single(AsyncStepResponse::ListOfColumn(ids)),
                         IsInternalDependencyOfInner::ObjectFieldListOfObjects {
                             parent_object_index,
                             index_of_field_in_object,
@@ -310,6 +317,32 @@ pub async fn produce_response(
                             field_plan,
                             &mut next_async_instructions,
                             schema,
+                        );
+                    }
+                    (
+                        StepResponses::Single(AsyncStepResponse::ListOfColumn(column_values)),
+                        IsInternalDependencyOfInner::ObjectFieldListOfScalars {
+                            parent_object_index,
+                            index_of_field_in_object,
+                            carver,
+                            external_dependency_values,
+                            field_name,
+                        },
+                    ) => {
+                        carve_list(
+                            &external_dependency_values,
+                            &[(
+                                async_instruction.is_internal_dependency_of.dependency_names[0]
+                                    .clone(),
+                                DependencyValue::List(column_values),
+                            )]
+                            .into_iter()
+                            .collect(),
+                            carver,
+                            &mut produced,
+                            parent_object_index,
+                            index_of_field_in_object,
+                            &field_name,
                         );
                     }
                     _ => unimplemented!(),
@@ -577,26 +610,11 @@ fn make_progress_selection_set<'a: 'b, 'b>(
                             match &internal_dependency.resolver {
                                 InternalDependencyResolver::ColumnGetterList(column_getter_list) => {
                                     current_async_instructions.push(AsyncInstruction {
-                                        steps: smallvec![AsyncStep::ListOfIds {
-                                            table_name: column_getter_list.table_name.clone(),
-                                            column_name: column_getter_list.column_name.clone(),
-                                            dependency_type: internal_dependency.type_,
-                                            wheres: column_getter_list
-                                                .wheres
-                                                .iter()
-                                                .map(|where_| {
-                                                    WhereResolved::new(
-                                                        where_.column_name.clone(),
-                                                        // TODO: this is punting on where's specifying
-                                                        // values
-                                                        external_dependency_values
-                                                            .get("id")
-                                                            .unwrap()
-                                                            .clone(),
-                                                    )
-                                                })
-                                                .collect::<WheresResolved>(),
-                                        }],
+                                        steps: smallvec![column_getter_list_step(
+                                            column_getter_list,
+                                            internal_dependency,
+                                            &external_dependency_values,
+                                        )],
                                         is_internal_dependency_of: IsInternalDependencyOf {
                                             dependency_names: smallvec![internal_dependency.name.clone()],
                                             is_internal_dependency_of:
@@ -616,7 +634,39 @@ fn make_progress_selection_set<'a: 'b, 'b>(
                             }
                         }
                         CarverOrPopulator::CarverList(carver) => {
-                            unimplemented!()
+                            assert_eq!(
+                                field_plan
+                                    .field_type
+                                    .resolver
+                                    .internal_dependencies.len(),
+                                1
+                            );
+                            let internal_dependency =
+                                &field_plan.field_type.resolver.internal_dependencies[0];
+                            match &internal_dependency.resolver {
+                                InternalDependencyResolver::ColumnGetterList(column_getter_list) => {
+                                    current_async_instructions.push(AsyncInstruction {
+                                        steps: smallvec![column_getter_list_step(
+                                            column_getter_list,
+                                            internal_dependency,
+                                            &external_dependency_values,
+                                        )],
+                                        is_internal_dependency_of: IsInternalDependencyOf {
+                                            dependency_names: smallvec![internal_dependency.name.clone()],
+                                            is_internal_dependency_of:
+                                                IsInternalDependencyOfInner::ObjectFieldListOfScalars {
+                                                    parent_object_index,
+                                                    carver,
+                                                    external_dependency_values: external_dependency_values
+                                                        .clone(),
+                                                    index_of_field_in_object,
+                                                    field_name: field_name.clone(),
+                                                },
+                                        },
+                                    });
+                                }
+                                _ => unreachable!("probably not?"),
+                            }
                         }
                         CarverOrPopulator::UnionOrInterfaceTypePopulatorList(
                             type_populator,
@@ -646,6 +696,30 @@ fn column_getter_step(
             .unwrap()
             .as_id()
             .clone(),
+    }
+}
+
+fn column_getter_list_step(
+    column_getter_list: &ColumnGetterList,
+    internal_dependency: &InternalDependency,
+    external_dependency_values: &ExternalDependencyValues,
+) -> AsyncStep {
+    AsyncStep::ListOfColumn {
+        table_name: column_getter_list.table_name.clone(),
+        column_name: column_getter_list.column_name.clone(),
+        dependency_type: internal_dependency.type_,
+        wheres: column_getter_list
+            .wheres
+            .iter()
+            .map(|where_| {
+                WhereResolved::new(
+                    where_.column_name.clone(),
+                    // TODO: this is punting on where's specifying
+                    // values
+                    external_dependency_values.get("id").unwrap().clone(),
+                )
+            })
+            .collect::<WheresResolved>(),
     }
 }
 
