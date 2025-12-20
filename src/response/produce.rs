@@ -203,11 +203,14 @@ fn make_progress_selection_set(
                         .internal_dependencies
                         .iter()
                         .map(|internal_dependency| {
-                            get_internal_dependency_value_synchronous(
-                                field_plan.arguments.as_ref(),
-                                &external_dependency_values,
-                                internal_dependency,
-                                schema,
+                            (
+                                internal_dependency.name.clone(),
+                                get_internal_dependency_value_synchronous(
+                                    field_plan.arguments.as_ref(),
+                                    &external_dependency_values,
+                                    internal_dependency,
+                                    schema,
+                                ),
                             )
                         })
                         .collect();
