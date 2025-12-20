@@ -105,6 +105,7 @@ enum IsInternalDependencyOfInner<'a> {
         populator: &'a Populator,
         external_dependency_values: ExternalDependencyValues,
         field_name: SmolStr,
+        field_plan: &'a FieldPlan<'a>,
     },
     ObjectFieldListOfObjects {
         parent_object_index: IndexInProduced,
@@ -211,6 +212,35 @@ pub async fn produce_response(
                             ),
                         });
                     }
+                    (
+                        AsyncStepResponse::Column(column_value),
+                        IsInternalDependencyOfInner::ObjectFieldObject {
+                            parent_object_index,
+                            index_of_field_in_object,
+                            populator,
+                            external_dependency_values,
+                            field_name,
+                            field_plan,
+                        },
+                    ) => {
+                        populate_object(
+                            &external_dependency_values,
+                            &[(
+                                async_instruction.is_internal_dependency_of.dependency_name,
+                                column_value,
+                            )]
+                            .into_iter()
+                            .collect(),
+                            populator,
+                            &mut produced,
+                            parent_object_index,
+                            index_of_field_in_object,
+                            &field_name,
+                            field_plan,
+                            &mut next_async_instructions,
+                            schema,
+                        );
+                    }
                     _ => unimplemented!(),
                 }
             });
@@ -281,27 +311,18 @@ fn make_progress_selection_set<'a: 'b, 'b>(
                             });
                         }
                         CarverOrPopulator::Populator(populator) => {
-                            let populated = populator
-                                .populate(&external_dependency_values, &internal_dependency_values);
-                            produced.push(Produced::FieldNewObject {
+                            populate_object(
+                                &external_dependency_values,
+                                &internal_dependency_values,
+                                populator,
+                                produced,
                                 parent_object_index,
                                 index_of_field_in_object,
-                                field_name: field_name.clone(),
-                            });
-                            let parent_object_index = produced.len() - 1;
-
-                            let type_name = field_plan.field_type.type_.name();
-                            let selection_set =
-                                &field_plan.selection_set_by_type.as_ref().unwrap()[type_name];
-
-                            make_progress_selection_set(
-                                selection_set,
-                                parent_object_index,
-                                populated,
-                                produced,
+                                field_name,
+                                field_plan,
                                 current_async_instructions,
                                 schema,
-                            );
+                            )
                         }
                         CarverOrPopulator::PopulatorList(populator) => {
                             populate_list(
@@ -366,6 +387,7 @@ fn make_progress_selection_set<'a: 'b, 'b>(
                                                         .clone(),
                                                     index_of_field_in_object,
                                                     field_name: field_name.clone(),
+                                                    field_plan,
                                                 }
                                             }
                                             CarverOrPopulator::UnionOrInterfaceTypePopulator(type_populator, populator) => {
@@ -488,6 +510,51 @@ fn populate_list<'a: 'b, 'b>(
                 schema,
             );
         });
+}
+
+#[instrument(
+    level = "trace",
+    skip(
+        external_dependency_values,
+        internal_dependency_values,
+        populator,
+        produced,
+        field_plan,
+        current_async_instructions,
+        schema,
+    )
+)]
+fn populate_object<'a: 'b, 'b>(
+    external_dependency_values: &ExternalDependencyValues,
+    internal_dependency_values: &InternalDependencyValues,
+    populator: &Populator,
+    produced: &mut Vec<Produced>,
+    parent_object_index: IndexInProduced,
+    index_of_field_in_object: usize,
+    field_name: &SmolStr,
+    field_plan: &'a FieldPlan<'a>,
+    current_async_instructions: &'b mut Vec<AsyncInstruction<'a>>,
+    schema: &Schema,
+) {
+    let populated = populator.populate(external_dependency_values, internal_dependency_values);
+    produced.push(Produced::FieldNewObject {
+        parent_object_index,
+        index_of_field_in_object,
+        field_name: field_name.clone(),
+    });
+    let parent_object_index = produced.len() - 1;
+
+    let type_name = field_plan.field_type.type_.name();
+    let selection_set = &field_plan.selection_set_by_type.as_ref().unwrap()[type_name];
+
+    make_progress_selection_set(
+        selection_set,
+        parent_object_index,
+        populated,
+        produced,
+        current_async_instructions,
+        schema,
+    );
 }
 
 #[instrument(
