@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use futures::future;
 use indexmap::IndexMap;
 use itertools::Itertools;
 use smallvec::SmallVec;
@@ -11,7 +12,7 @@ use crate::{
     Argument, Carver, CarverOrPopulator, Database, DependencyType, DependencyValue,
     ExternalDependencyValues, FieldPlan, Id, InternalDependency, InternalDependencyResolver,
     InternalDependencyValues, Populator, PopulatorInterface, PopulatorList, PopulatorListInterface,
-    QueryPlan, ResponseValue, Schema, Type, Value,
+    QueryPlan, ResponseValue, Schema, Type, Value, WhereResolved, WheresResolved,
 };
 
 type IndexInProduced = usize;
@@ -19,11 +20,39 @@ type IndexInProduced = usize;
 enum AsyncStep {
     ListOfIds {
         table_name: SmolStr,
+        column_name: SmolStr,
+        dependency_type: DependencyType,
+        wheres: WheresResolved,
     },
     ListOfIdsAndOtherColumns {
         table_name: SmolStr,
         other_columns: SmallVec<[SmolStr; 8]>,
     },
+}
+
+impl AsyncStep {
+    pub async fn run(&self, database: &dyn Database) -> AsyncStepResponse {
+        match self {
+            Self::ListOfIds {
+                table_name,
+                column_name,
+                dependency_type,
+                wheres,
+            } => AsyncStepResponse::ListOfIds(
+                database
+                    .get_column_list(table_name, column_name, *dependency_type, wheres)
+                    .await,
+            ),
+            Self::ListOfIdsAndOtherColumns {
+                table_name,
+                other_columns,
+            } => unimplemented!(),
+        }
+    }
+}
+
+enum AsyncStepResponse {
+    ListOfIds(Vec<DependencyValue>),
 }
 
 struct AsyncInstruction<'a> {
@@ -63,18 +92,24 @@ pub async fn produce_response(
     let mut produced: Vec<Produced> = _d();
     produced.push(Produced::NewRootObject);
 
-    let mut next_async_instructions: Vec<AsyncInstruction> = _d();
+    loop {
+        let mut next_async_instructions: Vec<AsyncInstruction> = _d();
 
-    make_progress_selection_set(
-        &query_plan.field_plans,
-        0,
-        &ExternalDependencyValues::Empty,
-        &mut produced,
-        &mut next_async_instructions,
-        schema,
-    );
+        make_progress_selection_set(
+            &query_plan.field_plans,
+            0,
+            &ExternalDependencyValues::Empty,
+            &mut produced,
+            &mut next_async_instructions,
+            schema,
+        );
 
-    unimplemented!();
+        if next_async_instructions.is_empty() {
+            break;
+        }
+
+        let responses = future::join_all().await;
+    }
 
     produced.into()
 }
@@ -205,11 +240,26 @@ fn make_progress_selection_set(
                     match &internal_dependency.resolver {
                         InternalDependencyResolver::ColumnGetter(_) => unimplemented!(),
                         InternalDependencyResolver::ColumnGetterList(column_getter_list) => {
-                            assert!(column_getter_list.wheres.is_empty());
-                            assert_eq!(column_getter_list.column_name, "id");
                             next_async_instructions.push(AsyncInstruction {
                                 step: AsyncStep::ListOfIds {
                                     table_name: column_getter_list.table_name.clone(),
+                                    column_name: column_getter_list.column_name.clone(),
+                                    dependency_type: internal_dependency.type_,
+                                    wheres: column_getter_list
+                                        .wheres
+                                        .iter()
+                                        .map(|where_| {
+                                            WhereResolved::new(
+                                                where_.column_name.clone(),
+                                                // TODO: this is punting on where's specifying
+                                                // values
+                                                external_dependency_values
+                                                    .get("id")
+                                                    .unwrap()
+                                                    .clone(),
+                                            )
+                                        })
+                                        .collect::<WheresResolved>(),
                                 },
                                 is_internal_dependency_of: IsInternalDependencyOf {
                                     dependency_name: internal_dependency.name.clone(),
