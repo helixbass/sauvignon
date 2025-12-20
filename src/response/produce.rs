@@ -23,10 +23,12 @@ enum Produced {
         type_: SmolStr,
         external_dependency_values_for_its_fields: ExternalDependencyValues,
     },
-    FieldNewList {
+    FieldNewListOfObjects {
         parent_object_index: usize,
+        index_of_field_in_object: usize,
         field_name: SmolStr,
     },
+    // FieldNewListOfScalars { ... },
     ListItemNewObject {
         parent_list_index: usize,
         index_in_list: usize,
@@ -42,17 +44,24 @@ enum Produced {
     // ListItemScalar { ... },
 }
 
-type ObjectIndexInProduced = usize;
+type IndexInProduced = usize;
 
 struct ObjectFieldStuff {
     pub field_name: SmolStr,
-    pub object_index_in_produced: ObjectIndexInProduced,
+    pub value_stub: FieldValueStub,
     pub index_of_field_in_object: usize,
+}
+
+enum FieldValueStub {
+    Value(ResponseValue),
+    ObjectIndexInProduced(IndexInProduced),
+    ListIndexInProduced(IndexInProduced),
 }
 
 impl From<Vec<Produced>> for ResponseValue {
     fn from(produced: Vec<Produced>) -> Self {
-        let mut objects_by_index: HashMap<ObjectIndexInProduced, Vec<ObjectFieldStuff>> = _d();
+        let mut objects_by_index: HashMap<IndexInProduced, Vec<ObjectFieldStuff>> = _d();
+        let mut lists_of_objects_by_index: HashMap<IndexInProduced, Vec<ListItemStuff>> = _d();
 
         for (index, step) in produced.into_iter().enumerate() {
             match step {
@@ -64,6 +73,7 @@ impl From<Vec<Produced>> for ResponseValue {
                     external_dependency_values_for_its_fields,
                 } => {
                     objects_by_index.insert(index, _d());
+
                     match parent_object_index {
                         None => {
                             assert_eq!(index, 0);
@@ -74,9 +84,25 @@ impl From<Vec<Produced>> for ResponseValue {
                             .push(ObjectFieldStuff {
                                 field_name,
                                 index_of_field_in_object,
-                                object_index_in_produced: index,
+                                value_stub: FieldValueStub::ObjectIndexInProduced(index),
                             }),
                     }
+                }
+                Produced::FieldNewListOfObjects {
+                    parent_object_index,
+                    index_of_field_in_object,
+                    field_name,
+                } => {
+                    lists_of_objects_by_index.insert(index, _d());
+
+                    objects_by_index
+                        .get_mut(&parent_object_index)
+                        .unwrap()
+                        .push(ObjectFieldStuff {
+                            field_name,
+                            index_of_field_in_object,
+                            value_stub: FieldValueStub::ListIndexInProduced(index),
+                        });
                 }
             }
         }
