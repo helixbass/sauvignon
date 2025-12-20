@@ -1,10 +1,21 @@
 use std::collections::HashMap;
 
 use indexmap::IndexMap;
+use smallvec::SmallVec;
 use smol_str::SmolStr;
 use squalid::_d;
 
 use crate::{Database, ExternalDependencyValues, QueryPlan, ResponseValue, Schema};
+
+enum AsyncStep {
+    ListOfIds {
+        table_name: SmolStr,
+    },
+    ListOfIdsAndOtherColumns {
+        table_name: SmolStr,
+        other_columns: SmallVec<[SmolStr; 8]>,
+    },
+}
 
 pub async fn produce_response(
     schema: &Schema,
@@ -12,14 +23,39 @@ pub async fn produce_response(
     query_plan: &QueryPlan<'_>,
 ) -> ResponseValue {
     let mut produced: Vec<Produced> = _d();
-    unimplemented!()
+    produced.push(Produced::NewRootObject {});
+    let parent_object_index = 0;
+    query_plan.field_plans.iter().enumerate().for_each(
+        |(index_of_field_in_object, (field_name, field_plan))| {
+            produced.push(match field_plan.selection_set_by_type.is_none() {
+                true => Produced::FieldScalar {
+                    parent_object_index,
+                    index_of_field_in_object,
+                    field_name: field_name.clone(),
+                    value: unimplemented!(),
+                },
+                false => Produced::FieldNewObject {
+                    parent_object_index,
+                    index_of_field_in_object,
+                    field_name: field_name.clone(),
+                },
+            });
+        },
+    );
+
+    unimplemented!();
+
+    produced.into()
 }
 
 type IndexInProduced = usize;
 
 enum Produced {
+    NewRootObject {
+        type_: SmolStr,
+    },
     FieldNewObject {
-        parent_object_index: Option<IndexInProduced>,
+        parent_object_index: IndexInProduced,
         index_of_field_in_object: usize,
         field_name: SmolStr,
         type_: SmolStr,
@@ -149,11 +185,6 @@ impl From<Vec<Produced>> for ResponseValue {
             &mut objects_by_index,
             &mut lists_of_objects_by_index,
         ))
-
-        // let mut completed_objects_by_index: HashMap<usize, Vec<(SmolStr, ResponseValue)>> = _d();
-        // Self::Map(construct_object(
-        //     completed_objects_by_index.remove(&0).unwrap(),
-        // ))
     }
 }
 
@@ -210,9 +241,3 @@ fn construct_object(
         })
         .collect()
 }
-
-// fn construct_object(
-//     fields: impl IntoIterator<Item = (SmolStr, ResponseValue)>,
-// ) -> IndexMap<SmolStr, ResponseValue> {
-//     fields.into_iter().collect()
-// }
