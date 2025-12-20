@@ -24,21 +24,31 @@ pub async fn produce_response(
 ) -> ResponseValue {
     let mut produced: Vec<Produced> = _d();
     produced.push(Produced::NewRootObject {});
+
+    let mut next_async_steps: Vec<AsyncStep> = _d();
+
     let parent_object_index = 0;
+    let external_dependencies = ExternalDependencyValues::Empty;
     query_plan.field_plans.iter().enumerate().for_each(
         |(index_of_field_in_object, (field_name, field_plan))| {
-            produced.push(match field_plan.selection_set_by_type.is_none() {
-                true => Produced::FieldScalar {
+            let can_resolve_all_internal_dependencies_synchronously =
+                field_plan.field_type.resolver.internal_dependencies.iter().all(|internal_dependency| {
+                    internal_dependency.resolver.can_be_resolved_synchronously()
+                });
+            match field_plan.selection_set_by_type.is_none() {
+                true => produced.push(
+                    Produced::FieldScalar {
+                        parent_object_index,
+                        index_of_field_in_object,
+                        field_name: field_name.clone(),
+                        value: unimplemented!(),
+                    }
+                ),
+                false => produced.push(Produced::FieldNewObject {
                     parent_object_index,
                     index_of_field_in_object,
                     field_name: field_name.clone(),
-                    value: unimplemented!(),
-                },
-                false => Produced::FieldNewObject {
-                    parent_object_index,
-                    index_of_field_in_object,
-                    field_name: field_name.clone(),
-                },
+                }),
             });
         },
     );
