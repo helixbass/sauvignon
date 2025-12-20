@@ -267,6 +267,48 @@ pub async fn produce_response(
                             schema,
                         );
                     }
+                    (
+                        StepResponses::Two(
+                            AsyncStepResponse::Column(first_column_value),
+                            AsyncStepResponse::Column(second_column_value),
+                        ),
+                        IsInternalDependencyOfInner::ObjectFieldUnionOrInterfaceObject {
+                            parent_object_index,
+                            index_of_field_in_object,
+                            type_populator,
+                            populator,
+                            external_dependency_values,
+                            field_name,
+                            field_plan,
+                        },
+                    ) => {
+                        populate_union_or_interface_object(
+                            &external_dependency_values,
+                            &[
+                                (
+                                    async_instruction.is_internal_dependency_of.dependency_names[0]
+                                        .clone(),
+                                    first_column_value,
+                                ),
+                                (
+                                    async_instruction.is_internal_dependency_of.dependency_names[1]
+                                        .clone(),
+                                    second_column_value,
+                                ),
+                            ]
+                            .into_iter()
+                            .collect(),
+                            type_populator,
+                            populator,
+                            &mut produced,
+                            parent_object_index,
+                            index_of_field_in_object,
+                            &field_name,
+                            field_plan,
+                            &mut next_async_instructions,
+                            schema,
+                        );
+                    }
                     _ => unimplemented!(),
                 }
             });
