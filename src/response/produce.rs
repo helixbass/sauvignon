@@ -7,7 +7,7 @@ use squalid::_d;
 use tracing::instrument;
 
 use crate::{Database, ExternalDependencyValues, QueryPlan, ResponseValue, Schema, DependencyValue, InternalDependency, InternalDependencyResolver, InternalDependencyValues,
-CarverOrPopulator, PopulatorInterface};
+CarverOrPopulator, PopulatorInterface, PopulatorListInterface};
 
 type IndexInProduced = usize;
 
@@ -89,6 +89,14 @@ pub async fn produce_response(
                             });
                         }
                         CarverOrPopulator::PopulatorList(populator) => {
+                            let populated = populator.populate(&external_dependency_values, &internal_dependency_values);
+                            // TODO: this presumably needs to maybe also be
+                            // eg FieldNewListOfScalars?
+                            produced.push(Produced::FieldNewListOfObjects {
+                                parent_object_index,
+                                index_of_field_in_object,
+                                field_name: field_name.clone(),
+                            });
                         }
                         _ => unimplemented!(),
                     }
