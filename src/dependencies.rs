@@ -405,6 +405,19 @@ impl ExternalDependencyValues {
     }
 }
 
+impl FromIterator<(SmolStr, DependencyValue)> for ExternalDependencyValues {
+    fn from_iter<TIterator>(iterator: TIterator) -> Self
+    where
+        TIterator: IntoIterator<Item = (SmolStr, DependencyValue)>,
+    {
+        let mut ret = Self::default();
+        iterator.into_iter().for_each(|(key, value)| {
+            ret.insert(key, value);
+        });
+        ret
+    }
+}
+
 #[derive(Clone, Default)]
 pub struct ExternalDependencyValuesFull {
     knowns: HashMap<SmolStr, DependencyValue>,
