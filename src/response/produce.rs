@@ -1,13 +1,18 @@
 use std::collections::HashMap;
 
 use indexmap::IndexMap;
+use itertools::Itertools;
 use smallvec::SmallVec;
 use smol_str::SmolStr;
 use squalid::_d;
-use tracing::instrument;
+use tracing::{instrument, trace_span};
 
-use crate::{Database, ExternalDependencyValues, QueryPlan, ResponseValue, Schema, DependencyValue, InternalDependency, InternalDependencyResolver, InternalDependencyValues,
-CarverOrPopulator, PopulatorInterface, PopulatorListInterface};
+use crate::{
+    Argument, Carver, CarverOrPopulator, Database, DependencyType, DependencyValue,
+    ExternalDependencyValues, Id, InternalDependency, InternalDependencyResolver,
+    InternalDependencyValues, Populator, PopulatorInterface, PopulatorListInterface, QueryPlan,
+    ResponseValue, Schema, Type, Value,
+};
 
 type IndexInProduced = usize;
 
@@ -59,15 +64,30 @@ pub async fn produce_response(
     let external_dependency_values = ExternalDependencyValues::Empty;
     query_plan.field_plans.iter().enumerate().for_each(
         |(index_of_field_in_object, (field_name, field_plan))| {
-            let can_resolve_all_internal_dependencies_synchronously =
-                field_plan.field_type.resolver.internal_dependencies.iter().all(|internal_dependency| {
+            let can_resolve_all_internal_dependencies_synchronously = field_plan
+                .field_type
+                .resolver
+                .internal_dependencies
+                .iter()
+                .all(|internal_dependency| {
                     internal_dependency.resolver.can_be_resolved_synchronously()
                 });
             match can_resolve_all_internal_dependencies_synchronously {
                 true => {
-                    let internal_dependency_values: InternalDependencyValues = field_plan.field_type.resolver.internal_dependencies.iter().map(|internal_dependency| {
-                        get_internal_dependency_value_synchronous(&field_plan.arguments, &external_dependency_values, internal_dependency, schema)
-                    }).collect();
+                    let internal_dependency_values: InternalDependencyValues = field_plan
+                        .field_type
+                        .resolver
+                        .internal_dependencies
+                        .iter()
+                        .map(|internal_dependency| {
+                            get_internal_dependency_value_synchronous(
+                                field_plan.arguments.as_ref(),
+                                &external_dependency_values,
+                                internal_dependency,
+                                schema,
+                            )
+                        })
+                        .collect();
                     match &field_plan.field_type.resolver.carver_or_populator {
                         CarverOrPopulator::Carver(carver) => {
                             produced.push(Produced::FieldScalar {
@@ -81,7 +101,8 @@ pub async fn produce_response(
                             });
                         }
                         CarverOrPopulator::Populator(populator) => {
-                            let populated = populator.populate(&external_dependency_values, &internal_dependency_values);
+                            let populated = populator
+                                .populate(&external_dependency_values, &internal_dependency_values);
                             produced.push(Produced::FieldNewObject {
                                 parent_object_index,
                                 index_of_field_in_object,
@@ -89,7 +110,8 @@ pub async fn produce_response(
                             });
                         }
                         CarverOrPopulator::PopulatorList(populator) => {
-                            let populated = populator.populate(&external_dependency_values, &internal_dependency_values);
+                            let populated = populator
+                                .populate(&external_dependency_values, &internal_dependency_values);
                             // TODO: this presumably needs to maybe also be
                             // eg FieldNewListOfScalars?
                             produced.push(Produced::FieldNewListOfObjects {
@@ -105,21 +127,6 @@ pub async fn produce_response(
                     unimplemented!()
                 }
             }
-            match field_plan.selection_set_by_type.is_none() {
-                true => produced.push(
-                    Produced::FieldScalar {
-                        parent_object_index,
-                        index_of_field_in_object,
-                        field_name: field_name.clone(),
-                        value: unimplemented!(),
-                    }
-                ),
-                false => produced.push(Produced::FieldNewObject {
-                    parent_object_index,
-                    index_of_field_in_object,
-                    field_name: field_name.clone(),
-                }),
-            });
         },
     );
 
@@ -128,7 +135,10 @@ pub async fn produce_response(
     produced.into()
 }
 
-#[instrument(level = "trace", skip(field_plan, external_dependency_values, internal_dependency, schema))]
+#[instrument(
+    level = "trace",
+    skip(arguments, external_dependency_values, internal_dependency, schema)
+)]
 fn get_internal_dependency_value_synchronous(
     arguments: Option<&IndexMap<SmolStr, Argument>>,
     external_dependency_values: &ExternalDependencyValues,
@@ -199,11 +209,7 @@ fn get_internal_dependency_value_synchronous(
             )
         }
         InternalDependencyResolver::Argument(argument_resolver) => {
-            let argument =
-                arguments
-                .unwrap()
-                .get(&argument_resolver.name)
-                .unwrap();
+            let argument = arguments.unwrap().get(&argument_resolver.name).unwrap();
             match (internal_dependency.type_, &argument.value) {
                 (DependencyType::Id, Value::Int(argument_value)) => {
                     DependencyValue::Id(Id::Int(*argument_value))
@@ -218,7 +224,7 @@ fn get_internal_dependency_value_synchronous(
                 _ => unreachable!(),
             }
         }
-        _ => unreachable!()
+        _ => unreachable!(),
     }
 }
 

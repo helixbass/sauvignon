@@ -226,7 +226,7 @@ async fn compute_response(
         return compute_sync_response(schema, request, database.0);
     }
     let query_plan = QueryPlan::new(&request, schema);
-    produce_response(schema, database, &query_plan).await;
+    produce_response(schema, database.0, &query_plan).await;
     unimplemented!();
     let response_in_progress = query_plan.initial_response_in_progress();
     let mut fields_in_progress = response_in_progress.fields;
