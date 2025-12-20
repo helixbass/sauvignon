@@ -126,6 +126,21 @@ impl From<Vec<Produced>> for ResponseValue {
                             object_index_in_produced: index,
                         });
                 }
+                Produced::FieldScalar {
+                    parent_object_index,
+                    index_of_field_in_object,
+                    field_name,
+                    value,
+                } => {
+                    objects_by_index
+                        .get_mut(&parent_object_index)
+                        .unwrap()
+                        .push(ObjectFieldStuff {
+                            field_name,
+                            index_of_field_in_object,
+                            value_stub: FieldValueStub::Value(value),
+                        });
+                }
             }
         }
 
