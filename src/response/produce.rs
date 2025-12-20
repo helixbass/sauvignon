@@ -101,8 +101,10 @@ enum IsInternalDependencyOfInner<'a> {
     },
     ObjectFieldObject {
         parent_object_index: IndexInProduced,
+        index_of_field_in_object: usize,
         populator: &'a Populator,
-        external_dependency_values: &'a ExternalDependencyValues,
+        external_dependency_values: ExternalDependencyValues,
+        field_name: SmolStr,
     },
     ObjectFieldListOfObjects {
         parent_object_index: IndexInProduced,
@@ -341,21 +343,42 @@ fn make_progress_selection_set<'a: 'b, 'b>(
                                 },
                                 is_internal_dependency_of: IsInternalDependencyOf {
                                     dependency_name: internal_dependency.name.clone(),
-                                    // TODO: presumably also handle nested
-                                    // object here?
                                     is_internal_dependency_of:
-                                        IsInternalDependencyOfInner::ObjectFieldScalar {
-                                            parent_object_index,
-                                            carver: field_plan
+                                        match &field_plan
                                                 .field_type
                                                 .resolver
-                                                .carver_or_populator
-                                                .as_carver(),
-                                            external_dependency_values: external_dependency_values
-                                                .clone(),
-                                            index_of_field_in_object,
-                                            field_name: field_name.clone(),
-                                        },
+                                                .carver_or_populator {
+                                            CarverOrPopulator::Carver(carver) => {
+                                                IsInternalDependencyOfInner::ObjectFieldScalar {
+                                                    parent_object_index,
+                                                    carver,
+                                                    external_dependency_values: external_dependency_values
+                                                        .clone(),
+                                                    index_of_field_in_object,
+                                                    field_name: field_name.clone(),
+                                                }
+                                            }
+                                            CarverOrPopulator::Populator(populator) => {
+                                                IsInternalDependencyOfInner::ObjectFieldObject {
+                                                    parent_object_index,
+                                                    populator,
+                                                    external_dependency_values: external_dependency_values
+                                                        .clone(),
+                                                    index_of_field_in_object,
+                                                    field_name: field_name.clone(),
+                                                }
+                                            }
+                                            CarverOrPopulator::UnionOrInterfaceTypePopulator(type_populator, populator) => {
+                                                unimplemented!()
+                                            }
+                                            CarverOrPopulator::OptionalPopulator(populator) => {
+                                                unimplemented!()
+                                            }
+                                            CarverOrPopulator::OptionalUnionOrInterfaceTypePopulator(type_populator, populator) => {
+                                                unimplemented!()
+                                            }
+                                            _ => unreachable!()
+                                        }
                                 },
                             });
                         }
