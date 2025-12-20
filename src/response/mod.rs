@@ -10,6 +10,10 @@ use crate::{
     ExternalDependencyValues, FieldPlan, IndexMap, Location, ParseOrLexError, ValidationError,
 };
 
+mod produce;
+
+pub use produce::produce_response;
+
 #[derive(Serialize)]
 pub struct Response {
     #[serde(skip_serializing_if = "Vec::is_empty")]

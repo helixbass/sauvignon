@@ -57,7 +57,7 @@ pub use crate::resolve::{
     UnionOrInterfaceTypePopulatorList, ValuePopulator, ValuePopulatorList, ValuesPopulator,
 };
 pub use crate::response::{
-    fields_in_progress_new, FieldsInProgress, InProgress, InProgressRecursing,
+    fields_in_progress_new, produce_response, FieldsInProgress, InProgress, InProgressRecursing,
     InProgressRecursingList, Response, ResponseInProgress, ResponseValue,
     ResponseValueOrInProgress,
 };

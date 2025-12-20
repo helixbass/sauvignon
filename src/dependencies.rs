@@ -63,6 +63,19 @@ pub enum InternalDependencyResolver {
     IntrospectionTypePossibleTypes,
 }
 
+impl InternalDependencyResolver {
+    pub fn can_be_resolved_synchronously(&self) -> bool {
+        match self {
+            Self::ColumnGetter(_) => false,
+            Self::Argument(_) => true,
+            Self::ColumnGetterList(_) => false,
+            Self::LiteralValue(_) => true,
+            Self::IntrospectionTypeInterfaces => true,
+            Self::IntrospectionTypePossibleTypes => true,
+        }
+    }
+}
+
 pub struct ColumnGetter {
     pub table_name: SmolStr,
     pub column_name: SmolStr,
@@ -389,6 +402,19 @@ impl ExternalDependencyValues {
             Self::Single(_, _) => 1,
             Self::Full(full) => full.len(),
         }
+    }
+}
+
+impl FromIterator<(SmolStr, DependencyValue)> for ExternalDependencyValues {
+    fn from_iter<TIterator>(iterator: TIterator) -> Self
+    where
+        TIterator: IntoIterator<Item = (SmolStr, DependencyValue)>,
+    {
+        let mut ret = Self::default();
+        iterator.into_iter().for_each(|(key, value)| {
+            ret.insert(key, value).unwrap();
+        });
+        ret
     }
 }
 

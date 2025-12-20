@@ -9,8 +9,8 @@ use squalid::{OptionExt, _d};
 use tracing::{instrument, trace, trace_span};
 
 use crate::{
-    builtin_types, fields_in_progress_new, get_hash, parse, CarverOrPopulator, Database,
-    DependencyType, DependencyValue, Document, DummyUnionTypenameField, Error,
+    builtin_types, fields_in_progress_new, get_hash, parse, produce_response, CarverOrPopulator,
+    Database, DependencyType, DependencyValue, Document, DummyUnionTypenameField, Error,
     ExternalDependencyValues, FieldPlan, FieldsInProgress, Id, InProgress, InProgressRecursing,
     InProgressRecursingList, IndexMap, Interface, InternalDependencyResolver,
     InternalDependencyValues, OperationType, OptionalPopulator, OptionalPopulatorInterface,
@@ -226,6 +226,9 @@ async fn compute_response(
         return compute_sync_response(schema, request, database.0);
     }
     let query_plan = QueryPlan::new(&request, schema);
+    return produce_response(schema, database.0, &query_plan).await;
+
+    unimplemented!();
     let response_in_progress = query_plan.initial_response_in_progress();
     let mut fields_in_progress = response_in_progress.fields;
     loop {
@@ -470,10 +473,7 @@ async fn populate_internal_dependencies(
             internal_dependency.name.clone(),
             match &internal_dependency.resolver {
                 InternalDependencyResolver::ColumnGetter(column_getter) => {
-                    let row_id = match external_dependency_values.get("id").unwrap() {
-                        DependencyValue::Id(id) => id,
-                        _ => unreachable!(),
-                    };
+                    let row_id = external_dependency_values.get("id").unwrap().as_id();
                     if is_database_sync {
                         unimplemented!()
                         // database.get_column_sync(

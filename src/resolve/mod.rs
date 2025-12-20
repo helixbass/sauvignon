@@ -46,6 +46,22 @@ pub enum CarverOrPopulator {
     ),
 }
 
+impl CarverOrPopulator {
+    pub fn as_carver(&self) -> &Box<dyn Carver> {
+        match self {
+            Self::Carver(carver) => carver,
+            _ => panic!("expected carver"),
+        }
+    }
+
+    pub fn as_populator_list(&self) -> &PopulatorList {
+        match self {
+            Self::PopulatorList(populator) => populator,
+            _ => panic!("expected populator list"),
+        }
+    }
+}
+
 pub trait Carver: Send + Sync {
     fn carve(
         &self,
