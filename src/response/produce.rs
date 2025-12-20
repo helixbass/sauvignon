@@ -79,8 +79,11 @@ enum IsInternalDependencyOfInner<'a> {
     },
     ObjectFieldListOfObjects {
         parent_object_index: IndexInProduced,
+        index_of_field_in_object: usize,
         populator: &'a PopulatorList,
         external_dependency_values: &'a ExternalDependencyValues,
+        field_name: SmolStr,
+        field_plan: &'a FieldPlan<'a>,
     },
 }
 
@@ -129,8 +132,11 @@ pub async fn produce_response(
                         AsyncStepResponse::ListOfIds(ids),
                         IsInternalDependencyOfInner::ObjectFieldListOfObjects {
                             parent_object_index,
+                            index_of_field_in_object,
                             populator,
                             external_dependency_values,
+                            field_name,
+                            field_plan,
                         },
                     ) => {
                         populate_list(
@@ -144,11 +150,18 @@ pub async fn produce_response(
                             populator,
                             &mut produced,
                             parent_object_index,
+                            index_of_field_in_object,
+                            &field_name,
+                            field_plan,
+                            &mut next_async_instructions,
+                            schema,
                         );
                     }
                     _ => unimplemented!(),
                 }
             });
+
+        current_async_instructions = next_async_instructions;
     }
 
     produced.into()
@@ -294,6 +307,9 @@ fn make_progress_selection_set(
                                                 .carver_or_populator
                                                 .as_populator_list(),
                                             external_dependency_values,
+                                            index_of_field_in_object,
+                                            field_name: field_name.clone(),
+                                            field_plan,
                                         },
                                 },
                             });
