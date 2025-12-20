@@ -4,8 +4,9 @@ use indexmap::IndexMap;
 use smallvec::SmallVec;
 use smol_str::SmolStr;
 use squalid::_d;
+use tracing::instrument;
 
-use crate::{Database, ExternalDependencyValues, QueryPlan, ResponseValue, Schema};
+use crate::{Database, ExternalDependencyValues, QueryPlan, ResponseValue, Schema, DependencyValue, InternalDependency, InternalDependencyResolver};
 
 type IndexInProduced = usize;
 
@@ -42,6 +43,7 @@ enum IsInternalDependencyOfInner<'a> {
     },
 }
 
+#[instrument(level = "trace", skip(schema, database, query_plan))]
 pub async fn produce_response(
     schema: &Schema,
     database: &dyn Database,
@@ -60,6 +62,9 @@ pub async fn produce_response(
                 field_plan.field_type.resolver.internal_dependencies.iter().all(|internal_dependency| {
                     internal_dependency.resolver.can_be_resolved_synchronously()
                 });
+            if can_resolve_all_internal_dependencies_synchronously {
+                let internal_dependencies = 
+            }
             match field_plan.selection_set_by_type.is_none() {
                 true => produced.push(
                     Produced::FieldScalar {
@@ -81,6 +86,100 @@ pub async fn produce_response(
     unimplemented!();
 
     produced.into()
+}
+
+#[instrument(level = "trace", skip(field_plan, external_dependency_values, internal_dependency, schema))]
+fn get_internal_dependency_value_synchronous(
+    arguments: Option<&IndexMap<SmolStr, Argument>>,
+    external_dependency_values: &ExternalDependencyValues,
+    internal_dependency: &InternalDependency,
+    schema: &Schema,
+) -> DependencyValue {
+    match &internal_dependency.resolver {
+        InternalDependencyResolver::LiteralValue(literal_value) => literal_value.0.clone(),
+        InternalDependencyResolver::IntrospectionTypeInterfaces => {
+            let _ = trace_span!("resolve introspection type interfaces").entered();
+            let type_name = external_dependency_values.get("name").unwrap().as_string();
+            DependencyValue::List(
+                schema
+                    .maybe_type(type_name)
+                    .filter(|type_| matches!(type_, Type::Object(_)))
+                    .map(|type_| {
+                        type_
+                            .as_object()
+                            .implements
+                            .iter()
+                            .map(|implement| DependencyValue::String(implement.clone()))
+                            .collect()
+                    })
+                    .or_else(|| {
+                        schema.interfaces.get(type_name).map(|interface| {
+                            interface
+                                .implements
+                                .iter()
+                                .map(|implement| DependencyValue::String(implement.clone()))
+                                .collect()
+                        })
+                    })
+                    // TODO: this needs to be optional for
+                    // things other than object types and interfaces
+                    .unwrap(),
+            )
+        }
+        InternalDependencyResolver::IntrospectionTypePossibleTypes => {
+            let _ = trace_span!("resolve introspection type possible types").entered();
+            let type_name = external_dependency_values.get("name").unwrap().as_string();
+            DependencyValue::List(
+                schema
+                    .interface_all_concrete_types
+                    .get(type_name)
+                    .map(|all_concrete_type_names| {
+                        all_concrete_type_names
+                            .into_iter()
+                            .sorted()
+                            .map(|concrete_type_name| {
+                                DependencyValue::String(concrete_type_name.clone())
+                            })
+                            .collect()
+                    })
+                    .or_else(|| {
+                        schema.unions.get(type_name).map(|union| {
+                            union
+                                .types
+                                .iter()
+                                .map(|concrete_type_name| {
+                                    DependencyValue::String(concrete_type_name.clone())
+                                })
+                                .collect()
+                        })
+                    })
+                    // TODO: this needs to be optional for
+                    // things other than interfaces and unions
+                    .unwrap(),
+            )
+        }
+        InternalDependencyResolver::Argument(argument_resolver) => {
+            let argument =
+                arguments
+                .unwrap()
+                .get(&argument_resolver.name)
+                .unwrap();
+            match (internal_dependency.type_, &argument.value) {
+                (DependencyType::Id, Value::Int(argument_value)) => {
+                    DependencyValue::Id(Id::Int(*argument_value))
+                }
+                (DependencyType::String, Value::String(argument_value)) => {
+                    DependencyValue::String(argument_value.clone())
+                }
+                (DependencyType::String, Value::EnumVariant(argument_value)) => {
+                    DependencyValue::String(argument_value.clone())
+                }
+                // TODO: truly unreachable?
+                _ => unreachable!(),
+            }
+        }
+        _ => unreachable!()
+    }
 }
 
 enum Produced {
@@ -221,6 +320,7 @@ impl From<Vec<Produced>> for ResponseValue {
     }
 }
 
+#[instrument(level = "trace", skip(objects_by_index, lists_of_objects_by_index))]
 fn construct_object(
     object_index: usize,
     objects_by_index: &mut HashMap<IndexInProduced, Vec<ObjectFieldStuff>>,
