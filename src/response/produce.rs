@@ -7,6 +7,8 @@ use squalid::_d;
 
 use crate::{Database, ExternalDependencyValues, QueryPlan, ResponseValue, Schema};
 
+type IndexInProduced = usize;
+
 enum AsyncStep {
     ListOfIds {
         table_name: SmolStr,
@@ -14,6 +16,29 @@ enum AsyncStep {
     ListOfIdsAndOtherColumns {
         table_name: SmolStr,
         other_columns: SmallVec<[SmolStr; 8]>,
+    },
+}
+
+struct AsyncInstruction<'a> {
+    pub step: AsyncStep,
+    pub is_internal_dependency_of: IsInternalDependencyOf<'a>,
+}
+
+struct IsInternalDependencyOf<'a> {
+    pub dependency_name: SmolStr,
+    pub is_internal_dependency_of: IsInternalDependencyOfInner<'a>,
+}
+
+enum IsInternalDependencyOfInner<'a> {
+    ObjectFieldScalar {
+        parent_object_index: IndexInProduced,
+        carver: &'a Box<dyn Carver>,
+        external_dependency_values: &'a ExternalDependencyValues,
+    },
+    ObjectFieldObject {
+        new_object_index: IndexInProduced,
+        populator: &'a Populator,
+        external_dependency_values: &'a ExternalDependencyValues,
     },
 }
 
@@ -25,7 +50,7 @@ pub async fn produce_response(
     let mut produced: Vec<Produced> = _d();
     produced.push(Produced::NewRootObject {});
 
-    let mut next_async_steps: Vec<AsyncStep> = _d();
+    let mut next_async_instructions: Vec<AsyncInstruction> = _d();
 
     let parent_object_index = 0;
     let external_dependencies = ExternalDependencyValues::Empty;
@@ -57,8 +82,6 @@ pub async fn produce_response(
 
     produced.into()
 }
-
-type IndexInProduced = usize;
 
 enum Produced {
     NewRootObject {
