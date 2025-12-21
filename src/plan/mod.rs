@@ -5,8 +5,7 @@ use squalid::{OptionExt, _d};
 use tracing::instrument;
 
 use crate::{
-    fields_in_progress_new, request, types, Argument, Directive, IndexMap, OperationType, Request,
-    ResponseInProgress, Schema, Selection, Value,
+    request, types, Argument, Directive, IndexMap, OperationType, Request, Schema, Selection, Value,
 };
 
 pub struct QueryPlan<'a> {
@@ -29,10 +28,6 @@ impl<'a> QueryPlan<'a> {
             .remove(&schema.query_type_name)
             .unwrap(),
         }
-    }
-
-    pub fn initial_response_in_progress(&self) -> ResponseInProgress<'_> {
-        ResponseInProgress::new(fields_in_progress_new(&self.field_plans, &_d()))
     }
 }
 

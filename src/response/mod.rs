@@ -3,12 +3,9 @@ use jiff::Timestamp;
 use serde::Serialize;
 use smol_str::{format_smolstr, SmolStr};
 use squalid::_d;
-use tracing::instrument;
 use uuid::Uuid;
 
-use crate::{
-    ExternalDependencyValues, FieldPlan, IndexMap, Location, ParseOrLexError, ValidationError,
-};
+use crate::{IndexMap, Location, ParseOrLexError, ValidationError};
 
 mod produce;
 
@@ -60,27 +57,6 @@ pub enum ResponseValue {
     Uuid(Uuid),
 }
 
-impl From<FieldsInProgress<'_>> for ResponseValue {
-    fn from(fields_in_progress: FieldsInProgress) -> Self {
-        Self::Map(
-            fields_in_progress
-                .into_iter()
-                .map(|(name, response_value_or_in_progress)| {
-                    (
-                        name,
-                        match response_value_or_in_progress {
-                            ResponseValueOrInProgress::ResponseValue(response_value) => {
-                                response_value
-                            }
-                            _ => unreachable!(),
-                        },
-                    )
-                })
-                .collect(),
-        )
-    }
-}
-
 impl From<bool> for ResponseValue {
     fn from(value: bool) -> Self {
         Self::Boolean(value)
@@ -123,102 +99,6 @@ impl<TInner: Into<ResponseValue>> From<Option<TInner>> for ResponseValue {
 impl<TInner: Into<ResponseValue>> From<Vec<TInner>> for ResponseValue {
     fn from(value: Vec<TInner>) -> Self {
         Self::List(value.into_iter().map(Into::into).collect())
-    }
-}
-
-pub type FieldsInProgress<'a> = IndexMap<SmolStr, ResponseValueOrInProgress<'a>>;
-
-#[instrument(level = "trace", skip(field_plans, external_dependency_values))]
-pub fn fields_in_progress_new<'a>(
-    field_plans: &'a IndexMap<SmolStr, FieldPlan<'a>>,
-    external_dependency_values: &ExternalDependencyValues,
-) -> FieldsInProgress<'a> {
-    // TODO: this looks like a map_values()
-    field_plans
-        .into_iter()
-        .map(|(field_name, field_plan)| {
-            (
-                field_name.clone(),
-                ResponseValueOrInProgress::InProgress(InProgress::new(
-                    field_plan,
-                    external_dependency_values.clone(),
-                )),
-            )
-        })
-        .collect()
-}
-
-pub struct ResponseInProgress<'a> {
-    pub fields: FieldsInProgress<'a>,
-}
-
-impl<'a> ResponseInProgress<'a> {
-    pub fn new(fields: FieldsInProgress<'a>) -> Self {
-        Self { fields }
-    }
-}
-
-pub enum ResponseValueOrInProgress<'a> {
-    ResponseValue(ResponseValue),
-    InProgress(InProgress<'a>),
-    InProgressRecursing(InProgressRecursing<'a>),
-    InProgressRecursingList(InProgressRecursingList<'a>),
-}
-
-pub struct InProgress<'a> {
-    pub field_plan: &'a FieldPlan<'a>,
-    pub external_dependency_values: ExternalDependencyValues,
-}
-
-impl<'a> InProgress<'a> {
-    pub fn new(
-        field_plan: &'a FieldPlan<'a>,
-        external_dependency_values: ExternalDependencyValues,
-    ) -> Self {
-        Self {
-            field_plan,
-            external_dependency_values,
-        }
-    }
-}
-
-pub struct InProgressRecursing<'a> {
-    pub field_plan: &'a FieldPlan<'a>,
-    pub populated: ExternalDependencyValues,
-    pub selection: FieldsInProgress<'a>,
-}
-
-impl<'a> InProgressRecursing<'a> {
-    pub fn new(
-        field_plan: &'a FieldPlan<'a>,
-        populated: ExternalDependencyValues,
-        selection: FieldsInProgress<'a>,
-    ) -> Self {
-        Self {
-            field_plan,
-            populated,
-            selection,
-        }
-    }
-}
-
-pub struct InProgressRecursingList<'a> {
-    pub field_plan: &'a FieldPlan<'a>,
-    pub populated: Vec<ExternalDependencyValues>,
-    pub selections: Vec<FieldsInProgress<'a>>,
-}
-
-impl<'a> InProgressRecursingList<'a> {
-    pub fn new(
-        field_plan: &'a FieldPlan<'a>,
-        populated: Vec<ExternalDependencyValues>,
-        selections: Vec<FieldsInProgress<'a>>,
-    ) -> Self {
-        Self {
-            field_plan,
-            populated,
-            selections,
-        }
     }
 }
 
