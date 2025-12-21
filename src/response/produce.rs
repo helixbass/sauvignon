@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::ops::Deref;
 
 use futures::future;
 use indexmap::IndexMap;
@@ -134,6 +135,36 @@ struct AsyncInstructionSimple<'a> {
     pub is_internal_dependencies_of: IsInternalDependenciesOf<'a>,
 }
 
+type AsyncInstructionsStore<'a> = SmallVec<[AsyncInstruction<'a>; 8]>;
+
+#[derive(Default)]
+struct AsyncInstructions<'a> {
+    pub instructions: AsyncInstructionsStore<'a>,
+}
+
+impl<'a> AsyncInstructions<'a> {
+    pub fn push(&mut self, instruction: AsyncInstruction<'a>) {
+        unimplemented!()
+    }
+}
+
+impl<'a> Deref for AsyncInstructions<'a> {
+    type Target = AsyncInstructionsStore<'a>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.instructions
+    }
+}
+
+impl<'a> IntoIterator for AsyncInstructions<'a> {
+    type Item = <AsyncInstructionsStore<'a> as IntoIterator>::Item;
+    type IntoIter = <AsyncInstructionsStore<'a> as IntoIterator>::IntoIter;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.instructions.into_iter()
+    }
+}
+
 type DependencyNames = SmallVec<[SmolStr; 4]>;
 
 enum IsInternalDependenciesOf<'a> {
@@ -213,7 +244,7 @@ pub async fn produce_response(
     let mut produced: Vec<Produced> = _d();
     produced.push(Produced::NewRootObject);
 
-    let mut current_async_instructions: Vec<AsyncInstruction<'_>> = _d();
+    let mut current_async_instructions: AsyncInstructions<'_> = _d();
     make_progress_selection_set(
         &query_plan.field_plans,
         0,
@@ -245,7 +276,7 @@ pub async fn produce_response(
         ))
         .await;
 
-        let mut next_async_instructions: Vec<AsyncInstruction<'_>> = _d();
+        let mut next_async_instructions: AsyncInstructions<'_> = _d();
         let mut responses = responses.into_iter();
         current_async_instructions.into_iter().for_each(
             |async_instruction| match async_instruction {
@@ -270,7 +301,7 @@ pub async fn produce_response(
                     );
                 }
                 AsyncInstruction::RowMultipleColumnsEachOfWhichAreOnlyInternalDependency {
-                    step,
+                    step: _,
                     is_internal_dependencies_of,
                 } => {
                     let mut column_values = responses.next().unwrap().into_dependency_value_map();
@@ -312,7 +343,7 @@ fn do_simple_async_instruction_follow<'a: 'b, 'b>(
     is_internal_dependencies_of: IsInternalDependenciesOf<'a>,
     internal_dependency_values: InternalDependencyValues,
     produced: &mut Vec<Produced>,
-    current_async_instructions: &'b mut Vec<AsyncInstruction<'a>>,
+    current_async_instructions: &'b mut AsyncInstructions<'a>,
     schema: &Schema,
 ) {
     match is_internal_dependencies_of {
@@ -497,7 +528,7 @@ fn make_progress_selection_set<'a: 'b, 'b>(
     parent_object_index: usize,
     external_dependency_values: ExternalDependencyValues,
     produced: &mut Vec<Produced>,
-    current_async_instructions: &'b mut Vec<AsyncInstruction<'a>>,
+    current_async_instructions: &'b mut AsyncInstructions<'a>,
     schema: &Schema,
 ) {
     field_plans.into_iter().enumerate().for_each(
@@ -843,7 +874,7 @@ fn populate_list<'a: 'b, 'b>(
     index_of_field_in_object: usize,
     field_name: &SmolStr,
     field_plan: &'a FieldPlan<'a>,
-    current_async_instructions: &'b mut Vec<AsyncInstruction<'a>>,
+    current_async_instructions: &'b mut AsyncInstructions<'a>,
     schema: &Schema,
 ) {
     populate_concrete_or_union_or_interface_list(
@@ -884,7 +915,7 @@ fn populate_union_or_interface_list<'a: 'b, 'b>(
     index_of_field_in_object: usize,
     field_name: &SmolStr,
     field_plan: &'a FieldPlan<'a>,
-    current_async_instructions: &'b mut Vec<AsyncInstruction<'a>>,
+    current_async_instructions: &'b mut AsyncInstructions<'a>,
     schema: &Schema,
 ) {
     let type_names =
@@ -932,7 +963,7 @@ fn populate_concrete_or_union_or_interface_list<'a: 'b, 'b>(
     index_of_field_in_object: usize,
     field_name: &SmolStr,
     field_plan: &'a FieldPlan<'a>,
-    current_async_instructions: &'b mut Vec<AsyncInstruction<'a>>,
+    current_async_instructions: &'b mut AsyncInstructions<'a>,
     schema: &Schema,
 ) {
     let populated = populator.populate(external_dependency_values, &internal_dependency_values);
@@ -1003,7 +1034,7 @@ fn populate_object<'a: 'b, 'b>(
     index_of_field_in_object: usize,
     field_name: &SmolStr,
     field_plan: &'a FieldPlan<'a>,
-    current_async_instructions: &'b mut Vec<AsyncInstruction<'a>>,
+    current_async_instructions: &'b mut AsyncInstructions<'a>,
     schema: &Schema,
 ) {
     populate_concrete_or_union_or_interface_object(
@@ -1044,7 +1075,7 @@ fn populate_union_or_interface_object<'a: 'b, 'b>(
     index_of_field_in_object: usize,
     field_name: &SmolStr,
     field_plan: &'a FieldPlan<'a>,
-    current_async_instructions: &'b mut Vec<AsyncInstruction<'a>>,
+    current_async_instructions: &'b mut AsyncInstructions<'a>,
     schema: &Schema,
 ) {
     let type_name = type_populator.populate(external_dependency_values, internal_dependency_values);
@@ -1085,7 +1116,7 @@ fn populate_concrete_or_union_or_interface_object<'a: 'b, 'b>(
     index_of_field_in_object: usize,
     field_name: &SmolStr,
     field_plan: &'a FieldPlan<'a>,
-    current_async_instructions: &'b mut Vec<AsyncInstruction<'a>>,
+    current_async_instructions: &'b mut AsyncInstructions<'a>,
     schema: &Schema,
 ) {
     post_populate_concrete_or_union_or_interface_object(
@@ -1113,7 +1144,7 @@ fn post_populate_concrete_or_union_or_interface_object<'a: 'b, 'b>(
     index_of_field_in_object: usize,
     field_name: &SmolStr,
     field_plan: &'a FieldPlan<'a>,
-    current_async_instructions: &'b mut Vec<AsyncInstruction<'a>>,
+    current_async_instructions: &'b mut AsyncInstructions<'a>,
     schema: &Schema,
 ) {
     produced.push(Produced::FieldNewObject {
@@ -1158,7 +1189,7 @@ fn optionally_populate_union_or_interface_object<'a: 'b, 'b>(
     index_of_field_in_object: usize,
     field_name: &SmolStr,
     field_plan: &'a FieldPlan<'a>,
-    current_async_instructions: &'b mut Vec<AsyncInstruction<'a>>,
+    current_async_instructions: &'b mut AsyncInstructions<'a>,
     schema: &Schema,
 ) {
     let Some(type_name) =
@@ -1207,7 +1238,7 @@ fn optionally_populate_object<'a: 'b, 'b>(
     index_of_field_in_object: usize,
     field_name: &SmolStr,
     field_plan: &'a FieldPlan<'a>,
-    current_async_instructions: &'b mut Vec<AsyncInstruction<'a>>,
+    current_async_instructions: &'b mut AsyncInstructions<'a>,
     schema: &Schema,
 ) {
     let Some(populated) =
