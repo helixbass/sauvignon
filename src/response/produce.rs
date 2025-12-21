@@ -4,7 +4,7 @@ use std::ops::Deref;
 use futures::future;
 use indexmap::IndexMap;
 use itertools::{Either, Itertools};
-use smallvec::SmallVec;
+use smallvec::{smallvec, SmallVec};
 use smol_str::{SmolStr, ToSmolStr};
 use squalid::_d;
 use tracing::{instrument, trace_span};
@@ -184,41 +184,50 @@ impl<'a> AsyncInstructions<'a> {
                 &self.instructions,
             )
         {
-            let instruction = instruction.into_simple();
-            self.instructions
-                .push(match self.instructions.remove(combineable_with_index) {
-                    AsyncInstruction::Simple(AsyncInstructionSimple {
-                        mut steps,
-                        internal_dependency_names,
-                        is_internal_dependencies_of,
-                    }) => {
-                        assert_eq!(steps.len(), 1);
-                        let step = steps.remove(0).into_column();
-                        AsyncInstruction::RowMultipleColumnsEachOfWhichAreOnlyInternalDependency {
-                            step: AsyncStep::MultipleColumns(AsyncStepMultipleColumns {
-                                table_name: step.table_name,
-                                columns: unimplemented!(),
-                                id_column_name: step.id_column_name,
-                                id: step.id,
-                            }),
-                            is_internal_dependencies_of: [
-                                (internal_dependency_names[0], is_internal_dependencies_of),
-                                (
-                                    instruction.internal_dependency_names[0],
-                                    instruction.is_internal_dependencies_of,
-                                ),
-                            ]
-                            .into_iter()
-                            .collect(),
-                        }
-                    }
+            let AsyncInstructionSimple {
+                steps: mut instruction_steps,
+                internal_dependency_names: mut instruction_internal_dependency_names,
+                is_internal_dependencies_of: instruction_is_internal_dependencies_of,
+            } = instruction.into_simple();
+            assert_eq!(instruction_steps.len(), 1);
+            let instruction_step = instruction_steps.remove(0).into_column();
+            let updated_instruction = match self.instructions.remove(combineable_with_index) {
+                AsyncInstruction::Simple(AsyncInstructionSimple {
+                    mut steps,
+                    mut internal_dependency_names,
+                    is_internal_dependencies_of,
+                }) => {
+                    assert_eq!(steps.len(), 1);
+                    let step = steps.remove(0).into_column();
                     AsyncInstruction::RowMultipleColumnsEachOfWhichAreOnlyInternalDependency {
-                        step,
-                        is_internal_dependencies_of,
-                    } => {
-                        unimplemented!()
+                        step: AsyncStep::MultipleColumns(AsyncStepMultipleColumns {
+                            table_name: step.table_name,
+                            columns: smallvec![step.column, instruction_step.column],
+                            id_column_name: step.id_column_name,
+                            id: step.id,
+                        }),
+                        is_internal_dependencies_of: [
+                            (
+                                internal_dependency_names.remove(0),
+                                is_internal_dependencies_of,
+                            ),
+                            (
+                                instruction_internal_dependency_names.remove(0),
+                                instruction_is_internal_dependencies_of,
+                            ),
+                        ]
+                        .into_iter()
+                        .collect(),
                     }
-                });
+                }
+                AsyncInstruction::RowMultipleColumnsEachOfWhichAreOnlyInternalDependency {
+                    step,
+                    is_internal_dependencies_of,
+                } => {
+                    unimplemented!()
+                }
+            };
+            self.instructions.push(updated_instruction);
             return;
         }
         self.instructions.push(instruction);
