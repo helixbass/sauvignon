@@ -84,7 +84,14 @@ impl AsyncStep {
     pub fn as_multiple_columns(&self) -> &AsyncStepMultipleColumns {
         match self {
             Self::MultipleColumns(multiple_columns) => multiple_columns,
-            _ => panic!("expected multiple columns")
+            _ => panic!("expected multiple columns"),
+        }
+    }
+
+    pub fn into_column(self) -> AsyncStepColumn {
+        match self {
+            Self::Column(column) => column,
+            _ => panic!("expected column"),
         }
     }
 }
@@ -144,7 +151,14 @@ impl<'a> AsyncInstruction<'a> {
     pub fn as_simple(&self) -> &AsyncInstructionSimple<'a> {
         match self {
             Self::Simple(simple) => simple,
-            _ => panic!("expected simple")
+            _ => panic!("expected simple"),
+        }
+    }
+
+    pub fn into_simple(self) -> AsyncInstructionSimple<'a> {
+        match self {
+            Self::Simple(simple) => simple,
+            _ => panic!("expected simple"),
         }
     }
 }
@@ -164,11 +178,47 @@ struct AsyncInstructions<'a> {
 
 impl<'a> AsyncInstructions<'a> {
     pub fn push(&mut self, instruction: AsyncInstruction<'a>) {
-        if let Some(combineable_with_index) = is_row_multiple_columns_each_of_which_are_only_internal_dependency_combineable(
-            &instruction,
-            &self.instructions,
-        ) {
-            unimplemented!()
+        if let Some(combineable_with_index) =
+            is_row_multiple_columns_each_of_which_are_only_internal_dependency_combineable(
+                &instruction,
+                &self.instructions,
+            )
+        {
+            let instruction = instruction.into_simple();
+            self.instructions
+                .push(match self.remove(combineable_with_index) {
+                    AsyncInstruction::Simple(AsyncInstructionSimple {
+                        steps,
+                        internal_dependency_names,
+                        is_internal_dependencies_of,
+                    }) => {
+                        assert_eq!(steps.len(), 1);
+                        let step = steps[0].into_column();
+                        AsyncInstruction::RowMultipleColumnsEachOfWhichAreOnlyInternalDependency {
+                            step: AsyncStep::MultipleColumns(AsyncStepMultipleColumns {
+                                table_name: step.table_name,
+                                columns: unimplemented!(),
+                                id_column_name: step.id_column_name,
+                                id: step.id,
+                            }),
+                            is_internal_dependencies_of: [
+                                (internal_dependency_names[0], is_internal_dependencies_of),
+                                (
+                                    instruction.internal_dependency_names[0],
+                                    instruction.is_internal_dependencies_of,
+                                ),
+                            ]
+                            .into_iter()
+                            .collect(),
+                        }
+                    }
+                    AsyncInstruction::RowMultipleColumnsEachOfWhichAreOnlyInternalDependency {
+                        step,
+                        is_internal_dependencies_of,
+                    } => {
+                        unimplemented!()
+                    }
+                });
             return;
         }
         self.instructions.push(instruction);
@@ -203,8 +253,9 @@ fn is_row_multiple_columns_each_of_which_are_only_internal_dependency_combineabl
     let AsyncStep::Column(column_step) = &instruction.steps[0] else {
         return None;
     };
-    existing.into_iter().position(|existing_instruction| {
-        match existing_instruction {
+    existing
+        .into_iter()
+        .position(|existing_instruction| match existing_instruction {
             AsyncInstruction::Simple(simple) => {
                 if simple.steps.len() != 1 {
                     return false;
@@ -225,8 +276,7 @@ fn is_row_multiple_columns_each_of_which_are_only_internal_dependency_combineabl
                     && step.id_column_name == column_step.id_column_name
                     && step.id == column_step.id
             }
-        }
-    })
+        })
 }
 
 type DependencyNames = SmallVec<[SmolStr; 4]>;
