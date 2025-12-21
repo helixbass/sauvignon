@@ -6,7 +6,8 @@ use strum::{EnumString, VariantNames};
 
 use sauvignon::{
     schema, Carver, CarverOrPopulator, ExternalDependencyValues, InternalDependencyValues,
-    PopulatorListInterface, ResponseValue, Schema, UnionOrInterfaceTypePopulatorList,
+    PopulatorList, PopulatorListInterface, ResponseValue, Schema,
+    UnionOrInterfaceTypePopulatorList,
 };
 
 pub struct ActorsAndDesignersTypePopulator {}
@@ -205,7 +206,7 @@ pub async fn get_schema(db_pool: &Pool<Postgres>) -> anyhow::Result<Schema> {
                 populator => custom {
                     CarverOrPopulator::UnionOrInterfaceTypePopulatorList(
                         Box::new(ActorsAndDesignersTypePopulator::new()),
-                        Box::new(ActorsAndDesignersPopulator::new()),
+                        PopulatorList::Dyn(Box::new(ActorsAndDesignersPopulator::new())),
                     )
                 }
             }

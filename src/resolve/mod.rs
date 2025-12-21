@@ -35,10 +35,7 @@ pub enum CarverOrPopulator {
     Populator(Populator),
     PopulatorList(PopulatorList),
     UnionOrInterfaceTypePopulator(Box<dyn UnionOrInterfaceTypePopulator>, Populator),
-    UnionOrInterfaceTypePopulatorList(
-        Box<dyn UnionOrInterfaceTypePopulatorList>,
-        Box<dyn PopulatorListInterface>,
-    ),
+    UnionOrInterfaceTypePopulatorList(Box<dyn UnionOrInterfaceTypePopulatorList>, PopulatorList),
     OptionalPopulator(OptionalPopulator),
     OptionalUnionOrInterfaceTypePopulator(
         Box<dyn OptionalUnionOrInterfaceTypePopulator>,

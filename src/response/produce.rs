@@ -3,8 +3,8 @@ use std::collections::HashMap;
 use futures::future;
 use indexmap::IndexMap;
 use itertools::Itertools;
-use smallvec::{smallvec, SmallVec};
-use smol_str::SmolStr;
+use smallvec::SmallVec;
+use smol_str::{SmolStr, ToSmolStr};
 use squalid::_d;
 use tracing::{instrument, trace_span};
 
@@ -14,7 +14,8 @@ use crate::{
     InternalDependencyResolver, InternalDependencyValues, OptionalPopulator,
     OptionalPopulatorInterface, OptionalUnionOrInterfaceTypePopulator, Populator,
     PopulatorInterface, PopulatorList, PopulatorListInterface, QueryPlan, ResponseValue, Schema,
-    Type, UnionOrInterfaceTypePopulator, Value, WhereResolved, WheresResolved,
+    Type, UnionOrInterfaceTypePopulator, UnionOrInterfaceTypePopulatorList, Value, WhereResolved,
+    WheresResolved,
 };
 
 type IndexInProduced = usize;
@@ -141,6 +142,15 @@ enum IsInternalDependenciesOf<'a> {
         index_of_field_in_object: usize,
         type_populator: &'a Box<dyn OptionalUnionOrInterfaceTypePopulator>,
         populator: &'a Populator,
+        external_dependency_values: ExternalDependencyValues,
+        field_name: SmolStr,
+        field_plan: &'a FieldPlan<'a>,
+    },
+    ObjectFieldListOfUnionOrInterfaceObjects {
+        parent_object_index: IndexInProduced,
+        index_of_field_in_object: usize,
+        type_populator: &'a Box<dyn UnionOrInterfaceTypePopulatorList>,
+        populator: &'a PopulatorList,
         external_dependency_values: ExternalDependencyValues,
         field_name: SmolStr,
         field_plan: &'a FieldPlan<'a>,
@@ -324,6 +334,29 @@ pub async fn produce_response(
                         field_plan,
                     } => {
                         optionally_populate_union_or_interface_object(
+                            &external_dependency_values,
+                            &internal_dependency_values,
+                            type_populator,
+                            populator,
+                            &mut produced,
+                            parent_object_index,
+                            index_of_field_in_object,
+                            &field_name,
+                            field_plan,
+                            &mut next_async_instructions,
+                            schema,
+                        );
+                    }
+                    IsInternalDependenciesOf::ObjectFieldListOfUnionOrInterfaceObjects {
+                        parent_object_index,
+                        index_of_field_in_object,
+                        type_populator,
+                        populator,
+                        external_dependency_values,
+                        field_name,
+                        field_plan,
+                    } => {
+                        populate_union_or_interface_list(
                             &external_dependency_values,
                             &internal_dependency_values,
                             type_populator,
@@ -585,7 +618,21 @@ fn make_progress_selection_set<'a: 'b, 'b>(
                             type_populator,
                             populator,
                         ) => {
-                            unimplemented!()
+                            let (steps, internal_dependency_names) = extract_dependency_steps(field_plan, &external_dependency_values);
+                            current_async_instructions.push(AsyncInstruction {
+                                steps,
+                                internal_dependency_names,
+                                is_internal_dependencies_of:
+                                    IsInternalDependenciesOf::ObjectFieldListOfUnionOrInterfaceObjects {
+                                        parent_object_index,
+                                        index_of_field_in_object,
+                                        type_populator,
+                                        populator,
+                                        external_dependency_values: external_dependency_values.clone(),
+                                        field_name: field_name.clone(),
+                                        field_plan,
+                                    },
+                            });
                         }
                     }
                 }
@@ -692,6 +739,95 @@ fn populate_list<'a: 'b, 'b>(
     current_async_instructions: &'b mut Vec<AsyncInstruction<'a>>,
     schema: &Schema,
 ) {
+    populate_concrete_or_union_or_interface_list(
+        external_dependency_values,
+        internal_dependency_values,
+        SingleOrVec::Single(field_plan.field_type.type_.name().to_smolstr()),
+        populator,
+        produced,
+        parent_object_index,
+        index_of_field_in_object,
+        field_name,
+        field_plan,
+        current_async_instructions,
+        schema,
+    )
+}
+
+#[instrument(
+    level = "trace",
+    skip(
+        external_dependency_values,
+        internal_dependency_values,
+        type_populator,
+        populator,
+        produced,
+        field_plan,
+        current_async_instructions,
+        schema,
+    )
+)]
+fn populate_union_or_interface_list<'a: 'b, 'b>(
+    external_dependency_values: &ExternalDependencyValues,
+    internal_dependency_values: &InternalDependencyValues,
+    type_populator: &Box<dyn UnionOrInterfaceTypePopulatorList>,
+    populator: &PopulatorList,
+    produced: &mut Vec<Produced>,
+    parent_object_index: IndexInProduced,
+    index_of_field_in_object: usize,
+    field_name: &SmolStr,
+    field_plan: &'a FieldPlan<'a>,
+    current_async_instructions: &'b mut Vec<AsyncInstruction<'a>>,
+    schema: &Schema,
+) {
+    let type_names =
+        type_populator.populate(external_dependency_values, internal_dependency_values);
+    populate_concrete_or_union_or_interface_list(
+        external_dependency_values,
+        internal_dependency_values,
+        SingleOrVec::Vec(type_names),
+        populator,
+        produced,
+        parent_object_index,
+        index_of_field_in_object,
+        field_name,
+        field_plan,
+        current_async_instructions,
+        schema,
+    )
+}
+
+enum SingleOrVec<TValue> {
+    Single(TValue),
+    Vec(Vec<TValue>),
+}
+
+#[instrument(
+    level = "trace",
+    skip(
+        external_dependency_values,
+        internal_dependency_values,
+        type_names,
+        populator,
+        produced,
+        field_plan,
+        current_async_instructions,
+        schema,
+    )
+)]
+fn populate_concrete_or_union_or_interface_list<'a: 'b, 'b>(
+    external_dependency_values: &ExternalDependencyValues,
+    internal_dependency_values: &InternalDependencyValues,
+    type_names: SingleOrVec<SmolStr>,
+    populator: &PopulatorList,
+    produced: &mut Vec<Produced>,
+    parent_object_index: IndexInProduced,
+    index_of_field_in_object: usize,
+    field_name: &SmolStr,
+    field_plan: &'a FieldPlan<'a>,
+    current_async_instructions: &'b mut Vec<AsyncInstruction<'a>>,
+    schema: &Schema,
+) {
     let populated = populator.populate(external_dependency_values, &internal_dependency_values);
     produced.push(Produced::FieldNewListOfObjects {
         parent_object_index,
@@ -700,8 +836,21 @@ fn populate_list<'a: 'b, 'b>(
     });
     let parent_list_index = produced.len() - 1;
 
-    let type_name = field_plan.field_type.type_.name();
-    let selection_set = &field_plan.selection_set_by_type.as_ref().unwrap()[type_name];
+    let selection_set_by_type = field_plan.selection_set_by_type.as_ref().unwrap();
+    enum SingleOrIterator<'a, TIterator: Iterator<Item = &'a IndexMap<SmolStr, FieldPlan<'a>>>> {
+        Single(&'a IndexMap<SmolStr, FieldPlan<'a>>),
+        Iterator(TIterator),
+    }
+    let mut selection_sets = match type_names {
+        SingleOrVec::Single(type_name) => {
+            SingleOrIterator::Single(&selection_set_by_type[&type_name])
+        }
+        SingleOrVec::Vec(type_names) => SingleOrIterator::Iterator(
+            type_names
+                .into_iter()
+                .map(|type_name| &selection_set_by_type[&type_name]),
+        ),
+    };
     populated
         .into_iter()
         .enumerate()
@@ -713,7 +862,10 @@ fn populate_list<'a: 'b, 'b>(
             let parent_object_index = produced.len() - 1;
 
             make_progress_selection_set(
-                selection_set,
+                match &mut selection_sets {
+                    SingleOrIterator::Single(type_name) => type_name,
+                    SingleOrIterator::Iterator(type_names) => type_names.next().unwrap(),
+                },
                 parent_object_index,
                 external_dependency_values,
                 produced,
