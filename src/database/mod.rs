@@ -3,16 +3,130 @@ use std::collections::HashMap;
 use async_trait::async_trait;
 use chrono::NaiveDate;
 use smol_str::SmolStr;
-use sqlx::{Pool, Postgres, Row};
+use sqlx::{postgres::PgValueRef, Decode, Pool, Postgres, QueryBuilder, Row};
 use squalid::_d;
 use tracing::{instrument, trace_span, Instrument};
 
 use crate::{
-    ColumnValueMassager, DependencyType, DependencyValue, Id, IndexMap, SmolStrSqlx, WhereResolved,
+    ColumnSpec, ColumnValueMassager, DependencyType, DependencyValue, Id, IndexMap, SmolStrSqlx,
+    WhereResolved,
 };
 
+pub enum Database {
+    Postgres(PostgresDatabase),
+    Dyn(Box<dyn DatabaseInterface>),
+}
+
+impl Database {
+    pub fn as_postgres(&self) -> &PostgresDatabase {
+        match self {
+            Self::Postgres(database) => database,
+            _ => panic!("expected postgres"),
+        }
+    }
+}
+
+impl From<PostgresDatabase> for Database {
+    fn from(value: PostgresDatabase) -> Self {
+        Self::Postgres(value)
+    }
+}
+
 #[async_trait]
-pub trait Database: Send + Sync {
+impl DatabaseInterface for Database {
+    async fn get_column(
+        &self,
+        table_name: &str,
+        column_name: &str,
+        id: &Id,
+        id_column_name: &str,
+        dependency_type: DependencyType,
+    ) -> DependencyValue {
+        match self {
+            Self::Postgres(database) => {
+                database
+                    .get_column(table_name, column_name, id, id_column_name, dependency_type)
+                    .await
+            }
+            Self::Dyn(database) => {
+                database
+                    .get_column(table_name, column_name, id, id_column_name, dependency_type)
+                    .await
+            }
+        }
+    }
+
+    async fn get_column_list(
+        &self,
+        table_name: &str,
+        column_name: &str,
+        dependency_type: DependencyType,
+        wheres: &[WhereResolved],
+    ) -> Vec<DependencyValue> {
+        match self {
+            Self::Postgres(database) => {
+                database
+                    .get_column_list(table_name, column_name, dependency_type, wheres)
+                    .await
+            }
+            Self::Dyn(database) => {
+                database
+                    .get_column_list(table_name, column_name, dependency_type, wheres)
+                    .await
+            }
+        }
+    }
+
+    fn get_column_sync(
+        &self,
+        column_token: ColumnToken,
+        id: &Id,
+        id_column_name: &str,
+        dependency_type: DependencyType,
+    ) -> DependencyValue {
+        match self {
+            Self::Postgres(database) => {
+                database.get_column_sync(column_token, id, id_column_name, dependency_type)
+            }
+            Self::Dyn(database) => {
+                database.get_column_sync(column_token, id, id_column_name, dependency_type)
+            }
+        }
+    }
+
+    fn get_column_list_sync(
+        &self,
+        column_token: ColumnToken,
+        dependency_type: DependencyType,
+        wheres: &[WhereResolved],
+    ) -> Vec<DependencyValue> {
+        match self {
+            Self::Postgres(database) => {
+                database.get_column_list_sync(column_token, dependency_type, wheres)
+            }
+            Self::Dyn(database) => {
+                database.get_column_list_sync(column_token, dependency_type, wheres)
+            }
+        }
+    }
+
+    fn is_sync(&self) -> bool {
+        match self {
+            Self::Postgres(database) => database.is_sync(),
+            Self::Dyn(database) => database.is_sync(),
+        }
+    }
+
+    fn column_tokens(&self) -> Option<&'static ColumnTokens> {
+        match self {
+            Self::Postgres(database) => database.column_tokens(),
+            Self::Dyn(database) => database.column_tokens(),
+        }
+    }
+}
+
+#[async_trait]
+pub trait DatabaseInterface: Send + Sync {
     async fn get_column(
         &self,
         table_name: &str,
@@ -72,10 +186,125 @@ impl PostgresDatabase {
             },
         }
     }
+
+    pub fn to_dependency_value(
+        &self,
+        column_value: PgValueRef<'_>,
+        dependency_type: DependencyType,
+        massager: Option<&ColumnValueMassager>,
+    ) -> DependencyValue {
+        match dependency_type {
+            DependencyType::Id => {
+                assert!(massager.is_none());
+                DependencyValue::Id(Id::Int(
+                    <i32 as Decode<Postgres>>::decode(column_value).unwrap(),
+                ))
+            }
+            DependencyType::String => match massager {
+                None => DependencyValue::String(
+                    <SmolStrSqlx as Decode<Postgres>>::decode(column_value)
+                        .unwrap()
+                        .0,
+                ),
+                Some(massager) => {
+                    DependencyValue::String(massager.as_string().massage(column_value).unwrap())
+                }
+            },
+            DependencyType::OptionalInt => {
+                assert!(massager.is_none());
+                DependencyValue::OptionalInt(
+                    <Option<i32> as Decode<Postgres>>::decode(column_value).unwrap(),
+                )
+            }
+            DependencyType::OptionalFloat => {
+                assert!(massager.is_none());
+                DependencyValue::OptionalFloat(
+                    <Option<f64> as Decode<Postgres>>::decode(column_value).unwrap(),
+                )
+            }
+            DependencyType::OptionalString => match massager {
+                None => DependencyValue::OptionalString(
+                    <Option<SmolStrSqlx> as Decode<Postgres>>::decode(column_value)
+                        .unwrap()
+                        .map(|column_value| column_value.0),
+                ),
+                Some(massager) => DependencyValue::OptionalString(
+                    massager.as_optional_string().massage(column_value).unwrap(),
+                ),
+            },
+            DependencyType::Timestamp => {
+                assert!(massager.is_none());
+                DependencyValue::Timestamp(
+                    <jiff_sqlx::Timestamp as Decode<Postgres>>::decode(column_value)
+                        .unwrap()
+                        .to_jiff(),
+                )
+            }
+            DependencyType::OptionalId => {
+                assert!(massager.is_none());
+                DependencyValue::OptionalId(
+                    <Option<i32> as Decode<Postgres>>::decode(column_value)
+                        .unwrap()
+                        .map(|column_value| Id::Int(column_value)),
+                )
+            }
+            DependencyType::Int => {
+                assert!(massager.is_none());
+                DependencyValue::Int(<i32 as Decode<Postgres>>::decode(column_value).unwrap())
+            }
+            DependencyType::Date => {
+                assert!(massager.is_none());
+                DependencyValue::Date(
+                    <NaiveDate as Decode<Postgres>>::decode(column_value).unwrap(),
+                )
+            }
+            _ => unimplemented!(),
+        }
+    }
+
+    pub async fn get_columns(
+        &self,
+        table_name: &str,
+        columns: &[ColumnSpec],
+        id: &Id,
+        id_column_name: &str,
+    ) -> HashMap<SmolStr, DependencyValue> {
+        let mut query_builder = QueryBuilder::default();
+        query_builder.push("SELECT ");
+        columns.into_iter().enumerate().for_each(|(index, column)| {
+            query_builder.push(&column.name);
+            if index != columns.len() - 1 {
+                query_builder.push(", ");
+            }
+        });
+        query_builder.push(" FROM ");
+        query_builder.push(table_name);
+        query_builder.push(" WHERE ");
+        query_builder.push(id_column_name);
+        query_builder.push(" = ");
+        query_builder.push_bind(id.as_int());
+        let row = query_builder.build().fetch_one(&self.pool).await.unwrap();
+        columns
+            .into_iter()
+            .map(|column| {
+                let column_value = row.try_get_raw(&*column.name).unwrap();
+                (
+                    column.name.clone(),
+                    self.to_dependency_value(
+                        column_value,
+                        column.dependency_type,
+                        self.massagers
+                            .get(table_name)
+                            .and_then(|table| table.get(&column.name)),
+                    ),
+                )
+            })
+            .collect()
+    }
 }
 
 #[async_trait]
-impl Database for PostgresDatabase {
+impl DatabaseInterface for PostgresDatabase {
     #[instrument(level = "trace", skip(self))]
     async fn get_column(
         &self,
@@ -85,196 +314,29 @@ impl Database for PostgresDatabase {
         id_column_name: &str,
         dependency_type: DependencyType,
     ) -> DependencyValue {
-        match dependency_type {
-            // TODO: add test (in this repo vs in swapi-sauvignon)
-            // for id_column()
-            DependencyType::Id => {
-                // TODO: should check that table names and column names can never be SQL injection?
-                let query = format!(
-                    "SELECT {} FROM {} WHERE {} = $1",
-                    column_name, table_name, id_column_name,
-                );
-                let (column_value,): (i32,) = sqlx::query_as(&query)
-                    .bind(id.as_int())
-                    .fetch_one(&self.pool)
-                    .instrument(trace_span!("fetch ID column"))
-                    .await
-                    .unwrap();
-                DependencyValue::Id(Id::Int(column_value))
-            }
-            // TODO: add test (in this repo vs in swapi-sauvignon)
-            // for enum_column()
-            DependencyType::String => {
-                // TODO: should check that table names and column names can never be SQL injection?
-                let query = format!(
-                    "SELECT {} FROM {} WHERE {} = $1",
-                    column_name, table_name, id_column_name,
-                );
-                match self
-                    .massagers
-                    .get(table_name)
-                    .and_then(|table| table.get(column_name))
-                {
-                    None => {
-                        let (column_value,): (SmolStrSqlx,) = sqlx::query_as(&query)
-                            .bind(id.as_int())
-                            .fetch_one(&self.pool)
-                            .instrument(trace_span!("fetch string column"))
-                            .await
-                            .unwrap();
-                        DependencyValue::String(column_value.0)
-                    }
-                    Some(massager) => {
-                        let massager = massager.as_string();
-                        let row = sqlx::query(&query)
-                            .bind(id.as_int())
-                            .fetch_one(&self.pool)
-                            .instrument(trace_span!("fetch string column"))
-                            .await
-                            .unwrap();
-                        let massaged = massager
-                            .massage(row.try_get_raw(column_name).unwrap())
-                            .unwrap();
-                        DependencyValue::String(massaged)
-                    }
-                }
-            }
-            // TODO: add test (in this repo vs in swapi-sauvignon)
-            // for optional int column
-            DependencyType::OptionalInt => {
-                // TODO: should check that table names and column names can never be SQL injection?
-                let query = format!(
-                    "SELECT {} FROM {} WHERE {} = $1",
-                    column_name, table_name, id_column_name,
-                );
-                let (column_value,): (Option<i32>,) = sqlx::query_as(&query)
-                    .bind(id.as_int())
-                    .fetch_one(&self.pool)
-                    .instrument(trace_span!("fetch optional int column"))
-                    .await
-                    .unwrap();
-                DependencyValue::OptionalInt(column_value)
-            }
-            // TODO: add test (in this repo vs in swapi-sauvignon)
-            // for optional float column
-            DependencyType::OptionalFloat => {
-                // TODO: should check that table names and column names can never be SQL injection?
-                let query = format!(
-                    "SELECT {} FROM {} WHERE {} = $1",
-                    column_name, table_name, id_column_name,
-                );
-                let (column_value,): (Option<f64>,) = sqlx::query_as(&query)
-                    .bind(id.as_int())
-                    .fetch_one(&self.pool)
-                    .instrument(trace_span!("fetch optional float column"))
-                    .await
-                    .unwrap();
-                DependencyValue::OptionalFloat(column_value)
-            }
-            // TODO: add test (in this repo vs in swapi-sauvignon)
-            // for optional string column (including for optional_enum_column()
-            // and optional_string_column())
-            DependencyType::OptionalString => {
-                // TODO: should check that table names and column names can never be SQL injection?
-                let query = format!(
-                    "SELECT {} FROM {} WHERE {} = $1",
-                    column_name, table_name, id_column_name,
-                );
-                match self
-                    .massagers
-                    .get(table_name)
-                    .and_then(|table| table.get(column_name))
-                {
-                    None => {
-                        let (column_value,): (Option<SmolStrSqlx>,) = sqlx::query_as(&query)
-                            .bind(id.as_int())
-                            .fetch_one(&self.pool)
-                            .instrument(trace_span!("fetch optional string column"))
-                            .await
-                            .unwrap();
-                        DependencyValue::OptionalString(
-                            column_value.map(|column_value| column_value.0),
-                        )
-                    }
-                    Some(massager) => {
-                        let massager = massager.as_optional_string();
-                        let row = sqlx::query(&query)
-                            .bind(id.as_int())
-                            .fetch_one(&self.pool)
-                            .instrument(trace_span!("fetch optional string column"))
-                            .await
-                            .unwrap();
-                        let massaged = massager
-                            .massage(row.try_get_raw(column_name).unwrap())
-                            .unwrap();
-                        DependencyValue::OptionalString(massaged)
-                    }
-                }
-            }
-            // TODO: add test (in this repo vs in swapi-sauvignon)
-            // for timestamp column
-            DependencyType::Timestamp => {
-                // TODO: should check that table names and column names can never be SQL injection?
-                let query = format!(
-                    "SELECT {} FROM {} WHERE {} = $1",
-                    column_name, table_name, id_column_name,
-                );
-                let (column_value,): (jiff_sqlx::Timestamp,) = sqlx::query_as(&query)
-                    .bind(id.as_int())
-                    .fetch_one(&self.pool)
-                    .instrument(trace_span!("fetch timestamp column"))
-                    .await
-                    .unwrap();
-                DependencyValue::Timestamp(column_value.to_jiff())
-            }
-            DependencyType::OptionalId => {
-                // TODO: should check that table names and column names can never be SQL injection?
-                let query = format!(
-                    "SELECT {} FROM {} WHERE {} = $1",
-                    column_name, table_name, id_column_name,
-                );
-                let (column_value,): (Option<i32>,) = sqlx::query_as(&query)
-                    .bind(id.as_int())
-                    .fetch_one(&self.pool)
-                    .instrument(trace_span!("fetch optional ID column"))
-                    .await
-                    .unwrap();
-                DependencyValue::OptionalId(column_value.map(|id| Id::Int(id)))
-            }
-            // TODO: add test (in this repo vs in swapi-sauvignon)
-            // for int_column()
-            DependencyType::Int => {
-                // TODO: should check that table names and column names can never be SQL injection?
-                let query = format!(
-                    "SELECT {} FROM {} WHERE {} = $1",
-                    column_name, table_name, id_column_name,
-                );
-                let (column_value,): (i32,) = sqlx::query_as(&query)
-                    .bind(id.as_int())
-                    .fetch_one(&self.pool)
-                    .instrument(trace_span!("fetch ID column"))
-                    .await
-                    .unwrap();
-                DependencyValue::Int(column_value)
-            }
-            // TODO: add test (in this repo vs in swapi-sauvignon)
-            // for date column
-            DependencyType::Date => {
-                // TODO: should check that table names and column names can never be SQL injection?
-                let query = format!(
-                    "SELECT {} FROM {} WHERE {} = $1",
-                    column_name, table_name, id_column_name,
-                );
-                let (column_value,): (NaiveDate,) = sqlx::query_as(&query)
-                    .bind(id.as_int())
-                    .fetch_one(&self.pool)
-                    .instrument(trace_span!("fetch date column"))
-                    .await
-                    .unwrap();
-                DependencyValue::Date(column_value)
-            }
-            _ => unimplemented!(),
-        }
+        // TODO: should check that table names and column names can never be SQL injection?
+        let query = format!(
+            "SELECT {} FROM {} WHERE {} = $1",
+            column_name, table_name, id_column_name,
+        );
+        let row = sqlx::query(&query)
+            .bind(id.as_int())
+            .fetch_one(&self.pool)
+            .instrument(trace_span!("fetch column"))
+            .await
+            .unwrap();
+        // TODO: add tests (in this repo vs in swapi-sauvignon)
+        // for id_column(), enum_column(), optional int column,
+        // optional float column, optional string column
+        // (including for optional_enum_column() and optional_string_column()),
+        // timestamp column, int_column(), date column
+        self.to_dependency_value(
+            row.try_get_raw(column_name).unwrap(),
+            dependency_type,
+            self.massagers
+                .get(table_name)
+                .and_then(|table| table.get(column_name)),
+        )
     }
 
     #[instrument(level = "trace", skip(self))]

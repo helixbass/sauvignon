@@ -1,17 +1,18 @@
 use std::collections::HashMap;
+use std::ops::Deref;
 
 use futures::future;
 use indexmap::IndexMap;
-use itertools::Itertools;
-use smallvec::SmallVec;
+use itertools::{Either, Itertools};
+use smallvec::{smallvec, SmallVec};
 use smol_str::{SmolStr, ToSmolStr};
 use squalid::_d;
 use tracing::{instrument, trace_span};
 
 use crate::{
     Argument, Carver, CarverList, CarverOrPopulator, ColumnGetter, ColumnGetterList, Database,
-    DependencyType, DependencyValue, ExternalDependencyValues, FieldPlan, Id, InternalDependency,
-    InternalDependencyResolver, InternalDependencyValues, OptionalPopulator,
+    DatabaseInterface, DependencyType, DependencyValue, ExternalDependencyValues, FieldPlan, Id,
+    InternalDependency, InternalDependencyResolver, InternalDependencyValues, OptionalPopulator,
     OptionalPopulatorInterface, OptionalUnionOrInterfaceTypePopulator, Populator,
     PopulatorInterface, PopulatorList, PopulatorListInterface, QueryPlan, ResponseValue, Schema,
     Type, UnionOrInterfaceTypePopulator, UnionOrInterfaceTypePopulatorList, Value, WhereResolved,
@@ -20,63 +21,307 @@ use crate::{
 
 type IndexInProduced = usize;
 
+#[derive(Debug)]
+pub struct ColumnSpec {
+    pub name: SmolStr,
+    pub dependency_type: DependencyType,
+}
+
+type ColumnSpecs = SmallVec<[ColumnSpec; 12]>;
+
+#[derive(Debug)]
 enum AsyncStep {
     ListOfColumn {
         table_name: SmolStr,
-        column_name: SmolStr,
-        dependency_type: DependencyType,
+        column: ColumnSpec,
         wheres: WheresResolved,
     },
-    Column {
-        table_name: SmolStr,
-        column_name: SmolStr,
-        id_column_name: SmolStr,
-        dependency_type: DependencyType,
-        id: Id,
-    },
+    Column(AsyncStepColumn),
+    MultipleColumns(AsyncStepMultipleColumns),
 }
 
 impl AsyncStep {
     #[instrument(level = "trace", skip(self, database))]
-    pub async fn run(&self, database: &dyn Database) -> DependencyValue {
+    pub async fn run(&self, database: &Database) -> AsyncStepResponse {
         match self {
             Self::ListOfColumn {
                 table_name,
-                column_name,
-                dependency_type,
+                column,
                 wheres,
             } => DependencyValue::List(
                 database
-                    .get_column_list(table_name, column_name, *dependency_type, wheres)
+                    .get_column_list(table_name, &column.name, column.dependency_type, wheres)
+                    .await,
+            )
+            .into(),
+            Self::Column(AsyncStepColumn {
+                table_name,
+                column,
+                id_column_name,
+                id,
+            }) => database
+                .get_column(
+                    table_name,
+                    &column.name,
+                    id,
+                    id_column_name,
+                    column.dependency_type,
+                )
+                .await
+                .into(),
+            Self::MultipleColumns(AsyncStepMultipleColumns {
+                table_name,
+                columns,
+                id_column_name,
+                id,
+            }) => AsyncStepResponse::DependencyValueMap(
+                database
+                    .as_postgres()
+                    .get_columns(table_name, columns, id, id_column_name)
                     .await,
             ),
-            Self::Column {
-                table_name,
-                column_name,
-                id_column_name,
-                dependency_type,
-                id,
-            } => {
-                database
-                    .get_column(
-                        table_name,
-                        column_name,
-                        id,
-                        id_column_name,
-                        *dependency_type,
-                    )
-                    .await
-            }
+        }
+    }
+
+    pub fn as_multiple_columns(&self) -> &AsyncStepMultipleColumns {
+        match self {
+            Self::MultipleColumns(multiple_columns) => multiple_columns,
+            _ => panic!("expected multiple columns"),
+        }
+    }
+
+    pub fn into_multiple_columns(self) -> AsyncStepMultipleColumns {
+        match self {
+            Self::MultipleColumns(multiple_columns) => multiple_columns,
+            _ => panic!("expected multiple columns"),
+        }
+    }
+
+    pub fn into_column(self) -> AsyncStepColumn {
+        match self {
+            Self::Column(column) => column,
+            _ => panic!("expected column"),
         }
     }
 }
 
-type AsyncSteps = SmallVec<[AsyncStep; 4]>;
+#[derive(Debug)]
+struct AsyncStepColumn {
+    pub table_name: SmolStr,
+    pub column: ColumnSpec,
+    pub id_column_name: SmolStr,
+    pub id: Id,
+}
 
-struct AsyncInstruction<'a> {
+#[derive(Debug)]
+struct AsyncStepMultipleColumns {
+    pub table_name: SmolStr,
+    pub columns: ColumnSpecs,
+    pub id_column_name: SmolStr,
+    pub id: Id,
+}
+
+enum AsyncStepResponse {
+    DependencyValue(DependencyValue),
+    DependencyValueMap(HashMap<SmolStr, DependencyValue>),
+}
+
+impl AsyncStepResponse {
+    pub fn into_dependency_value(self) -> DependencyValue {
+        match self {
+            Self::DependencyValue(dependency_value) => dependency_value,
+            _ => panic!("expected dependency value"),
+        }
+    }
+
+    pub fn into_dependency_value_map(self) -> HashMap<SmolStr, DependencyValue> {
+        match self {
+            Self::DependencyValueMap(map) => map,
+            _ => panic!("expected dependency value map"),
+        }
+    }
+}
+
+impl From<DependencyValue> for AsyncStepResponse {
+    fn from(value: DependencyValue) -> Self {
+        Self::DependencyValue(value)
+    }
+}
+
+type AsyncSteps = SmallVec<[AsyncStep; 4]>;
+type RowMultipleColumnsEachOfWhichAreOnlyInternalDependencyMulti<'a> =
+    SmallVec<[IsInternalDependenciesOf<'a>; 4]>;
+
+enum AsyncInstruction<'a> {
+    Simple(AsyncInstructionSimple<'a>),
+    RowMultipleColumnsEachOfWhichAreOnlyInternalDependency {
+        step: AsyncStep,
+        is_internal_dependencies_of:
+            HashMap<SmolStr, RowMultipleColumnsEachOfWhichAreOnlyInternalDependencyMulti<'a>>,
+    },
+}
+
+impl<'a> AsyncInstruction<'a> {
+    pub fn as_simple(&self) -> &AsyncInstructionSimple<'a> {
+        match self {
+            Self::Simple(simple) => simple,
+            _ => panic!("expected simple"),
+        }
+    }
+
+    pub fn into_simple(self) -> AsyncInstructionSimple<'a> {
+        match self {
+            Self::Simple(simple) => simple,
+            _ => panic!("expected simple"),
+        }
+    }
+}
+
+struct AsyncInstructionSimple<'a> {
     pub steps: AsyncSteps,
     pub internal_dependency_names: DependencyNames,
     pub is_internal_dependencies_of: IsInternalDependenciesOf<'a>,
+}
+
+type AsyncInstructionsStore<'a> = SmallVec<[AsyncInstruction<'a>; 8]>;
+
+#[derive(Default)]
+struct AsyncInstructions<'a> {
+    pub instructions: AsyncInstructionsStore<'a>,
+}
+
+impl<'a> AsyncInstructions<'a> {
+    pub fn push(&mut self, instruction: AsyncInstruction<'a>) {
+        if let Some(combineable_with_index) =
+            is_row_multiple_columns_each_of_which_are_only_internal_dependency_combineable(
+                &instruction,
+                &self.instructions,
+            )
+        {
+            let AsyncInstructionSimple {
+                steps: mut instruction_steps,
+                internal_dependency_names: mut instruction_internal_dependency_names,
+                is_internal_dependencies_of: instruction_is_internal_dependencies_of,
+            } = instruction.into_simple();
+            assert_eq!(instruction_steps.len(), 1);
+            let instruction_step = instruction_steps.remove(0).into_column();
+            let updated_instruction = match self.instructions.remove(combineable_with_index) {
+                AsyncInstruction::Simple(AsyncInstructionSimple {
+                    mut steps,
+                    mut internal_dependency_names,
+                    is_internal_dependencies_of,
+                }) => {
+                    assert_eq!(steps.len(), 1);
+                    let step = steps.remove(0).into_column();
+                    AsyncInstruction::RowMultipleColumnsEachOfWhichAreOnlyInternalDependency {
+                        step: AsyncStep::MultipleColumns(AsyncStepMultipleColumns {
+                            table_name: step.table_name,
+                            columns: smallvec![step.column, instruction_step.column],
+                            id_column_name: step.id_column_name,
+                            id: step.id,
+                        }),
+                        is_internal_dependencies_of: {
+                            let mut multi_map: HashMap<
+                                SmolStr,
+                                RowMultipleColumnsEachOfWhichAreOnlyInternalDependencyMulti,
+                            > = _d();
+                            multi_map
+                                .entry(internal_dependency_names.remove(0))
+                                .or_default()
+                                .push(is_internal_dependencies_of);
+                            multi_map
+                                .entry(instruction_internal_dependency_names.remove(0))
+                                .or_default()
+                                .push(instruction_is_internal_dependencies_of);
+                            multi_map
+                        },
+                    }
+                }
+                AsyncInstruction::RowMultipleColumnsEachOfWhichAreOnlyInternalDependency {
+                    step,
+                    mut is_internal_dependencies_of,
+                } => {
+                    let AsyncStepMultipleColumns {
+                        table_name,
+                        mut columns,
+                        id_column_name,
+                        id,
+                    } = step.into_multiple_columns();
+                    columns.push(instruction_step.column);
+                    is_internal_dependencies_of
+                        .entry(instruction_internal_dependency_names.remove(0))
+                        .or_default()
+                        .push(instruction_is_internal_dependencies_of);
+                    AsyncInstruction::RowMultipleColumnsEachOfWhichAreOnlyInternalDependency {
+                        step: AsyncStep::MultipleColumns(AsyncStepMultipleColumns {
+                            table_name,
+                            columns,
+                            id_column_name,
+                            id,
+                        }),
+                        is_internal_dependencies_of,
+                    }
+                }
+            };
+            self.instructions.push(updated_instruction);
+            return;
+        }
+        self.instructions.push(instruction);
+    }
+}
+
+impl<'a> Deref for AsyncInstructions<'a> {
+    type Target = AsyncInstructionsStore<'a>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.instructions
+    }
+}
+
+impl<'a> IntoIterator for AsyncInstructions<'a> {
+    type Item = <AsyncInstructionsStore<'a> as IntoIterator>::Item;
+    type IntoIter = <AsyncInstructionsStore<'a> as IntoIterator>::IntoIter;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.instructions.into_iter()
+    }
+}
+
+fn is_row_multiple_columns_each_of_which_are_only_internal_dependency_combineable(
+    instruction: &AsyncInstruction,
+    existing: &AsyncInstructionsStore,
+) -> Option<usize> {
+    let instruction = instruction.as_simple();
+    if instruction.steps.len() != 1 {
+        return None;
+    }
+    let AsyncStep::Column(column_step) = &instruction.steps[0] else {
+        return None;
+    };
+    existing
+        .into_iter()
+        .position(|existing_instruction| match existing_instruction {
+            AsyncInstruction::Simple(simple) => {
+                if simple.steps.len() != 1 {
+                    return false;
+                }
+                let AsyncStep::Column(existing_column_step) = &simple.steps[0] else {
+                    return false;
+                };
+                existing_column_step.table_name == column_step.table_name
+                    && existing_column_step.id_column_name == column_step.id_column_name
+                    && existing_column_step.id == column_step.id
+            }
+            AsyncInstruction::RowMultipleColumnsEachOfWhichAreOnlyInternalDependency {
+                step,
+                ..
+            } => {
+                let step = step.as_multiple_columns();
+                step.table_name == column_step.table_name
+                    && step.id_column_name == column_step.id_column_name
+                    && step.id == column_step.id
+            }
+        })
 }
 
 type DependencyNames = SmallVec<[SmolStr; 4]>;
@@ -152,13 +397,13 @@ enum IsInternalDependenciesOf<'a> {
 #[instrument(level = "trace", skip(schema, database, query_plan))]
 pub async fn produce_response(
     schema: &Schema,
-    database: &dyn Database,
+    database: &Database,
     query_plan: &QueryPlan<'_>,
 ) -> ResponseValue {
     let mut produced: Vec<Produced> = _d();
     produced.push(Produced::NewRootObject);
 
-    let mut current_async_instructions: Vec<AsyncInstruction<'_>> = _d();
+    let mut current_async_instructions: AsyncInstructions<'_> = _d();
     make_progress_selection_set(
         &query_plan.field_plans,
         0,
@@ -174,201 +419,261 @@ pub async fn produce_response(
 
         let responses = future::join_all(current_async_instructions.iter().flat_map(
             |async_instruction| {
-                async_instruction
-                    .steps
-                    .iter()
-                    .map(|step| step.run(database))
+                match async_instruction {
+                    AsyncInstruction::Simple(async_instruction) => Either::Left(
+                        async_instruction
+                            .steps
+                            .iter()
+                            .map(|step| step.run(database)),
+                    ),
+                    AsyncInstruction::RowMultipleColumnsEachOfWhichAreOnlyInternalDependency {
+                        step,
+                        ..
+                    } => Either::Right([step.run(database)].into_iter()),
+                }
             },
         ))
         .await;
 
-        let mut next_async_instructions: Vec<AsyncInstruction<'_>> = _d();
+        let mut next_async_instructions: AsyncInstructions<'_> = _d();
         let mut responses = responses.into_iter();
-        current_async_instructions
-            .into_iter()
-            .for_each(|async_instruction| {
-                let mut internal_dependency_values = InternalDependencyValues::default();
-                for internal_dependency_index in 0..async_instruction.steps.len() {
-                    internal_dependency_values
-                        .insert(
-                            async_instruction.internal_dependency_names[internal_dependency_index]
-                                .clone(),
-                            responses.next().unwrap(),
-                        )
-                        .unwrap();
+        current_async_instructions.into_iter().for_each(
+            |async_instruction| match async_instruction {
+                AsyncInstruction::Simple(async_instruction) => {
+                    let mut internal_dependency_values = InternalDependencyValues::default();
+                    for internal_dependency_index in 0..async_instruction.steps.len() {
+                        internal_dependency_values
+                            .insert(
+                                async_instruction.internal_dependency_names
+                                    [internal_dependency_index]
+                                    .clone(),
+                                responses.next().unwrap().into_dependency_value(),
+                            )
+                            .unwrap();
+                    }
+                    do_simple_async_instruction_follow(
+                        async_instruction.is_internal_dependencies_of,
+                        internal_dependency_values,
+                        &mut produced,
+                        &mut next_async_instructions,
+                        schema,
+                    );
                 }
-                match async_instruction.is_internal_dependencies_of {
-                    IsInternalDependenciesOf::ObjectFieldListOfObjects {
-                        parent_object_index,
-                        index_of_field_in_object,
-                        populator,
-                        external_dependency_values,
-                        field_name,
-                        field_plan,
-                    } => {
-                        populate_list(
-                            &external_dependency_values,
-                            &internal_dependency_values,
-                            populator,
-                            &mut produced,
-                            parent_object_index,
-                            index_of_field_in_object,
-                            &field_name,
-                            field_plan,
-                            &mut next_async_instructions,
-                            schema,
-                        );
-                    }
-                    IsInternalDependenciesOf::ObjectFieldScalar {
-                        parent_object_index,
-                        index_of_field_in_object,
-                        carver,
-                        external_dependency_values,
-                        field_name,
-                    } => {
-                        produced.push(Produced::FieldScalar {
-                            parent_object_index,
-                            index_of_field_in_object,
-                            field_name: field_name.clone(),
-                            value: carver
-                                .carve(&external_dependency_values, &internal_dependency_values),
-                        });
-                    }
-                    IsInternalDependenciesOf::ObjectFieldObject {
-                        parent_object_index,
-                        index_of_field_in_object,
-                        populator,
-                        external_dependency_values,
-                        field_name,
-                        field_plan,
-                    } => {
-                        populate_object(
-                            &external_dependency_values,
-                            &internal_dependency_values,
-                            populator,
-                            &mut produced,
-                            parent_object_index,
-                            index_of_field_in_object,
-                            &field_name,
-                            field_plan,
-                            &mut next_async_instructions,
-                            schema,
-                        );
-                    }
-                    IsInternalDependenciesOf::ObjectFieldUnionOrInterfaceObject {
-                        parent_object_index,
-                        index_of_field_in_object,
-                        type_populator,
-                        populator,
-                        external_dependency_values,
-                        field_name,
-                        field_plan,
-                    } => {
-                        populate_union_or_interface_object(
-                            &external_dependency_values,
-                            &internal_dependency_values,
-                            type_populator,
-                            populator,
-                            &mut produced,
-                            parent_object_index,
-                            index_of_field_in_object,
-                            &field_name,
-                            field_plan,
-                            &mut next_async_instructions,
-                            schema,
-                        );
-                    }
-                    IsInternalDependenciesOf::ObjectFieldListOfScalars {
-                        parent_object_index,
-                        index_of_field_in_object,
-                        carver,
-                        external_dependency_values,
-                        field_name,
-                    } => {
-                        carve_list(
-                            &external_dependency_values,
-                            &internal_dependency_values,
-                            carver,
-                            &mut produced,
-                            parent_object_index,
-                            index_of_field_in_object,
-                            &field_name,
-                        );
-                    }
-                    IsInternalDependenciesOf::ObjectFieldOptionalObject {
-                        parent_object_index,
-                        index_of_field_in_object,
-                        populator,
-                        external_dependency_values,
-                        field_name,
-                        field_plan,
-                    } => {
-                        optionally_populate_object(
-                            &external_dependency_values,
-                            &internal_dependency_values,
-                            populator,
-                            &mut produced,
-                            parent_object_index,
-                            index_of_field_in_object,
-                            &field_name,
-                            field_plan,
-                            &mut next_async_instructions,
-                            schema,
-                        );
-                    }
-                    IsInternalDependenciesOf::ObjectFieldOptionalUnionOrInterfaceObject {
-                        parent_object_index,
-                        index_of_field_in_object,
-                        type_populator,
-                        populator,
-                        external_dependency_values,
-                        field_name,
-                        field_plan,
-                    } => {
-                        optionally_populate_union_or_interface_object(
-                            &external_dependency_values,
-                            &internal_dependency_values,
-                            type_populator,
-                            populator,
-                            &mut produced,
-                            parent_object_index,
-                            index_of_field_in_object,
-                            &field_name,
-                            field_plan,
-                            &mut next_async_instructions,
-                            schema,
-                        );
-                    }
-                    IsInternalDependenciesOf::ObjectFieldListOfUnionOrInterfaceObjects {
-                        parent_object_index,
-                        index_of_field_in_object,
-                        type_populator,
-                        populator,
-                        external_dependency_values,
-                        field_name,
-                        field_plan,
-                    } => {
-                        populate_union_or_interface_list(
-                            &external_dependency_values,
-                            &internal_dependency_values,
-                            type_populator,
-                            populator,
-                            &mut produced,
-                            parent_object_index,
-                            index_of_field_in_object,
-                            &field_name,
-                            field_plan,
-                            &mut next_async_instructions,
-                            schema,
-                        );
-                    }
+                AsyncInstruction::RowMultipleColumnsEachOfWhichAreOnlyInternalDependency {
+                    step: _,
+                    is_internal_dependencies_of,
+                } => {
+                    let mut column_values = responses.next().unwrap().into_dependency_value_map();
+                    is_internal_dependencies_of.into_iter().for_each(
+                        |(column_name, is_internal_dependencies_of)| {
+                            let column_value = column_values.remove(&column_name).unwrap();
+                            let internal_dependency_values: InternalDependencyValues =
+                                [(column_name, column_value)].into_iter().collect();
+                            is_internal_dependencies_of.into_iter().for_each(
+                                |is_internal_dependencies_of| {
+                                    do_simple_async_instruction_follow(
+                                        is_internal_dependencies_of,
+                                        internal_dependency_values.clone(),
+                                        &mut produced,
+                                        &mut next_async_instructions,
+                                        schema,
+                                    );
+                                },
+                            );
+                        },
+                    );
                 }
-            });
+            },
+        );
 
         current_async_instructions = next_async_instructions;
     }
 
     produced.into()
+}
+
+#[instrument(
+    level = "trace",
+    skip(
+        is_internal_dependencies_of,
+        internal_dependency_values,
+        produced,
+        current_async_instructions,
+        schema,
+    )
+)]
+fn do_simple_async_instruction_follow<'a: 'b, 'b>(
+    is_internal_dependencies_of: IsInternalDependenciesOf<'a>,
+    internal_dependency_values: InternalDependencyValues,
+    produced: &mut Vec<Produced>,
+    current_async_instructions: &'b mut AsyncInstructions<'a>,
+    schema: &Schema,
+) {
+    match is_internal_dependencies_of {
+        IsInternalDependenciesOf::ObjectFieldListOfObjects {
+            parent_object_index,
+            index_of_field_in_object,
+            populator,
+            external_dependency_values,
+            field_name,
+            field_plan,
+        } => {
+            populate_list(
+                &external_dependency_values,
+                &internal_dependency_values,
+                populator,
+                produced,
+                parent_object_index,
+                index_of_field_in_object,
+                &field_name,
+                field_plan,
+                current_async_instructions,
+                schema,
+            );
+        }
+        IsInternalDependenciesOf::ObjectFieldScalar {
+            parent_object_index,
+            index_of_field_in_object,
+            carver,
+            external_dependency_values,
+            field_name,
+        } => {
+            produced.push(Produced::FieldScalar {
+                parent_object_index,
+                index_of_field_in_object,
+                field_name: field_name.clone(),
+                value: carver.carve(&external_dependency_values, &internal_dependency_values),
+            });
+        }
+        IsInternalDependenciesOf::ObjectFieldObject {
+            parent_object_index,
+            index_of_field_in_object,
+            populator,
+            external_dependency_values,
+            field_name,
+            field_plan,
+        } => {
+            populate_object(
+                &external_dependency_values,
+                &internal_dependency_values,
+                populator,
+                produced,
+                parent_object_index,
+                index_of_field_in_object,
+                &field_name,
+                field_plan,
+                current_async_instructions,
+                schema,
+            );
+        }
+        IsInternalDependenciesOf::ObjectFieldUnionOrInterfaceObject {
+            parent_object_index,
+            index_of_field_in_object,
+            type_populator,
+            populator,
+            external_dependency_values,
+            field_name,
+            field_plan,
+        } => {
+            populate_union_or_interface_object(
+                &external_dependency_values,
+                &internal_dependency_values,
+                type_populator,
+                populator,
+                produced,
+                parent_object_index,
+                index_of_field_in_object,
+                &field_name,
+                field_plan,
+                current_async_instructions,
+                schema,
+            );
+        }
+        IsInternalDependenciesOf::ObjectFieldListOfScalars {
+            parent_object_index,
+            index_of_field_in_object,
+            carver,
+            external_dependency_values,
+            field_name,
+        } => {
+            carve_list(
+                &external_dependency_values,
+                &internal_dependency_values,
+                carver,
+                produced,
+                parent_object_index,
+                index_of_field_in_object,
+                &field_name,
+            );
+        }
+        IsInternalDependenciesOf::ObjectFieldOptionalObject {
+            parent_object_index,
+            index_of_field_in_object,
+            populator,
+            external_dependency_values,
+            field_name,
+            field_plan,
+        } => {
+            optionally_populate_object(
+                &external_dependency_values,
+                &internal_dependency_values,
+                populator,
+                produced,
+                parent_object_index,
+                index_of_field_in_object,
+                &field_name,
+                field_plan,
+                current_async_instructions,
+                schema,
+            );
+        }
+        IsInternalDependenciesOf::ObjectFieldOptionalUnionOrInterfaceObject {
+            parent_object_index,
+            index_of_field_in_object,
+            type_populator,
+            populator,
+            external_dependency_values,
+            field_name,
+            field_plan,
+        } => {
+            optionally_populate_union_or_interface_object(
+                &external_dependency_values,
+                &internal_dependency_values,
+                type_populator,
+                populator,
+                produced,
+                parent_object_index,
+                index_of_field_in_object,
+                &field_name,
+                field_plan,
+                current_async_instructions,
+                schema,
+            );
+        }
+        IsInternalDependenciesOf::ObjectFieldListOfUnionOrInterfaceObjects {
+            parent_object_index,
+            index_of_field_in_object,
+            type_populator,
+            populator,
+            external_dependency_values,
+            field_name,
+            field_plan,
+        } => {
+            populate_union_or_interface_list(
+                &external_dependency_values,
+                &internal_dependency_values,
+                type_populator,
+                populator,
+                produced,
+                parent_object_index,
+                index_of_field_in_object,
+                &field_name,
+                field_plan,
+                current_async_instructions,
+                schema,
+            );
+        }
+    }
 }
 
 #[instrument(
@@ -386,7 +691,7 @@ fn make_progress_selection_set<'a: 'b, 'b>(
     parent_object_index: usize,
     external_dependency_values: ExternalDependencyValues,
     produced: &mut Vec<Produced>,
-    current_async_instructions: &'b mut Vec<AsyncInstruction<'a>>,
+    current_async_instructions: &'b mut AsyncInstructions<'a>,
     schema: &Schema,
 ) {
     field_plans.into_iter().enumerate().for_each(
@@ -494,7 +799,7 @@ fn make_progress_selection_set<'a: 'b, 'b>(
                             .carver_or_populator {
                         CarverOrPopulator::Carver(carver) => {
                             let (steps, internal_dependency_names) = extract_dependency_steps(field_plan, &external_dependency_values);
-                            current_async_instructions.push(AsyncInstruction {
+                            current_async_instructions.push(AsyncInstruction::Simple(AsyncInstructionSimple {
                                 steps,
                                 internal_dependency_names,
                                 is_internal_dependencies_of: IsInternalDependenciesOf::ObjectFieldScalar {
@@ -505,11 +810,11 @@ fn make_progress_selection_set<'a: 'b, 'b>(
                                     index_of_field_in_object,
                                     field_name: field_name.clone(),
                                 },
-                            });
+                            }));
                         }
                         CarverOrPopulator::Populator(populator) => {
                             let (steps, internal_dependency_names) = extract_dependency_steps(field_plan, &external_dependency_values);
-                            current_async_instructions.push(AsyncInstruction {
+                            current_async_instructions.push(AsyncInstruction::Simple(AsyncInstructionSimple {
                                 steps,
                                 internal_dependency_names,
                                 is_internal_dependencies_of: IsInternalDependenciesOf::ObjectFieldObject {
@@ -521,11 +826,11 @@ fn make_progress_selection_set<'a: 'b, 'b>(
                                     field_name: field_name.clone(),
                                     field_plan,
                                 },
-                            });
+                            }));
                         }
                         CarverOrPopulator::OptionalPopulator(populator) => {
                             let (steps, internal_dependency_names) = extract_dependency_steps(field_plan, &external_dependency_values);
-                            current_async_instructions.push(AsyncInstruction {
+                            current_async_instructions.push(AsyncInstruction::Simple(AsyncInstructionSimple {
                                 steps,
                                 internal_dependency_names,
                                 is_internal_dependencies_of: IsInternalDependenciesOf::ObjectFieldOptionalObject {
@@ -537,11 +842,11 @@ fn make_progress_selection_set<'a: 'b, 'b>(
                                     field_name: field_name.clone(),
                                     field_plan,
                                 },
-                            });
+                            }));
                         }
                         CarverOrPopulator::UnionOrInterfaceTypePopulator(type_populator, populator) => {
                             let (steps, internal_dependency_names) = extract_dependency_steps(field_plan, &external_dependency_values);
-                            current_async_instructions.push(AsyncInstruction {
+                            current_async_instructions.push(AsyncInstruction::Simple(AsyncInstructionSimple {
                                 steps,
                                 internal_dependency_names,
                                 is_internal_dependencies_of: IsInternalDependenciesOf::ObjectFieldUnionOrInterfaceObject {
@@ -554,11 +859,11 @@ fn make_progress_selection_set<'a: 'b, 'b>(
                                     field_name: field_name.clone(),
                                     field_plan,
                                 },
-                            });
+                            }));
                         }
                         CarverOrPopulator::OptionalUnionOrInterfaceTypePopulator(type_populator, populator) => {
                             let (steps, internal_dependency_names) = extract_dependency_steps(field_plan, &external_dependency_values);
-                            current_async_instructions.push(AsyncInstruction {
+                            current_async_instructions.push(AsyncInstruction::Simple(AsyncInstructionSimple {
                                 steps,
                                 internal_dependency_names,
                                 is_internal_dependencies_of: IsInternalDependenciesOf::ObjectFieldOptionalUnionOrInterfaceObject {
@@ -571,11 +876,11 @@ fn make_progress_selection_set<'a: 'b, 'b>(
                                     field_name: field_name.clone(),
                                     field_plan,
                                 },
-                            });
+                            }));
                         }
                         CarverOrPopulator::PopulatorList(populator) => {
                             let (steps, internal_dependency_names) = extract_dependency_steps(field_plan, &external_dependency_values);
-                            current_async_instructions.push(AsyncInstruction {
+                            current_async_instructions.push(AsyncInstruction::Simple(AsyncInstructionSimple {
                                 steps,
                                 internal_dependency_names,
                                 is_internal_dependencies_of:
@@ -588,11 +893,11 @@ fn make_progress_selection_set<'a: 'b, 'b>(
                                         field_name: field_name.clone(),
                                         field_plan,
                                     },
-                            });
+                            }));
                         }
                         CarverOrPopulator::CarverList(carver) => {
                             let (steps, internal_dependency_names) = extract_dependency_steps(field_plan, &external_dependency_values);
-                            current_async_instructions.push(AsyncInstruction {
+                            current_async_instructions.push(AsyncInstruction::Simple(AsyncInstructionSimple {
                                 steps,
                                 internal_dependency_names,
                                 is_internal_dependencies_of:
@@ -604,14 +909,14 @@ fn make_progress_selection_set<'a: 'b, 'b>(
                                         index_of_field_in_object,
                                         field_name: field_name.clone(),
                                     },
-                            });
+                            }));
                         }
                         CarverOrPopulator::UnionOrInterfaceTypePopulatorList(
                             type_populator,
                             populator,
                         ) => {
                             let (steps, internal_dependency_names) = extract_dependency_steps(field_plan, &external_dependency_values);
-                            current_async_instructions.push(AsyncInstruction {
+                            current_async_instructions.push(AsyncInstruction::Simple(AsyncInstructionSimple {
                                 steps,
                                 internal_dependency_names,
                                 is_internal_dependencies_of:
@@ -624,7 +929,7 @@ fn make_progress_selection_set<'a: 'b, 'b>(
                                         field_name: field_name.clone(),
                                         field_plan,
                                     },
-                            });
+                            }));
                         }
                     }
                 }
@@ -670,17 +975,19 @@ fn column_getter_step(
     internal_dependency: &InternalDependency,
     external_dependency_values: &ExternalDependencyValues,
 ) -> AsyncStep {
-    AsyncStep::Column {
+    AsyncStep::Column(AsyncStepColumn {
         table_name: column_getter.table_name.clone(),
-        column_name: column_getter.column_name.clone(),
+        column: ColumnSpec {
+            name: column_getter.column_name.clone(),
+            dependency_type: internal_dependency.type_,
+        },
         id_column_name: column_getter.id_column_name.clone(),
-        dependency_type: internal_dependency.type_,
         id: external_dependency_values
             .get("id")
             .unwrap()
             .as_id()
             .clone(),
-    }
+    })
 }
 
 fn column_getter_list_step(
@@ -690,8 +997,10 @@ fn column_getter_list_step(
 ) -> AsyncStep {
     AsyncStep::ListOfColumn {
         table_name: column_getter_list.table_name.clone(),
-        column_name: column_getter_list.column_name.clone(),
-        dependency_type: internal_dependency.type_,
+        column: ColumnSpec {
+            name: column_getter_list.column_name.clone(),
+            dependency_type: internal_dependency.type_,
+        },
         wheres: column_getter_list
             .wheres
             .iter()
@@ -728,7 +1037,7 @@ fn populate_list<'a: 'b, 'b>(
     index_of_field_in_object: usize,
     field_name: &SmolStr,
     field_plan: &'a FieldPlan<'a>,
-    current_async_instructions: &'b mut Vec<AsyncInstruction<'a>>,
+    current_async_instructions: &'b mut AsyncInstructions<'a>,
     schema: &Schema,
 ) {
     populate_concrete_or_union_or_interface_list(
@@ -769,7 +1078,7 @@ fn populate_union_or_interface_list<'a: 'b, 'b>(
     index_of_field_in_object: usize,
     field_name: &SmolStr,
     field_plan: &'a FieldPlan<'a>,
-    current_async_instructions: &'b mut Vec<AsyncInstruction<'a>>,
+    current_async_instructions: &'b mut AsyncInstructions<'a>,
     schema: &Schema,
 ) {
     let type_names =
@@ -817,7 +1126,7 @@ fn populate_concrete_or_union_or_interface_list<'a: 'b, 'b>(
     index_of_field_in_object: usize,
     field_name: &SmolStr,
     field_plan: &'a FieldPlan<'a>,
-    current_async_instructions: &'b mut Vec<AsyncInstruction<'a>>,
+    current_async_instructions: &'b mut AsyncInstructions<'a>,
     schema: &Schema,
 ) {
     let populated = populator.populate(external_dependency_values, &internal_dependency_values);
@@ -888,7 +1197,7 @@ fn populate_object<'a: 'b, 'b>(
     index_of_field_in_object: usize,
     field_name: &SmolStr,
     field_plan: &'a FieldPlan<'a>,
-    current_async_instructions: &'b mut Vec<AsyncInstruction<'a>>,
+    current_async_instructions: &'b mut AsyncInstructions<'a>,
     schema: &Schema,
 ) {
     populate_concrete_or_union_or_interface_object(
@@ -929,7 +1238,7 @@ fn populate_union_or_interface_object<'a: 'b, 'b>(
     index_of_field_in_object: usize,
     field_name: &SmolStr,
     field_plan: &'a FieldPlan<'a>,
-    current_async_instructions: &'b mut Vec<AsyncInstruction<'a>>,
+    current_async_instructions: &'b mut AsyncInstructions<'a>,
     schema: &Schema,
 ) {
     let type_name = type_populator.populate(external_dependency_values, internal_dependency_values);
@@ -970,7 +1279,7 @@ fn populate_concrete_or_union_or_interface_object<'a: 'b, 'b>(
     index_of_field_in_object: usize,
     field_name: &SmolStr,
     field_plan: &'a FieldPlan<'a>,
-    current_async_instructions: &'b mut Vec<AsyncInstruction<'a>>,
+    current_async_instructions: &'b mut AsyncInstructions<'a>,
     schema: &Schema,
 ) {
     post_populate_concrete_or_union_or_interface_object(
@@ -998,7 +1307,7 @@ fn post_populate_concrete_or_union_or_interface_object<'a: 'b, 'b>(
     index_of_field_in_object: usize,
     field_name: &SmolStr,
     field_plan: &'a FieldPlan<'a>,
-    current_async_instructions: &'b mut Vec<AsyncInstruction<'a>>,
+    current_async_instructions: &'b mut AsyncInstructions<'a>,
     schema: &Schema,
 ) {
     produced.push(Produced::FieldNewObject {
@@ -1043,7 +1352,7 @@ fn optionally_populate_union_or_interface_object<'a: 'b, 'b>(
     index_of_field_in_object: usize,
     field_name: &SmolStr,
     field_plan: &'a FieldPlan<'a>,
-    current_async_instructions: &'b mut Vec<AsyncInstruction<'a>>,
+    current_async_instructions: &'b mut AsyncInstructions<'a>,
     schema: &Schema,
 ) {
     let Some(type_name) =
@@ -1092,7 +1401,7 @@ fn optionally_populate_object<'a: 'b, 'b>(
     index_of_field_in_object: usize,
     field_name: &SmolStr,
     field_plan: &'a FieldPlan<'a>,
-    current_async_instructions: &'b mut Vec<AsyncInstruction<'a>>,
+    current_async_instructions: &'b mut AsyncInstructions<'a>,
     schema: &Schema,
 ) {
     let Some(populated) =

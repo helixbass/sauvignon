@@ -177,7 +177,7 @@ pub struct ExternalDependencyValue {
     pub value: DependencyValue,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Id {
     Int(i32),
     String(SmolStr),

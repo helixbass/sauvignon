@@ -15,10 +15,10 @@ use serde::Deserialize;
 
 pub async fn graphql(
     Extension(schema): Extension<Arc<Schema>>,
-    Extension(database): Extension<Arc<dyn Database>>,
+    Extension(database): Extension<Arc<Database>>,
     GraphQLRequest(request): GraphQLRequest,
 ) -> GraphQLResponse {
-    GraphQLResponse(schema.request(&request.query, &*database).await)
+    GraphQLResponse(schema.request(&request.query, &database).await)
 }
 
 pub struct GraphQLRequest(RequestFields);
@@ -72,7 +72,7 @@ fn graphiql_html(graphql_path: &str) -> String {
     )
 }
 
-pub fn simple_app(schema: Arc<Schema>, database: Arc<dyn Database>) -> Router<()> {
+pub fn simple_app(schema: Arc<Schema>, database: Arc<Database>) -> Router<()> {
     Router::new()
         .route("/graphql", post(graphql))
         .route("/graphiql", get(graphiql("/graphql")))
