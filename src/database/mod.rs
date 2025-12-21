@@ -277,7 +277,7 @@ impl PostgresDatabase {
                 query_builder.push(", ");
             }
         });
-        query_builder.push("FROM ");
+        query_builder.push(" FROM ");
         query_builder.push(table_name);
         query_builder.push(" WHERE ");
         query_builder.push(id_column_name);

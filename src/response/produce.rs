@@ -21,6 +21,7 @@ use crate::{
 
 type IndexInProduced = usize;
 
+#[derive(Debug)]
 pub struct ColumnSpec {
     pub name: SmolStr,
     pub dependency_type: DependencyType,
@@ -28,6 +29,7 @@ pub struct ColumnSpec {
 
 type ColumnSpecs = SmallVec<[ColumnSpec; 12]>;
 
+#[derive(Debug)]
 enum AsyncStep {
     ListOfColumn {
         table_name: SmolStr,
@@ -103,6 +105,7 @@ impl AsyncStep {
     }
 }
 
+#[derive(Debug)]
 struct AsyncStepColumn {
     pub table_name: SmolStr,
     pub column: ColumnSpec,
@@ -110,6 +113,7 @@ struct AsyncStepColumn {
     pub id: Id,
 }
 
+#[derive(Debug)]
 struct AsyncStepMultipleColumns {
     pub table_name: SmolStr,
     pub columns: ColumnSpecs,
