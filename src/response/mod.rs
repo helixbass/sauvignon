@@ -9,7 +9,7 @@ use crate::{IndexMap, Location, ParseOrLexError, ValidationError};
 
 mod produce;
 
-pub use produce::produce_response;
+pub use produce::{produce_response, ColumnSpec};
 
 #[derive(Serialize)]
 pub struct Response {

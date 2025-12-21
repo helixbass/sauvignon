@@ -3,17 +3,27 @@ use std::collections::HashMap;
 use async_trait::async_trait;
 use chrono::NaiveDate;
 use smol_str::SmolStr;
-use sqlx::{Pool, Postgres, Row};
+use sqlx::{postgres::PgValueRef, Decode, Pool, Postgres, QueryBuilder, Row};
 use squalid::_d;
 use tracing::{instrument, trace_span, Instrument};
 
 use crate::{
-    ColumnValueMassager, DependencyType, DependencyValue, Id, IndexMap, SmolStrSqlx, WhereResolved,
+    ColumnSpec, ColumnValueMassager, DependencyType, DependencyValue, Id, IndexMap, SmolStrSqlx,
+    WhereResolved,
 };
 
 pub enum Database {
     Postgres(PostgresDatabase),
     Dyn(Box<dyn DatabaseInterface>),
+}
+
+impl Database {
+    pub fn as_postgres(&self) -> &PostgresDatabase {
+        match self {
+            Self::Postgres(database) => database,
+            _ => panic!("expected postgres"),
+        }
+    }
 }
 
 #[async_trait]
@@ -76,6 +86,117 @@ impl PostgresDatabase {
                 ret
             },
         }
+    }
+
+    pub fn to_dependency_value(
+        &self,
+        column_value: PgValueRef<'_>,
+        dependency_type: DependencyType,
+        massager: Option<&ColumnValueMassager>,
+    ) -> DependencyValue {
+        match dependency_type {
+            DependencyType::Id => {
+                assert!(massager.is_none());
+                DependencyValue::Id(Id::Int(
+                    <i32 as Decode<Postgres>>::decode(column_value).unwrap(),
+                ))
+            }
+            DependencyType::String => match massager {
+                None => DependencyValue::String(
+                    <SmolStrSqlx as Decode<Postgres>>::decode(column_value)
+                        .unwrap()
+                        .0,
+                ),
+                Some(massager) => {
+                    DependencyValue::String(massager.as_string().massage(column_value).unwrap())
+                }
+            },
+            DependencyType::OptionalInt => {
+                assert!(massager.is_none());
+                DependencyValue::OptionalInt(
+                    <Option<i32> as Decode<Postgres>>::decode(column_value).unwrap(),
+                )
+            }
+            DependencyType::OptionalFloat => {
+                assert!(massager.is_none());
+                DependencyValue::OptionalFloat(
+                    <Option<f64> as Decode<Postgres>>::decode(column_value).unwrap(),
+                )
+            }
+            DependencyType::OptionalString => match massager {
+                None => DependencyValue::OptionalString(
+                    <Option<SmolStrSqlx> as Decode<Postgres>>::decode(column_value)
+                        .unwrap()
+                        .map(|column_value| column_value.0),
+                ),
+                Some(massager) => DependencyValue::OptionalString(
+                    massager.as_optional_string().massage(column_value).unwrap(),
+                ),
+            },
+            DependencyType::Timestamp => {
+                assert!(massager.is_none());
+                DependencyValue::Timestamp(
+                    <jiff_sqlx::Timestamp as Decode<Postgres>>::decode(column_value)
+                        .unwrap()
+                        .to_jiff(),
+                )
+            }
+            DependencyType::OptionalId => {
+                assert!(massager.is_none());
+                DependencyValue::OptionalId(
+                    <Option<i32> as Decode<Postgres>>::decode(column_value)
+                        .unwrap()
+                        .map(|column_value| Id::Int(column_value)),
+                )
+            }
+            DependencyType::Int => {
+                assert!(massager.is_none());
+                DependencyValue::Int(<i32 as Decode<Postgres>>::decode(column_value).unwrap())
+            }
+            DependencyType::Date => {
+                assert!(massager.is_none());
+                DependencyValue::Date(
+                    <NaiveDate as Decode<Postgres>>::decode(column_value).unwrap(),
+                )
+            }
+            _ => unimplemented!(),
+        }
+    }
+
+    pub async fn get_columns(
+        &self,
+        table_name: &str,
+        columns: &[ColumnSpec],
+        id: &Id,
+        id_column_name: &str,
+        dependency_type: DependencyType,
+    ) -> HashMap<SmolStr, DependencyValue> {
+        let mut query_builder = QueryBuilder::default();
+        query_builder.push("SELECT ");
+        columns.into_iter().enumerate().for_each(|(index, column)| {
+            query_builder.push(&column.name);
+            if index != columns.len() - 1 {
+                query_builder.push(", ");
+            }
+        });
+        query_builder.push("FROM ");
+        query_builder.push(table_name);
+        query_builder.push(" WHERE ");
+        query_builder.push(id_column_name);
+        query_builder.push(" = ");
+        query_builder.push_bind(id.as_int());
+        let row = query_builder.build().fetch_one(&self.pool).await.unwrap();
+        // TODO: column massagers?
+        columns
+            .into_iter()
+            .map(|column| {
+                let column_value = row.try_get_raw(&*column.name).unwrap();
+                (
+                    column.name.clone(),
+                    self.to_dependency_value(column_value, dependency_type),
+                )
+            })
+            .collect()
     }
 }
 

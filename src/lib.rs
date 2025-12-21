@@ -57,7 +57,7 @@ pub use crate::resolve::{
     TimestampCarver, TypeDepluralizer, UnionOrInterfaceTypePopulator,
     UnionOrInterfaceTypePopulatorList, ValuePopulator, ValuePopulatorList, ValuesPopulator,
 };
-pub use crate::response::{produce_response, Response, ResponseValue};
+pub use crate::response::{produce_response, ColumnSpec, Response, ResponseValue};
 pub use crate::schema::{Schema, TypeOrUnionOrInterface, ValidationError};
 pub use crate::smolstr::SmolStrSqlx;
 pub use crate::string::singularize;

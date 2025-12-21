@@ -20,7 +20,7 @@ use crate::{
 
 type IndexInProduced = usize;
 
-struct ColumnSpec {
+pub struct ColumnSpec {
     pub name: SmolStr,
     pub dependency_type: DependencyType,
 }
@@ -47,37 +47,52 @@ enum AsyncStep {
     },
 }
 
+enum AsyncStepResponse {
+    DependencyValue(DependencyValue),
+    DependencyValueMap(HashMap<SmolStr, DependencyValue>),
+}
+
+impl From<DependencyValue> for AsyncStepResponse {
+    fn from(value: DependencyValue) -> Self {
+        Self::DependencyValue(value)
+    }
+}
+
 impl AsyncStep {
     #[instrument(level = "trace", skip(self, database))]
     pub async fn run(&self, database: &Database) -> DependencyValue {
         match self {
             Self::ListOfColumn {
                 table_name,
-                column_name,
-                dependency_type,
+                column,
                 wheres,
             } => DependencyValue::List(
                 database
-                    .get_column_list(table_name, column_name, *dependency_type, wheres)
+                    .get_column_list(table_name, &column.name, column.dependency_type, wheres)
                     .await,
-            ),
+            )
+            .into(),
             Self::Column {
                 table_name,
-                column_name,
+                column,
                 id_column_name,
-                dependency_type,
                 id,
-            } => {
-                database
-                    .get_column(
-                        table_name,
-                        column_name,
-                        id,
-                        id_column_name,
-                        *dependency_type,
-                    )
-                    .await
-            }
+            } => database
+                .get_column(
+                    table_name,
+                    &column.name,
+                    id,
+                    id_column_name,
+                    column.dependency_type,
+                )
+                .await
+                .into(),
+            Self::MultipleColumns {
+                table_name,
+                columns,
+                id_column_name,
+                id,
+            } => database.as_postgres(),
         }
     }
 }
