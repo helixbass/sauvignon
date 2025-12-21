@@ -11,8 +11,13 @@ use crate::{
     ColumnValueMassager, DependencyType, DependencyValue, Id, IndexMap, SmolStrSqlx, WhereResolved,
 };
 
+pub enum Database {
+    Postgres(PostgresDatabase),
+    Dyn(Box<dyn DatabaseInterface>),
+}
+
 #[async_trait]
-pub trait Database: Send + Sync {
+pub trait DatabaseInterface: Send + Sync {
     async fn get_column(
         &self,
         table_name: &str,
@@ -75,7 +80,7 @@ impl PostgresDatabase {
 }
 
 #[async_trait]
-impl Database for PostgresDatabase {
+impl DatabaseInterface for PostgresDatabase {
     #[instrument(level = "trace", skip(self))]
     async fn get_column(
         &self,

@@ -8,7 +8,7 @@ mod shared;
 
 use shared::{get_db_pool, get_schema, pretty_print_json};
 
-async fn run_request(request: &str, expected: &str, schema: &Schema, database: &dyn Database) {
+async fn run_request(request: &str, expected: &str, schema: &Schema, database: &Database) {
     let response = schema.request(request, database).await;
     let json = json_from_response(&response);
     assert_eq!(pretty_print_json(&json), pretty_print_json(expected));

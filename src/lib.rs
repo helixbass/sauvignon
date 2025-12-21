@@ -26,7 +26,8 @@ pub use shared::pluralize;
 
 pub use crate::any_hash_map::AnyHashMap;
 pub use crate::database::{
-    ColumnToken, ColumnTokens, Database, PostgresColumnMassager, PostgresDatabase,
+    ColumnToken, ColumnTokens, Database, DatabaseInterface, PostgresColumnMassager,
+    PostgresDatabase,
 };
 pub use crate::dependencies::{
     ArgumentInternalDependencyResolver, ColumnGetter, ColumnGetterList, ColumnValueMassager,

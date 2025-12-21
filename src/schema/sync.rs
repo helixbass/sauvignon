@@ -17,7 +17,7 @@ pub struct SyncQueryPlan<'a> {
 
 impl<'a> SyncQueryPlan<'a> {
     #[instrument(level = "trace", skip(request, schema, database))]
-    pub fn new(request: &'a Request, schema: &'a Schema, database: &dyn Database) -> Self {
+    pub fn new(request: &'a Request, schema: &'a Schema, database: &Database) -> Self {
         let chosen_operation = request.chosen_operation();
         assert_eq!(chosen_operation.operation_type, OperationType::Query);
 
@@ -134,7 +134,7 @@ impl<'a> SyncFieldPlan<'a> {
 pub fn compute_sync_response(
     schema: &Schema,
     request: &Request,
-    database: &dyn Database,
+    database: &Database,
 ) -> ResponseValue {
     let query_plan = SyncQueryPlan::new(request, schema, database);
 
@@ -153,7 +153,7 @@ pub fn compute_sync_response(
 fn compute_sync_response_fields(
     field_plans: &IndexMap<SmolStr, SyncFieldPlan<'_>>,
     schema: &Schema,
-    database: &dyn Database,
+    database: &Database,
     external_dependency_values: ExternalDependencyValues,
 ) -> IndexMap<SmolStr, ResponseValue> {
     field_plans

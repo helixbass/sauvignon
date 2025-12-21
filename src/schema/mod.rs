@@ -88,7 +88,7 @@ impl Schema {
     }
 
     #[instrument(level = "debug", skip(self, database))]
-    pub async fn request(&self, document_str: &str, database: &dyn Database) -> Response {
+    pub async fn request(&self, document_str: &str, database: &Database) -> Response {
         let document_str_hash = get_hash(document_str);
         let cached_validated_document = self
             .cached_validated_documents
@@ -213,7 +213,7 @@ impl Schema {
 async fn compute_response(
     schema: &Schema,
     request: &Request,
-    database: (&dyn Database, bool),
+    database: (&Database, bool),
 ) -> ResponseValue {
     if database.1 {
         return compute_sync_response(schema, request, database.0);

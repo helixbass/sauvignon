@@ -20,25 +20,36 @@ use crate::{
 
 type IndexInProduced = usize;
 
+struct ColumnSpec {
+    pub name: SmolStr,
+    pub dependency_type: DependencyType,
+}
+
+type ColumnSpecs = SmallVec<[ColumnSpec; 12]>;
+
 enum AsyncStep {
     ListOfColumn {
         table_name: SmolStr,
-        column_name: SmolStr,
-        dependency_type: DependencyType,
+        column: ColumnSpec,
         wheres: WheresResolved,
     },
     Column {
         table_name: SmolStr,
-        column_name: SmolStr,
+        column: ColumnSpec,
         id_column_name: SmolStr,
-        dependency_type: DependencyType,
+        id: Id,
+    },
+    MultipleColumns {
+        table_name: SmolStr,
+        columns: ColumnSpecs,
+        id_column_name: SmolStr,
         id: Id,
     },
 }
 
 impl AsyncStep {
     #[instrument(level = "trace", skip(self, database))]
-    pub async fn run(&self, database: &dyn Database) -> DependencyValue {
+    pub async fn run(&self, database: &Database) -> DependencyValue {
         match self {
             Self::ListOfColumn {
                 table_name,
@@ -73,7 +84,12 @@ impl AsyncStep {
 
 type AsyncSteps = SmallVec<[AsyncStep; 4]>;
 
-struct AsyncInstruction<'a> {
+enum AsyncInstruction<'a> {
+    Simple(AsyncInstructionSimple<'a>),
+    MultipleColumnRow {},
+}
+
+struct AsyncInstructionSimple<'a> {
     pub steps: AsyncSteps,
     pub internal_dependency_names: DependencyNames,
     pub is_internal_dependencies_of: IsInternalDependenciesOf<'a>,
@@ -152,7 +168,7 @@ enum IsInternalDependenciesOf<'a> {
 #[instrument(level = "trace", skip(schema, database, query_plan))]
 pub async fn produce_response(
     schema: &Schema,
-    database: &dyn Database,
+    database: &Database,
     query_plan: &QueryPlan<'_>,
 ) -> ResponseValue {
     let mut produced: Vec<Produced> = _d();
