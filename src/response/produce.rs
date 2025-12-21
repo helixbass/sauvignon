@@ -41,14 +41,14 @@ enum AsyncStep {
 
 impl AsyncStep {
     #[instrument(level = "trace", skip(self, database))]
-    pub async fn run(&self, database: &dyn Database) -> AsyncStepResponse {
+    pub async fn run(&self, database: &dyn Database) -> DependencyValue {
         match self {
             Self::ListOfColumn {
                 table_name,
                 column_name,
                 dependency_type,
                 wheres,
-            } => AsyncStepResponse::ListOfColumn(
+            } => DependencyValue::List(
                 database
                     .get_column_list(table_name, column_name, *dependency_type, wheres)
                     .await,
@@ -63,7 +63,7 @@ impl AsyncStep {
                 id_column_name,
                 dependency_type,
                 id,
-            } => AsyncStepResponse::Column(
+            } => {
                 database
                     .get_column(
                         table_name,
@@ -72,32 +72,23 @@ impl AsyncStep {
                         id_column_name,
                         *dependency_type,
                     )
-                    .await,
-            ),
+                    .await
+            }
         }
     }
-}
-
-enum AsyncStepResponse {
-    ListOfColumn(Vec<DependencyValue>),
-    Column(DependencyValue),
 }
 
 type AsyncSteps = SmallVec<[AsyncStep; 4]>;
 
 struct AsyncInstruction<'a> {
     pub steps: AsyncSteps,
-    pub is_internal_dependency_of: IsInternalDependencyOf<'a>,
+    pub internal_dependency_names: DependencyNames,
+    pub is_internal_dependencies_of: IsInternalDependenciesOf<'a>,
 }
 
 type DependencyNames = SmallVec<[SmolStr; 4]>;
 
-struct IsInternalDependencyOf<'a> {
-    pub dependency_names: DependencyNames,
-    pub is_internal_dependency_of: IsInternalDependencyOfInner<'a>,
-}
-
-enum IsInternalDependencyOfInner<'a> {
+enum IsInternalDependenciesOf<'a> {
     ObjectFieldScalar {
         parent_object_index: IndexInProduced,
         index_of_field_in_object: usize,
@@ -194,41 +185,28 @@ pub async fn produce_response(
         current_async_instructions
             .into_iter()
             .for_each(|async_instruction| {
-                enum StepResponses {
-                    Single(AsyncStepResponse),
-                    Two(AsyncStepResponse, AsyncStepResponse),
+                let mut internal_dependency_values = InternalDependencyValues::default();
+                for internal_dependency_index in 0..async_instruction.steps.len() {
+                    internal_dependency_values
+                        .insert(
+                            async_instruction.internal_dependency_names[internal_dependency_index]
+                                .clone(),
+                            responses.next().unwrap(),
+                        )
+                        .unwrap();
                 }
-                let step_responses = match async_instruction.steps.len() {
-                    1 => StepResponses::Single(responses.next().unwrap()),
-                    2 => StepResponses::Two(responses.next().unwrap(), responses.next().unwrap()),
-                    _ => unimplemented!(),
-                };
-                match (
-                    step_responses,
-                    async_instruction
-                        .is_internal_dependency_of
-                        .is_internal_dependency_of,
-                ) {
-                    (
-                        StepResponses::Single(AsyncStepResponse::ListOfColumn(ids)),
-                        IsInternalDependencyOfInner::ObjectFieldListOfObjects {
-                            parent_object_index,
-                            index_of_field_in_object,
-                            populator,
-                            external_dependency_values,
-                            field_name,
-                            field_plan,
-                        },
-                    ) => {
+                match async_instruction.is_internal_dependencies_of {
+                    IsInternalDependenciesOf::ObjectFieldListOfObjects {
+                        parent_object_index,
+                        index_of_field_in_object,
+                        populator,
+                        external_dependency_values,
+                        field_name,
+                        field_plan,
+                    } => {
                         populate_list(
                             &external_dependency_values,
-                            &[(
-                                async_instruction.is_internal_dependency_of.dependency_names[0]
-                                    .clone(),
-                                DependencyValue::List(ids),
-                            )]
-                            .into_iter()
-                            .collect(),
+                            &internal_dependency_values,
                             populator,
                             &mut produced,
                             parent_object_index,
@@ -239,52 +217,32 @@ pub async fn produce_response(
                             schema,
                         );
                     }
-                    (
-                        StepResponses::Single(AsyncStepResponse::Column(column_value)),
-                        IsInternalDependencyOfInner::ObjectFieldScalar {
-                            parent_object_index,
-                            index_of_field_in_object,
-                            carver,
-                            external_dependency_values,
-                            field_name,
-                        },
-                    ) => {
+                    IsInternalDependenciesOf::ObjectFieldScalar {
+                        parent_object_index,
+                        index_of_field_in_object,
+                        carver,
+                        external_dependency_values,
+                        field_name,
+                    } => {
                         produced.push(Produced::FieldScalar {
                             parent_object_index,
                             index_of_field_in_object,
                             field_name: field_name.clone(),
-                            value: carver.carve(
-                                &external_dependency_values,
-                                &[(
-                                    async_instruction.is_internal_dependency_of.dependency_names[0]
-                                        .clone(),
-                                    column_value,
-                                )]
-                                .into_iter()
-                                .collect(),
-                            ),
+                            value: carver
+                                .carve(&external_dependency_values, &internal_dependency_values),
                         });
                     }
-                    (
-                        StepResponses::Single(AsyncStepResponse::Column(column_value)),
-                        IsInternalDependencyOfInner::ObjectFieldObject {
-                            parent_object_index,
-                            index_of_field_in_object,
-                            populator,
-                            external_dependency_values,
-                            field_name,
-                            field_plan,
-                        },
-                    ) => {
+                    IsInternalDependenciesOf::ObjectFieldObject {
+                        parent_object_index,
+                        index_of_field_in_object,
+                        populator,
+                        external_dependency_values,
+                        field_name,
+                        field_plan,
+                    } => {
                         populate_object(
                             &external_dependency_values,
-                            &[(
-                                async_instruction.is_internal_dependency_of.dependency_names[0]
-                                    .clone(),
-                                column_value,
-                            )]
-                            .into_iter()
-                            .collect(),
+                            &internal_dependency_values,
                             populator,
                             &mut produced,
                             parent_object_index,
@@ -295,37 +253,18 @@ pub async fn produce_response(
                             schema,
                         );
                     }
-                    (
-                        StepResponses::Two(
-                            AsyncStepResponse::Column(first_column_value),
-                            AsyncStepResponse::Column(second_column_value),
-                        ),
-                        IsInternalDependencyOfInner::ObjectFieldUnionOrInterfaceObject {
-                            parent_object_index,
-                            index_of_field_in_object,
-                            type_populator,
-                            populator,
-                            external_dependency_values,
-                            field_name,
-                            field_plan,
-                        },
-                    ) => {
+                    IsInternalDependenciesOf::ObjectFieldUnionOrInterfaceObject {
+                        parent_object_index,
+                        index_of_field_in_object,
+                        type_populator,
+                        populator,
+                        external_dependency_values,
+                        field_name,
+                        field_plan,
+                    } => {
                         populate_union_or_interface_object(
                             &external_dependency_values,
-                            &[
-                                (
-                                    async_instruction.is_internal_dependency_of.dependency_names[0]
-                                        .clone(),
-                                    first_column_value,
-                                ),
-                                (
-                                    async_instruction.is_internal_dependency_of.dependency_names[1]
-                                        .clone(),
-                                    second_column_value,
-                                ),
-                            ]
-                            .into_iter()
-                            .collect(),
+                            &internal_dependency_values,
                             type_populator,
                             populator,
                             &mut produced,
@@ -337,25 +276,16 @@ pub async fn produce_response(
                             schema,
                         );
                     }
-                    (
-                        StepResponses::Single(AsyncStepResponse::ListOfColumn(column_values)),
-                        IsInternalDependencyOfInner::ObjectFieldListOfScalars {
-                            parent_object_index,
-                            index_of_field_in_object,
-                            carver,
-                            external_dependency_values,
-                            field_name,
-                        },
-                    ) => {
+                    IsInternalDependenciesOf::ObjectFieldListOfScalars {
+                        parent_object_index,
+                        index_of_field_in_object,
+                        carver,
+                        external_dependency_values,
+                        field_name,
+                    } => {
                         carve_list(
                             &external_dependency_values,
-                            &[(
-                                async_instruction.is_internal_dependency_of.dependency_names[0]
-                                    .clone(),
-                                DependencyValue::List(column_values),
-                            )]
-                            .into_iter()
-                            .collect(),
+                            &internal_dependency_values,
                             carver,
                             &mut produced,
                             parent_object_index,
@@ -363,26 +293,17 @@ pub async fn produce_response(
                             &field_name,
                         );
                     }
-                    (
-                        StepResponses::Single(AsyncStepResponse::Column(column_value)),
-                        IsInternalDependencyOfInner::ObjectFieldOptionalObject {
-                            parent_object_index,
-                            index_of_field_in_object,
-                            populator,
-                            external_dependency_values,
-                            field_name,
-                            field_plan,
-                        },
-                    ) => {
+                    IsInternalDependenciesOf::ObjectFieldOptionalObject {
+                        parent_object_index,
+                        index_of_field_in_object,
+                        populator,
+                        external_dependency_values,
+                        field_name,
+                        field_plan,
+                    } => {
                         optionally_populate_object(
                             &external_dependency_values,
-                            &[(
-                                async_instruction.is_internal_dependency_of.dependency_names[0]
-                                    .clone(),
-                                column_value,
-                            )]
-                            .into_iter()
-                            .collect(),
+                            &internal_dependency_values,
                             populator,
                             &mut produced,
                             parent_object_index,
@@ -393,37 +314,18 @@ pub async fn produce_response(
                             schema,
                         );
                     }
-                    (
-                        StepResponses::Two(
-                            AsyncStepResponse::Column(first_column_value),
-                            AsyncStepResponse::Column(second_column_value),
-                        ),
-                        IsInternalDependencyOfInner::ObjectFieldOptionalUnionOrInterfaceObject {
-                            parent_object_index,
-                            index_of_field_in_object,
-                            type_populator,
-                            populator,
-                            external_dependency_values,
-                            field_name,
-                            field_plan,
-                        },
-                    ) => {
+                    IsInternalDependenciesOf::ObjectFieldOptionalUnionOrInterfaceObject {
+                        parent_object_index,
+                        index_of_field_in_object,
+                        type_populator,
+                        populator,
+                        external_dependency_values,
+                        field_name,
+                        field_plan,
+                    } => {
                         optionally_populate_union_or_interface_object(
                             &external_dependency_values,
-                            &[
-                                (
-                                    async_instruction.is_internal_dependency_of.dependency_names[0]
-                                        .clone(),
-                                    first_column_value,
-                                ),
-                                (
-                                    async_instruction.is_internal_dependency_of.dependency_names[1]
-                                        .clone(),
-                                    second_column_value,
-                                ),
-                            ]
-                            .into_iter()
-                            .collect(),
+                            &internal_dependency_values,
                             type_populator,
                             populator,
                             &mut produced,
@@ -435,7 +337,6 @@ pub async fn produce_response(
                             schema,
                         );
                     }
-                    _ => unimplemented!(),
                 }
             });
 
@@ -584,16 +485,14 @@ fn make_progress_selection_set<'a: 'b, 'b>(
                                             internal_dependency,
                                             &external_dependency_values,
                                         )],
-                                        is_internal_dependency_of: IsInternalDependencyOf {
-                                            dependency_names: smallvec![internal_dependency.name.clone()],
-                                            is_internal_dependency_of: IsInternalDependencyOfInner::ObjectFieldScalar {
-                                                parent_object_index,
-                                                carver,
-                                                external_dependency_values: external_dependency_values
-                                                    .clone(),
-                                                index_of_field_in_object,
-                                                field_name: field_name.clone(),
-                                            },
+                                        internal_dependency_names: smallvec![internal_dependency.name.clone()],
+                                        is_internal_dependencies_of: IsInternalDependenciesOf::ObjectFieldScalar {
+                                            parent_object_index,
+                                            carver,
+                                            external_dependency_values: external_dependency_values
+                                                .clone(),
+                                            index_of_field_in_object,
+                                            field_name: field_name.clone(),
                                         },
                                     });
                                 }
@@ -618,17 +517,15 @@ fn make_progress_selection_set<'a: 'b, 'b>(
                                             internal_dependency,
                                             &external_dependency_values,
                                         )],
-                                        is_internal_dependency_of: IsInternalDependencyOf {
-                                            dependency_names: smallvec![internal_dependency.name.clone()],
-                                            is_internal_dependency_of: IsInternalDependencyOfInner::ObjectFieldObject {
-                                                parent_object_index,
-                                                populator,
-                                                external_dependency_values: external_dependency_values
-                                                    .clone(),
-                                                index_of_field_in_object,
-                                                field_name: field_name.clone(),
-                                                field_plan,
-                                            },
+                                        internal_dependency_names: smallvec![internal_dependency.name.clone()],
+                                        is_internal_dependencies_of: IsInternalDependenciesOf::ObjectFieldObject {
+                                            parent_object_index,
+                                            populator,
+                                            external_dependency_values: external_dependency_values
+                                                .clone(),
+                                            index_of_field_in_object,
+                                            field_name: field_name.clone(),
+                                            field_plan,
                                         },
                                     });
                                 }
@@ -653,17 +550,15 @@ fn make_progress_selection_set<'a: 'b, 'b>(
                                             internal_dependency,
                                             &external_dependency_values,
                                         )],
-                                        is_internal_dependency_of: IsInternalDependencyOf {
-                                            dependency_names: smallvec![internal_dependency.name.clone()],
-                                            is_internal_dependency_of: IsInternalDependencyOfInner::ObjectFieldOptionalObject {
-                                                parent_object_index,
-                                                populator,
-                                                external_dependency_values: external_dependency_values
-                                                    .clone(),
-                                                index_of_field_in_object,
-                                                field_name: field_name.clone(),
-                                                field_plan,
-                                            },
+                                        internal_dependency_names: smallvec![internal_dependency.name.clone()],
+                                        is_internal_dependencies_of: IsInternalDependenciesOf::ObjectFieldOptionalObject {
+                                            parent_object_index,
+                                            populator,
+                                            external_dependency_values: external_dependency_values
+                                                .clone(),
+                                            index_of_field_in_object,
+                                            field_name: field_name.clone(),
+                                            field_plan,
                                         },
                                     });
                                 }
@@ -698,18 +593,16 @@ fn make_progress_selection_set<'a: 'b, 'b>(
                                                 &external_dependency_values,
                                             ),
                                         ],
-                                        is_internal_dependency_of: IsInternalDependencyOf {
-                                            dependency_names: smallvec![internal_dependencies[0].name.clone(), internal_dependencies[1].name.clone()],
-                                            is_internal_dependency_of: IsInternalDependencyOfInner::ObjectFieldUnionOrInterfaceObject {
-                                                parent_object_index,
-                                                type_populator,
-                                                populator,
-                                                external_dependency_values: external_dependency_values
-                                                    .clone(),
-                                                index_of_field_in_object,
-                                                field_name: field_name.clone(),
-                                                field_plan,
-                                            },
+                                        internal_dependency_names: smallvec![internal_dependencies[0].name.clone(), internal_dependencies[1].name.clone()],
+                                        is_internal_dependencies_of: IsInternalDependenciesOf::ObjectFieldUnionOrInterfaceObject {
+                                            parent_object_index,
+                                            type_populator,
+                                            populator,
+                                            external_dependency_values: external_dependency_values
+                                                .clone(),
+                                            index_of_field_in_object,
+                                            field_name: field_name.clone(),
+                                            field_plan,
                                         },
                                     });
                                 }
@@ -744,18 +637,16 @@ fn make_progress_selection_set<'a: 'b, 'b>(
                                                 &external_dependency_values,
                                             ),
                                         ],
-                                        is_internal_dependency_of: IsInternalDependencyOf {
-                                            dependency_names: smallvec![internal_dependencies[0].name.clone(), internal_dependencies[1].name.clone()],
-                                            is_internal_dependency_of: IsInternalDependencyOfInner::ObjectFieldOptionalUnionOrInterfaceObject {
-                                                parent_object_index,
-                                                type_populator,
-                                                populator,
-                                                external_dependency_values: external_dependency_values
-                                                    .clone(),
-                                                index_of_field_in_object,
-                                                field_name: field_name.clone(),
-                                                field_plan,
-                                            },
+                                        internal_dependency_names: smallvec![internal_dependencies[0].name.clone(), internal_dependencies[1].name.clone()],
+                                        is_internal_dependencies_of: IsInternalDependenciesOf::ObjectFieldOptionalUnionOrInterfaceObject {
+                                            parent_object_index,
+                                            type_populator,
+                                            populator,
+                                            external_dependency_values: external_dependency_values
+                                                .clone(),
+                                            index_of_field_in_object,
+                                            field_name: field_name.clone(),
+                                            field_plan,
                                         },
                                     });
                                 }
@@ -780,19 +671,17 @@ fn make_progress_selection_set<'a: 'b, 'b>(
                                             internal_dependency,
                                             &external_dependency_values,
                                         )],
-                                        is_internal_dependency_of: IsInternalDependencyOf {
-                                            dependency_names: smallvec![internal_dependency.name.clone()],
-                                            is_internal_dependency_of:
-                                                IsInternalDependencyOfInner::ObjectFieldListOfObjects {
-                                                    parent_object_index,
-                                                    populator,
-                                                    external_dependency_values: external_dependency_values
-                                                        .clone(),
-                                                    index_of_field_in_object,
-                                                    field_name: field_name.clone(),
-                                                    field_plan,
-                                                },
-                                        },
+                                        internal_dependency_names: smallvec![internal_dependency.name.clone()],
+                                        is_internal_dependencies_of:
+                                            IsInternalDependenciesOf::ObjectFieldListOfObjects {
+                                                parent_object_index,
+                                                populator,
+                                                external_dependency_values: external_dependency_values
+                                                    .clone(),
+                                                index_of_field_in_object,
+                                                field_name: field_name.clone(),
+                                                field_plan,
+                                            },
                                     });
                                 }
                                 _ => unreachable!("probably not?"),
@@ -816,18 +705,16 @@ fn make_progress_selection_set<'a: 'b, 'b>(
                                             internal_dependency,
                                             &external_dependency_values,
                                         )],
-                                        is_internal_dependency_of: IsInternalDependencyOf {
-                                            dependency_names: smallvec![internal_dependency.name.clone()],
-                                            is_internal_dependency_of:
-                                                IsInternalDependencyOfInner::ObjectFieldListOfScalars {
-                                                    parent_object_index,
-                                                    carver,
-                                                    external_dependency_values: external_dependency_values
-                                                        .clone(),
-                                                    index_of_field_in_object,
-                                                    field_name: field_name.clone(),
-                                                },
-                                        },
+                                        internal_dependency_names: smallvec![internal_dependency.name.clone()],
+                                        is_internal_dependencies_of:
+                                            IsInternalDependenciesOf::ObjectFieldListOfScalars {
+                                                parent_object_index,
+                                                carver,
+                                                external_dependency_values: external_dependency_values
+                                                    .clone(),
+                                                index_of_field_in_object,
+                                                field_name: field_name.clone(),
+                                            },
                                     });
                                 }
                                 _ => unreachable!("probably not?"),
