@@ -566,33 +566,7 @@ fn make_progress_selection_set<'a: 'b, 'b>(
                             }
                         }
                         CarverOrPopulator::UnionOrInterfaceTypePopulator(type_populator, populator) => {
-                            let (
-                                steps,
-                                internal_dependency_names,
-                            ): (AsyncSteps, DependencyNames) = field_plan
-                                .field_type
-                                .resolver
-                                .internal_dependencies
-                                .iter()
-                                .map(|internal_dependency| {
-                                    (
-                                        match &internal_dependency.resolver {
-                                            InternalDependencyResolver::ColumnGetter(column_getter) => column_getter_step(
-                                                column_getter,
-                                                internal_dependency,
-                                                &external_dependency_values,
-                                            ),
-                                            InternalDependencyResolver::ColumnGetterList(column_getter_list) => column_getter_list_step(
-                                                column_getter_list,
-                                                internal_dependency,
-                                                &external_dependency_values,
-                                            ),
-                                            _ => unreachable!()
-                                        },
-                                        internal_dependency.name.clone(),
-                                    )
-                                })
-                                .unzip();
+                            let (steps, internal_dependency_names) = extract_dependency_steps(field_plan, &external_dependency_values);
                             current_async_instructions.push(AsyncInstruction {
                                 steps,
                                 internal_dependency_names,
@@ -730,6 +704,38 @@ fn make_progress_selection_set<'a: 'b, 'b>(
             }
         },
     );
+}
+
+fn extract_dependency_steps(
+    field_plan: &FieldPlan<'_>,
+    external_dependency_values: &ExternalDependencyValues,
+) -> (AsyncSteps, DependencyNames) {
+    field_plan
+        .field_type
+        .resolver
+        .internal_dependencies
+        .iter()
+        .map(|internal_dependency| {
+            (
+                match &internal_dependency.resolver {
+                    InternalDependencyResolver::ColumnGetter(column_getter) => column_getter_step(
+                        column_getter,
+                        internal_dependency,
+                        &external_dependency_values,
+                    ),
+                    InternalDependencyResolver::ColumnGetterList(column_getter_list) => {
+                        column_getter_list_step(
+                            column_getter_list,
+                            internal_dependency,
+                            &external_dependency_values,
+                        )
+                    }
+                    _ => unreachable!(),
+                },
+                internal_dependency.name.clone(),
+            )
+        })
+        .unzip()
 }
 
 fn column_getter_step(
