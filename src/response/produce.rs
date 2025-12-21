@@ -27,10 +27,6 @@ enum AsyncStep {
         dependency_type: DependencyType,
         wheres: WheresResolved,
     },
-    ListOfIdsAndOtherColumns {
-        table_name: SmolStr,
-        other_columns: SmallVec<[SmolStr; 8]>,
-    },
     Column {
         table_name: SmolStr,
         column_name: SmolStr,
@@ -54,10 +50,6 @@ impl AsyncStep {
                     .get_column_list(table_name, column_name, *dependency_type, wheres)
                     .await,
             ),
-            Self::ListOfIdsAndOtherColumns {
-                table_name,
-                other_columns,
-            } => unimplemented!(),
             Self::Column {
                 table_name,
                 column_name,
