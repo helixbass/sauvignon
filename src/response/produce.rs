@@ -6,7 +6,7 @@ use indexmap::IndexMap;
 use itertools::{Either, Itertools};
 use smallvec::{smallvec, SmallVec};
 use smol_str::{SmolStr, ToSmolStr};
-use squalid::_d;
+use squalid::{OptionExt, _d};
 use tracing::{instrument, trace_span};
 
 use crate::{
@@ -82,6 +82,13 @@ impl AsyncStep {
     }
 
     pub fn as_multiple_columns(&self) -> &AsyncStepMultipleColumns {
+        match self {
+            Self::MultipleColumns(multiple_columns) => multiple_columns,
+            _ => panic!("expected multiple columns"),
+        }
+    }
+
+    pub fn into_multiple_columns(self) -> AsyncStepMultipleColumns {
         match self {
             Self::MultipleColumns(multiple_columns) => multiple_columns,
             _ => panic!("expected multiple columns"),
@@ -222,9 +229,30 @@ impl<'a> AsyncInstructions<'a> {
                 }
                 AsyncInstruction::RowMultipleColumnsEachOfWhichAreOnlyInternalDependency {
                     step,
-                    is_internal_dependencies_of,
+                    mut is_internal_dependencies_of,
                 } => {
-                    unimplemented!()
+                    let AsyncStepMultipleColumns {
+                        table_name,
+                        mut columns,
+                        id_column_name,
+                        id,
+                    } = step.into_multiple_columns();
+                    columns.push(instruction_step.column);
+                    is_internal_dependencies_of
+                        .insert(
+                            instruction_internal_dependency_names.remove(0),
+                            instruction_is_internal_dependencies_of,
+                        )
+                        .assert_none();
+                    AsyncInstruction::RowMultipleColumnsEachOfWhichAreOnlyInternalDependency {
+                        step: AsyncStep::MultipleColumns(AsyncStepMultipleColumns {
+                            table_name,
+                            columns,
+                            id_column_name,
+                            id,
+                        }),
+                        is_internal_dependencies_of,
+                    }
                 }
             };
             self.instructions.push(updated_instruction);
