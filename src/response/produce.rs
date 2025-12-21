@@ -186,14 +186,14 @@ impl<'a> AsyncInstructions<'a> {
         {
             let instruction = instruction.into_simple();
             self.instructions
-                .push(match self.remove(combineable_with_index) {
+                .push(match self.instructions.remove(combineable_with_index) {
                     AsyncInstruction::Simple(AsyncInstructionSimple {
-                        steps,
+                        mut steps,
                         internal_dependency_names,
                         is_internal_dependencies_of,
                     }) => {
                         assert_eq!(steps.len(), 1);
-                        let step = steps[0].into_column();
+                        let step = steps.remove(0).into_column();
                         AsyncInstruction::RowMultipleColumnsEachOfWhichAreOnlyInternalDependency {
                             step: AsyncStep::MultipleColumns(AsyncStepMultipleColumns {
                                 table_name: step.table_name,
