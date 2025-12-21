@@ -34,18 +34,64 @@ enum AsyncStep {
         column: ColumnSpec,
         wheres: WheresResolved,
     },
-    Column {
-        table_name: SmolStr,
-        column: ColumnSpec,
-        id_column_name: SmolStr,
-        id: Id,
-    },
+    Column(AsyncStepColumn),
     MultipleColumns {
         table_name: SmolStr,
         columns: ColumnSpecs,
         id_column_name: SmolStr,
         id: Id,
     },
+}
+
+impl AsyncStep {
+    #[instrument(level = "trace", skip(self, database))]
+    pub async fn run(&self, database: &Database) -> AsyncStepResponse {
+        match self {
+            Self::ListOfColumn {
+                table_name,
+                column,
+                wheres,
+            } => DependencyValue::List(
+                database
+                    .get_column_list(table_name, &column.name, column.dependency_type, wheres)
+                    .await,
+            )
+            .into(),
+            Self::Column(AsyncStepColumn {
+                table_name,
+                column,
+                id_column_name,
+                id,
+            }) => database
+                .get_column(
+                    table_name,
+                    &column.name,
+                    id,
+                    id_column_name,
+                    column.dependency_type,
+                )
+                .await
+                .into(),
+            Self::MultipleColumns {
+                table_name,
+                columns,
+                id_column_name,
+                id,
+            } => AsyncStepResponse::DependencyValueMap(
+                database
+                    .as_postgres()
+                    .get_columns(table_name, columns, id, id_column_name)
+                    .await,
+            ),
+        }
+    }
+}
+
+struct AsyncStepColumn {
+    pub table_name: SmolStr,
+    pub column: ColumnSpec,
+    pub id_column_name: SmolStr,
+    pub id: Id,
 }
 
 enum AsyncStepResponse {
@@ -75,50 +121,6 @@ impl From<DependencyValue> for AsyncStepResponse {
     }
 }
 
-impl AsyncStep {
-    #[instrument(level = "trace", skip(self, database))]
-    pub async fn run(&self, database: &Database) -> AsyncStepResponse {
-        match self {
-            Self::ListOfColumn {
-                table_name,
-                column,
-                wheres,
-            } => DependencyValue::List(
-                database
-                    .get_column_list(table_name, &column.name, column.dependency_type, wheres)
-                    .await,
-            )
-            .into(),
-            Self::Column {
-                table_name,
-                column,
-                id_column_name,
-                id,
-            } => database
-                .get_column(
-                    table_name,
-                    &column.name,
-                    id,
-                    id_column_name,
-                    column.dependency_type,
-                )
-                .await
-                .into(),
-            Self::MultipleColumns {
-                table_name,
-                columns,
-                id_column_name,
-                id,
-            } => AsyncStepResponse::DependencyValueMap(
-                database
-                    .as_postgres()
-                    .get_columns(table_name, columns, id, id_column_name)
-                    .await,
-            ),
-        }
-    }
-}
-
 type AsyncSteps = SmallVec<[AsyncStep; 4]>;
 
 enum AsyncInstruction<'a> {
@@ -127,6 +129,15 @@ enum AsyncInstruction<'a> {
         step: AsyncStep,
         is_internal_dependencies_of: HashMap<SmolStr, IsInternalDependenciesOf<'a>>,
     },
+}
+
+impl<'a> AsyncInstruction<'a> {
+    pub fn as_simple(&self) -> &AsyncInstructionSimple<'a> {
+        match self {
+            Self::Simple(simple) => simple,
+            _ => panic!("expected simple")
+        }
+    }
 }
 
 struct AsyncInstructionSimple<'a> {
@@ -144,7 +155,14 @@ struct AsyncInstructions<'a> {
 
 impl<'a> AsyncInstructions<'a> {
     pub fn push(&mut self, instruction: AsyncInstruction<'a>) {
-        unimplemented!()
+        if let Some(combineable_with_index) = is_row_multiple_columns_each_of_which_are_only_internal_dependency_combineable(
+            &instruction,
+            &self.instructions,
+        ) {
+            unimplemented!()
+            return;
+        }
+        self.instructions.push(instruction);
     }
 }
 
@@ -163,6 +181,39 @@ impl<'a> IntoIterator for AsyncInstructions<'a> {
     fn into_iter(self) -> Self::IntoIter {
         self.instructions.into_iter()
     }
+}
+
+fn is_row_multiple_columns_each_of_which_are_only_internal_dependency_combineable(
+    instruction: &AsyncInstruction,
+    existing: &AsyncInstructionsStore,
+) -> Option<usize> {
+    let instruction = instruction.as_simple();
+    if instruction.steps.len() != 1 {
+        return None;
+    }
+    let AsyncStep::Column(column_step) = &instruction.steps[0] else {
+        return None;
+    };
+    existing.into_iter().position(|existing_instruction| {
+        match existing_instruction {
+            AsyncInstruction::Simple(simple) => {
+                if simple.steps.len() != 1 {
+                    return false;
+                }
+                let AsyncStep::Column(existing_column_step) = &simple.steps[0] else {
+                    return false;
+                };
+                existing_column_step.table_name == column_step.table_name
+                    && existing_column_step.id_column_name == column_step.id_column_name
+                    && existing_column_step.id == column_step.id
+            }
+            AsyncInstruction::RowMultipleColumnsEachOfWhichAreOnlyInternalDependency {
+                step: AsyncStep,
+                is_internal_dependencies_of: HashMap<SmolStr, IsInternalDependenciesOf<'a>>,
+            } => {
+            }
+        }
+    })
 }
 
 type DependencyNames = SmallVec<[SmolStr; 4]>;
@@ -812,7 +863,7 @@ fn column_getter_step(
     internal_dependency: &InternalDependency,
     external_dependency_values: &ExternalDependencyValues,
 ) -> AsyncStep {
-    AsyncStep::Column {
+    AsyncStep::Column(AsyncStepColumn {
         table_name: column_getter.table_name.clone(),
         column: ColumnSpec {
             name: column_getter.column_name.clone(),
@@ -824,7 +875,7 @@ fn column_getter_step(
             .unwrap()
             .as_id()
             .clone(),
-    }
+    })
 }
 
 fn column_getter_list_step(
