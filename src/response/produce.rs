@@ -35,12 +35,7 @@ enum AsyncStep {
         wheres: WheresResolved,
     },
     Column(AsyncStepColumn),
-    MultipleColumns {
-        table_name: SmolStr,
-        columns: ColumnSpecs,
-        id_column_name: SmolStr,
-        id: Id,
-    },
+    MultipleColumns(AsyncStepMultipleColumns),
 }
 
 impl AsyncStep {
@@ -72,12 +67,12 @@ impl AsyncStep {
                 )
                 .await
                 .into(),
-            Self::MultipleColumns {
+            Self::MultipleColumns(AsyncStepMultipleColumns {
                 table_name,
                 columns,
                 id_column_name,
                 id,
-            } => AsyncStepResponse::DependencyValueMap(
+            }) => AsyncStepResponse::DependencyValueMap(
                 database
                     .as_postgres()
                     .get_columns(table_name, columns, id, id_column_name)
@@ -85,11 +80,25 @@ impl AsyncStep {
             ),
         }
     }
+
+    pub fn as_multiple_columns(&self) -> &AsyncStepMultipleColumns {
+        match self {
+            Self::MultipleColumns(multiple_columns) => multiple_columns,
+            _ => panic!("expected multiple columns")
+        }
+    }
 }
 
 struct AsyncStepColumn {
     pub table_name: SmolStr,
     pub column: ColumnSpec,
+    pub id_column_name: SmolStr,
+    pub id: Id,
+}
+
+struct AsyncStepMultipleColumns {
+    pub table_name: SmolStr,
+    pub columns: ColumnSpecs,
     pub id_column_name: SmolStr,
     pub id: Id,
 }
@@ -208,9 +217,13 @@ fn is_row_multiple_columns_each_of_which_are_only_internal_dependency_combineabl
                     && existing_column_step.id == column_step.id
             }
             AsyncInstruction::RowMultipleColumnsEachOfWhichAreOnlyInternalDependency {
-                step: AsyncStep,
-                is_internal_dependencies_of: HashMap<SmolStr, IsInternalDependenciesOf<'a>>,
+                step,
+                ..
             } => {
+                let step = step.as_multiple_columns();
+                step.table_name == column_step.table_name
+                    && step.id_column_name == column_step.id_column_name
+                    && step.id == column_step.id
             }
         }
     })
