@@ -7,8 +7,9 @@ use tracing::instrument;
 
 use crate::{
     request, types, Argument, CarverOrPopulator, ColumnToken, ColumnTokens, Database,
-    ExternalDependencyValues, InternalDependencyResolver, InternalDependencyValues, OperationType,
-    Request, ResponseValue, Schema, Selection, WhereResolved, WheresResolved,
+    DatabaseInterface, ExternalDependencyValues, InternalDependencyResolver,
+    InternalDependencyValues, OperationType, Request, ResponseValue, Schema, Selection,
+    WhereResolved, WheresResolved,
 };
 
 pub struct SyncQueryPlan<'a> {

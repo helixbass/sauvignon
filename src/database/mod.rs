@@ -26,6 +26,90 @@ impl Database {
     }
 }
 
+impl DatabaseInterface for Database {
+    async fn get_column(
+        &self,
+        table_name: &str,
+        column_name: &str,
+        id: &Id,
+        id_column_name: &str,
+        dependency_type: DependencyType,
+    ) -> DependencyValue {
+        match self {
+            Self::Postgres(database) => {
+                database.get_column(table_name, column_name, id, id_column_name, dependency_type)
+            }
+            Self::Dyn(database) => {
+                database.get_column(table_name, column_name, id, id_column_name, dependency_type)
+            }
+        }
+    }
+
+    async fn get_column_list(
+        &self,
+        table_name: &str,
+        column_name: &str,
+        dependency_type: DependencyType,
+        wheres: &[WhereResolved],
+    ) -> Vec<DependencyValue> {
+        match self {
+            Self::Postgres(database) => {
+                database.get_column_list(table_name, column_name, dependency_type, wheres)
+            }
+            Self::Dyn(database) => {
+                database.get_column_list(table_name, column_name, dependency_type, wheres)
+            }
+        }
+    }
+
+    fn get_column_sync(
+        &self,
+        column_token: ColumnToken,
+        id: &Id,
+        id_column_name: &str,
+        dependency_type: DependencyType,
+    ) -> DependencyValue {
+        match self {
+            Self::Postgres(database) => {
+                database.get_column_sync(column_token, id, id_column_name, dependency_type)
+            }
+            Self::Dyn(database) => {
+                database.get_column_sync(column_token, id, id_column_name, dependency_type)
+            }
+        }
+    }
+
+    fn get_column_list_sync(
+        &self,
+        column_token: ColumnToken,
+        dependency_type: DependencyType,
+        wheres: &[WhereResolved],
+    ) -> Vec<DependencyValue> {
+        match self {
+            Self::Postgres(database) => {
+                database.get_column_list_sync(column_token, dependency_type, wheres)
+            }
+            Self::Dyn(database) => {
+                database.get_column_list_sync(column_token, dependency_type, wheres)
+            }
+        }
+    }
+
+    fn is_sync(&self) -> bool {
+        match self {
+            Self::Postgres(database) => database.is_sync(),
+            Self::Dyn(database) => database.is_sync(),
+        }
+    }
+
+    fn column_tokens(&self) -> Option<&'static ColumnTokens> {
+        match self {
+            Self::Postgres(database) => database.column_tokens(),
+            Self::Dyn(database) => database.column_tokens(),
+        }
+    }
+}
+
 #[async_trait]
 pub trait DatabaseInterface: Send + Sync {
     async fn get_column(
@@ -169,7 +253,6 @@ impl PostgresDatabase {
         columns: &[ColumnSpec],
         id: &Id,
         id_column_name: &str,
-        dependency_type: DependencyType,
     ) -> HashMap<SmolStr, DependencyValue> {
         let mut query_builder = QueryBuilder::default();
         query_builder.push("SELECT ");
@@ -195,7 +278,7 @@ impl PostgresDatabase {
                     column.name.clone(),
                     self.to_dependency_value(
                         column_value,
-                        dependency_type,
+                        column.dependency_type,
                         self.massagers
                             .get(table_name)
                             .and_then(|table| table.get(&column.name)),

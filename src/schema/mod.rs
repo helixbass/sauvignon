@@ -7,9 +7,9 @@ use squalid::{OptionExt, _d};
 use tracing::{instrument, trace, trace_span};
 
 use crate::{
-    builtin_types, get_hash, parse, produce_response, Database, Document, DummyUnionTypenameField,
-    Error, Interface, OperationType, PositionsTracker, QueryPlan, Request, Response, ResponseValue,
-    Result as SauvignonResult, Type, TypeInterface, Union,
+    builtin_types, get_hash, parse, produce_response, Database, DatabaseInterface, Document,
+    DummyUnionTypenameField, Error, Interface, OperationType, PositionsTracker, QueryPlan, Request,
+    Response, ResponseValue, Result as SauvignonResult, Type, TypeInterface, Union,
 };
 
 mod sync;

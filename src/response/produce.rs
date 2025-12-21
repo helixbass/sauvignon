@@ -10,12 +10,12 @@ use tracing::{instrument, trace_span};
 
 use crate::{
     Argument, Carver, CarverList, CarverOrPopulator, ColumnGetter, ColumnGetterList, Database,
-    DependencyType, DependencyValue, ExternalDependencyValues, FieldPlan, Id, InternalDependency,
-    InternalDependencyResolver, InternalDependencyValues, OptionalPopulator,
+    DatabaseInterface, DependencyType, DependencyValue, ExternalDependencyValues, FieldPlan, Id,
+    InternalDependency, InternalDependencyResolver, InternalDependencyValues, OptionalPopulator,
     OptionalPopulatorInterface, OptionalUnionOrInterfaceTypePopulator, Populator,
-    PopulatorInterface, PopulatorList, PopulatorListInterface, QueryPlan, ResponseValue, Schema,
-    Type, UnionOrInterfaceTypePopulator, UnionOrInterfaceTypePopulatorList, Value, WhereResolved,
-    WheresResolved,
+    PopulatorInterface, PopulatorList, PopulatorListInterface, PostgresDatabase, QueryPlan,
+    ResponseValue, Schema, Type, UnionOrInterfaceTypePopulator, UnionOrInterfaceTypePopulatorList,
+    Value, WhereResolved, WheresResolved,
 };
 
 type IndexInProduced = usize;
@@ -60,7 +60,7 @@ impl From<DependencyValue> for AsyncStepResponse {
 
 impl AsyncStep {
     #[instrument(level = "trace", skip(self, database))]
-    pub async fn run(&self, database: &Database) -> DependencyValue {
+    pub async fn run(&self, database: &Database) -> AsyncStepResponse {
         match self {
             Self::ListOfColumn {
                 table_name,
@@ -92,7 +92,12 @@ impl AsyncStep {
                 columns,
                 id_column_name,
                 id,
-            } => database.as_postgres(),
+            } => AsyncStepResponse::DependencyValueMap(
+                database
+                    .as_postgres()
+                    .get_columns(table_name, columns, id, id_column_name)
+                    .await,
+            ),
         }
     }
 }
@@ -703,9 +708,11 @@ fn column_getter_step(
 ) -> AsyncStep {
     AsyncStep::Column {
         table_name: column_getter.table_name.clone(),
-        column_name: column_getter.column_name.clone(),
+        column: ColumnSpec {
+            name: column_getter.column_name.clone(),
+            dependency_type: internal_dependency.type_,
+        },
         id_column_name: column_getter.id_column_name.clone(),
-        dependency_type: internal_dependency.type_,
         id: external_dependency_values
             .get("id")
             .unwrap()
@@ -721,8 +728,10 @@ fn column_getter_list_step(
 ) -> AsyncStep {
     AsyncStep::ListOfColumn {
         table_name: column_getter_list.table_name.clone(),
-        column_name: column_getter_list.column_name.clone(),
-        dependency_type: internal_dependency.type_,
+        column: ColumnSpec {
+            name: column_getter_list.column_name.clone(),
+            dependency_type: internal_dependency.type_,
+        },
         wheres: column_getter_list
             .wheres
             .iter()
