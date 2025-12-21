@@ -1007,9 +1007,14 @@ impl FieldValue {
                 } else {
                     None
                 };
-                let through_other_column_name = through.is_some().then(|| match maybe_type_kind {
-                    Some(TypeKind::Enum) => type_str.to_snake_case(),
-                    _ => format!("{}_id", type_str.to_snake_case()),
+                let through_other_column_name = through.as_ref().map(|through| {
+                    through
+                        .other_foreign_key
+                        .clone()
+                        .unwrap_or_else(|| match maybe_type_kind {
+                            Some(TypeKind::Enum) => type_str.to_snake_case(),
+                            _ => format!("{}_id", type_str.to_snake_case()),
+                        })
                 });
                 FieldValueProcessed::HasMany {
                     type_,
@@ -2148,13 +2153,19 @@ impl Parse for ViaNested {
 struct Through {
     pub table_name: String,
     pub self_foreign_key: Option<String>,
+    pub other_foreign_key: Option<String>,
 }
 
 impl Through {
-    pub fn new(table_name: String, self_foreign_key: Option<String>) -> Self {
+    pub fn new(
+        table_name: String,
+        self_foreign_key: Option<String>,
+        other_foreign_key: Option<String>,
+    ) -> Self {
         Self {
             table_name,
             self_foreign_key,
+            other_foreign_key,
         }
     }
 }
@@ -2164,13 +2175,14 @@ impl Parse for Through {
         Ok(match input.peek(Ident) {
             true => {
                 let table_name = input.parse::<Ident>().unwrap().to_string();
-                Self::new(table_name, None)
+                Self::new(table_name, None, None)
             }
             false => {
                 let through_contents;
                 braced!(through_contents in input);
                 let mut table_name: Option<String> = _d();
                 let mut self_foreign_key: Option<String> = _d();
+                let mut other_foreign_key: Option<String> = _d();
                 while !through_contents.is_empty() {
                     let key = parse_ident_or_type(&through_contents)?;
                     through_contents.parse::<Token![=>]>()?;
@@ -2181,13 +2193,21 @@ impl Parse for Through {
                         "self_foreign_key" => {
                             self_foreign_key = Some(through_contents.parse::<Ident>()?.to_string());
                         }
+                        "other_foreign_key" => {
+                            other_foreign_key =
+                                Some(through_contents.parse::<Ident>()?.to_string());
+                        }
                         key => {
                             return Err(through_contents.error(format!("Unexpected key `{key}`")))
                         }
                     }
                     through_contents.parse::<Option<Token![,]>>()?;
                 }
-                Self::new(table_name.expect("Expected `table_name`"), self_foreign_key)
+                Self::new(
+                    table_name.expect("Expected `table_name`"),
+                    self_foreign_key,
+                    other_foreign_key,
+                )
             }
         })
     }
