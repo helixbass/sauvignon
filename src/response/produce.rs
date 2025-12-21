@@ -566,48 +566,47 @@ fn make_progress_selection_set<'a: 'b, 'b>(
                             }
                         }
                         CarverOrPopulator::UnionOrInterfaceTypePopulator(type_populator, populator) => {
-                            let internal_dependencies =
-                                &field_plan
-                                    .field_type
-                                    .resolver
-                                    .internal_dependencies;
-                            assert_eq!(
-                                internal_dependencies.len(),
-                                2
-                            );
-                            match (
-                                &internal_dependencies[0].resolver,
-                                &internal_dependencies[1].resolver
-                            ) {
-                                (InternalDependencyResolver::ColumnGetter(first_column_getter), InternalDependencyResolver::ColumnGetter(second_column_getter)) => {
-                                    current_async_instructions.push(AsyncInstruction {
-                                        steps: smallvec![
-                                            column_getter_step(
-                                                first_column_getter,
-                                                &internal_dependencies[0],
+                            let (
+                                steps,
+                                internal_dependency_names,
+                            ): (AsyncSteps, DependencyNames) = field_plan
+                                .field_type
+                                .resolver
+                                .internal_dependencies
+                                .iter()
+                                .map(|internal_dependency| {
+                                    (
+                                        match &internal_dependency.resolver {
+                                            InternalDependencyResolver::ColumnGetter(column_getter) => column_getter_step(
+                                                column_getter,
+                                                internal_dependency,
                                                 &external_dependency_values,
                                             ),
-                                            column_getter_step(
-                                                second_column_getter,
-                                                &internal_dependencies[1],
+                                            InternalDependencyResolver::ColumnGetterList(column_getter_list) => column_getter_list_step(
+                                                column_getter_list,
+                                                internal_dependency,
                                                 &external_dependency_values,
                                             ),
-                                        ],
-                                        internal_dependency_names: smallvec![internal_dependencies[0].name.clone(), internal_dependencies[1].name.clone()],
-                                        is_internal_dependencies_of: IsInternalDependenciesOf::ObjectFieldUnionOrInterfaceObject {
-                                            parent_object_index,
-                                            type_populator,
-                                            populator,
-                                            external_dependency_values: external_dependency_values
-                                                .clone(),
-                                            index_of_field_in_object,
-                                            field_name: field_name.clone(),
-                                            field_plan,
+                                            _ => unreachable!()
                                         },
-                                    });
-                                }
-                                _ => unreachable!("probably not?"),
-                            }
+                                        internal_dependency.name.clone(),
+                                    )
+                                })
+                                .unzip();
+                            current_async_instructions.push(AsyncInstruction {
+                                steps,
+                                internal_dependency_names,
+                                is_internal_dependencies_of: IsInternalDependenciesOf::ObjectFieldUnionOrInterfaceObject {
+                                    parent_object_index,
+                                    type_populator,
+                                    populator,
+                                    external_dependency_values: external_dependency_values
+                                        .clone(),
+                                    index_of_field_in_object,
+                                    field_name: field_name.clone(),
+                                    field_plan,
+                                },
+                            });
                         }
                         CarverOrPopulator::OptionalUnionOrInterfaceTypePopulator(type_populator, populator) => {
                             let internal_dependencies =
