@@ -22,6 +22,7 @@ async fn main() {
     let db_pool = get_db_pool().await.unwrap();
     let database = PostgresDatabase::new(db_pool, vec![]);
     let schema = get_schema(&database.pool).await.unwrap();
+    let database: Database = database.into();
 
     let belongs_to = run_request(
         r#"

@@ -26,6 +26,12 @@ impl Database {
     }
 }
 
+impl From<PostgresDatabase> for Database {
+    fn from(value: PostgresDatabase) -> Self {
+        Self::Postgres(value)
+    }
+}
+
 #[async_trait]
 impl DatabaseInterface for Database {
     async fn get_column(

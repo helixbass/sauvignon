@@ -14,7 +14,7 @@ async fn request_test(schema: &Schema, database: &Database, request: &str, expec
 async fn test_column_getter() {
     let db_pool = get_db_pool().await.unwrap();
     let schema = get_schema(&db_pool).await.unwrap();
-    let database = PostgresDatabase::new(db_pool, vec![]);
+    let database: Database = PostgresDatabase::new(db_pool, vec![]).into();
 
     request_test(
         &schema,
