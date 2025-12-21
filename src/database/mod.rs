@@ -284,7 +284,6 @@ impl PostgresDatabase {
         query_builder.push(" = ");
         query_builder.push_bind(id.as_int());
         let row = query_builder.build().fetch_one(&self.pool).await.unwrap();
-        // TODO: column massagers?
         columns
             .into_iter()
             .map(|column| {
