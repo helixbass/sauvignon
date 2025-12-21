@@ -26,6 +26,7 @@ impl Database {
     }
 }
 
+#[async_trait]
 impl DatabaseInterface for Database {
     async fn get_column(
         &self,
@@ -37,10 +38,14 @@ impl DatabaseInterface for Database {
     ) -> DependencyValue {
         match self {
             Self::Postgres(database) => {
-                database.get_column(table_name, column_name, id, id_column_name, dependency_type)
+                database
+                    .get_column(table_name, column_name, id, id_column_name, dependency_type)
+                    .await
             }
             Self::Dyn(database) => {
-                database.get_column(table_name, column_name, id, id_column_name, dependency_type)
+                database
+                    .get_column(table_name, column_name, id, id_column_name, dependency_type)
+                    .await
             }
         }
     }
@@ -54,10 +59,14 @@ impl DatabaseInterface for Database {
     ) -> Vec<DependencyValue> {
         match self {
             Self::Postgres(database) => {
-                database.get_column_list(table_name, column_name, dependency_type, wheres)
+                database
+                    .get_column_list(table_name, column_name, dependency_type, wheres)
+                    .await
             }
             Self::Dyn(database) => {
-                database.get_column_list(table_name, column_name, dependency_type, wheres)
+                database
+                    .get_column_list(table_name, column_name, dependency_type, wheres)
+                    .await
             }
         }
     }
