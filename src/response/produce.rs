@@ -468,102 +468,51 @@ fn make_progress_selection_set<'a: 'b, 'b>(
                             .resolver
                             .carver_or_populator {
                         CarverOrPopulator::Carver(carver) => {
-                            assert_eq!(
-                                field_plan
-                                    .field_type
-                                    .resolver
-                                    .internal_dependencies.len(),
-                                1
-                            );
-                            let internal_dependency =
-                                &field_plan.field_type.resolver.internal_dependencies[0];
-                            match &internal_dependency.resolver {
-                                InternalDependencyResolver::ColumnGetter(column_getter) => {
-                                    current_async_instructions.push(AsyncInstruction {
-                                        steps: smallvec![column_getter_step(
-                                            column_getter,
-                                            internal_dependency,
-                                            &external_dependency_values,
-                                        )],
-                                        internal_dependency_names: smallvec![internal_dependency.name.clone()],
-                                        is_internal_dependencies_of: IsInternalDependenciesOf::ObjectFieldScalar {
-                                            parent_object_index,
-                                            carver,
-                                            external_dependency_values: external_dependency_values
-                                                .clone(),
-                                            index_of_field_in_object,
-                                            field_name: field_name.clone(),
-                                        },
-                                    });
-                                }
-                                _ => unreachable!("probably not?"),
-                            }
+                            let (steps, internal_dependency_names) = extract_dependency_steps(field_plan, &external_dependency_values);
+                            current_async_instructions.push(AsyncInstruction {
+                                steps,
+                                internal_dependency_names,
+                                is_internal_dependencies_of: IsInternalDependenciesOf::ObjectFieldScalar {
+                                    parent_object_index,
+                                    carver,
+                                    external_dependency_values: external_dependency_values
+                                        .clone(),
+                                    index_of_field_in_object,
+                                    field_name: field_name.clone(),
+                                },
+                            });
                         }
                         CarverOrPopulator::Populator(populator) => {
-                            assert_eq!(
-                                field_plan
-                                    .field_type
-                                    .resolver
-                                    .internal_dependencies.len(),
-                                1
-                            );
-                            let internal_dependency =
-                                &field_plan.field_type.resolver.internal_dependencies[0];
-                            match &internal_dependency.resolver {
-                                InternalDependencyResolver::ColumnGetter(column_getter) => {
-                                    current_async_instructions.push(AsyncInstruction {
-                                        steps: smallvec![column_getter_step(
-                                            column_getter,
-                                            internal_dependency,
-                                            &external_dependency_values,
-                                        )],
-                                        internal_dependency_names: smallvec![internal_dependency.name.clone()],
-                                        is_internal_dependencies_of: IsInternalDependenciesOf::ObjectFieldObject {
-                                            parent_object_index,
-                                            populator,
-                                            external_dependency_values: external_dependency_values
-                                                .clone(),
-                                            index_of_field_in_object,
-                                            field_name: field_name.clone(),
-                                            field_plan,
-                                        },
-                                    });
-                                }
-                                _ => unreachable!("probably not?"),
-                            }
+                            let (steps, internal_dependency_names) = extract_dependency_steps(field_plan, &external_dependency_values);
+                            current_async_instructions.push(AsyncInstruction {
+                                steps,
+                                internal_dependency_names,
+                                is_internal_dependencies_of: IsInternalDependenciesOf::ObjectFieldObject {
+                                    parent_object_index,
+                                    populator,
+                                    external_dependency_values: external_dependency_values
+                                        .clone(),
+                                    index_of_field_in_object,
+                                    field_name: field_name.clone(),
+                                    field_plan,
+                                },
+                            });
                         }
                         CarverOrPopulator::OptionalPopulator(populator) => {
-                            assert_eq!(
-                                field_plan
-                                    .field_type
-                                    .resolver
-                                    .internal_dependencies.len(),
-                                1
-                            );
-                            let internal_dependency =
-                                &field_plan.field_type.resolver.internal_dependencies[0];
-                            match &internal_dependency.resolver {
-                                InternalDependencyResolver::ColumnGetter(column_getter) => {
-                                    current_async_instructions.push(AsyncInstruction {
-                                        steps: smallvec![column_getter_step(
-                                            column_getter,
-                                            internal_dependency,
-                                            &external_dependency_values,
-                                        )],
-                                        internal_dependency_names: smallvec![internal_dependency.name.clone()],
-                                        is_internal_dependencies_of: IsInternalDependenciesOf::ObjectFieldOptionalObject {
-                                            parent_object_index,
-                                            populator,
-                                            external_dependency_values: external_dependency_values
-                                                .clone(),
-                                            index_of_field_in_object,
-                                            field_name: field_name.clone(),
-                                            field_plan,
-                                        },
-                                    });
-                                }
-                                _ => unreachable!("probably not?"),
-                            }
+                            let (steps, internal_dependency_names) = extract_dependency_steps(field_plan, &external_dependency_values);
+                            current_async_instructions.push(AsyncInstruction {
+                                steps,
+                                internal_dependency_names,
+                                is_internal_dependencies_of: IsInternalDependenciesOf::ObjectFieldOptionalObject {
+                                    parent_object_index,
+                                    populator,
+                                    external_dependency_values: external_dependency_values
+                                        .clone(),
+                                    index_of_field_in_object,
+                                    field_name: field_name.clone(),
+                                    field_plan,
+                                },
+                            });
                         }
                         CarverOrPopulator::UnionOrInterfaceTypePopulator(type_populator, populator) => {
                             let (steps, internal_dependency_names) = extract_dependency_steps(field_plan, &external_dependency_values);
@@ -583,115 +532,54 @@ fn make_progress_selection_set<'a: 'b, 'b>(
                             });
                         }
                         CarverOrPopulator::OptionalUnionOrInterfaceTypePopulator(type_populator, populator) => {
-                            let internal_dependencies =
-                                &field_plan
-                                    .field_type
-                                    .resolver
-                                    .internal_dependencies;
-                            assert_eq!(
-                                internal_dependencies.len(),
-                                2
-                            );
-                            match (
-                                &internal_dependencies[0].resolver,
-                                &internal_dependencies[1].resolver
-                            ) {
-                                (InternalDependencyResolver::ColumnGetter(first_column_getter), InternalDependencyResolver::ColumnGetter(second_column_getter)) => {
-                                    current_async_instructions.push(AsyncInstruction {
-                                        steps: smallvec![
-                                            column_getter_step(
-                                                first_column_getter,
-                                                &internal_dependencies[0],
-                                                &external_dependency_values,
-                                            ),
-                                            column_getter_step(
-                                                second_column_getter,
-                                                &internal_dependencies[1],
-                                                &external_dependency_values,
-                                            ),
-                                        ],
-                                        internal_dependency_names: smallvec![internal_dependencies[0].name.clone(), internal_dependencies[1].name.clone()],
-                                        is_internal_dependencies_of: IsInternalDependenciesOf::ObjectFieldOptionalUnionOrInterfaceObject {
-                                            parent_object_index,
-                                            type_populator,
-                                            populator,
-                                            external_dependency_values: external_dependency_values
-                                                .clone(),
-                                            index_of_field_in_object,
-                                            field_name: field_name.clone(),
-                                            field_plan,
-                                        },
-                                    });
-                                }
-                                _ => unreachable!("probably not?"),
-                            }
+                            let (steps, internal_dependency_names) = extract_dependency_steps(field_plan, &external_dependency_values);
+                            current_async_instructions.push(AsyncInstruction {
+                                steps,
+                                internal_dependency_names,
+                                is_internal_dependencies_of: IsInternalDependenciesOf::ObjectFieldOptionalUnionOrInterfaceObject {
+                                    parent_object_index,
+                                    type_populator,
+                                    populator,
+                                    external_dependency_values: external_dependency_values
+                                        .clone(),
+                                    index_of_field_in_object,
+                                    field_name: field_name.clone(),
+                                    field_plan,
+                                },
+                            });
                         }
                         CarverOrPopulator::PopulatorList(populator) => {
-                            assert_eq!(
-                                field_plan
-                                    .field_type
-                                    .resolver
-                                    .internal_dependencies.len(),
-                                1
-                            );
-                            let internal_dependency =
-                                &field_plan.field_type.resolver.internal_dependencies[0];
-                            match &internal_dependency.resolver {
-                                InternalDependencyResolver::ColumnGetterList(column_getter_list) => {
-                                    current_async_instructions.push(AsyncInstruction {
-                                        steps: smallvec![column_getter_list_step(
-                                            column_getter_list,
-                                            internal_dependency,
-                                            &external_dependency_values,
-                                        )],
-                                        internal_dependency_names: smallvec![internal_dependency.name.clone()],
-                                        is_internal_dependencies_of:
-                                            IsInternalDependenciesOf::ObjectFieldListOfObjects {
-                                                parent_object_index,
-                                                populator,
-                                                external_dependency_values: external_dependency_values
-                                                    .clone(),
-                                                index_of_field_in_object,
-                                                field_name: field_name.clone(),
-                                                field_plan,
-                                            },
-                                    });
-                                }
-                                _ => unreachable!("probably not?"),
-                            }
+                            let (steps, internal_dependency_names) = extract_dependency_steps(field_plan, &external_dependency_values);
+                            current_async_instructions.push(AsyncInstruction {
+                                steps,
+                                internal_dependency_names,
+                                is_internal_dependencies_of:
+                                    IsInternalDependenciesOf::ObjectFieldListOfObjects {
+                                        parent_object_index,
+                                        populator,
+                                        external_dependency_values: external_dependency_values
+                                            .clone(),
+                                        index_of_field_in_object,
+                                        field_name: field_name.clone(),
+                                        field_plan,
+                                    },
+                            });
                         }
                         CarverOrPopulator::CarverList(carver) => {
-                            assert_eq!(
-                                field_plan
-                                    .field_type
-                                    .resolver
-                                    .internal_dependencies.len(),
-                                1
-                            );
-                            let internal_dependency =
-                                &field_plan.field_type.resolver.internal_dependencies[0];
-                            match &internal_dependency.resolver {
-                                InternalDependencyResolver::ColumnGetterList(column_getter_list) => {
-                                    current_async_instructions.push(AsyncInstruction {
-                                        steps: smallvec![column_getter_list_step(
-                                            column_getter_list,
-                                            internal_dependency,
-                                            &external_dependency_values,
-                                        )],
-                                        internal_dependency_names: smallvec![internal_dependency.name.clone()],
-                                        is_internal_dependencies_of:
-                                            IsInternalDependenciesOf::ObjectFieldListOfScalars {
-                                                parent_object_index,
-                                                carver,
-                                                external_dependency_values: external_dependency_values
-                                                    .clone(),
-                                                index_of_field_in_object,
-                                                field_name: field_name.clone(),
-                                            },
-                                    });
-                                }
-                                _ => unreachable!("probably not?"),
-                            }
+                            let (steps, internal_dependency_names) = extract_dependency_steps(field_plan, &external_dependency_values);
+                            current_async_instructions.push(AsyncInstruction {
+                                steps,
+                                internal_dependency_names,
+                                is_internal_dependencies_of:
+                                    IsInternalDependenciesOf::ObjectFieldListOfScalars {
+                                        parent_object_index,
+                                        carver,
+                                        external_dependency_values: external_dependency_values
+                                            .clone(),
+                                        index_of_field_in_object,
+                                        field_name: field_name.clone(),
+                                    },
+                            });
                         }
                         CarverOrPopulator::UnionOrInterfaceTypePopulatorList(
                             type_populator,
