@@ -6,7 +6,7 @@ use indexmap::IndexMap;
 use itertools::{Either, Itertools};
 use smallvec::{smallvec, SmallVec};
 use smol_str::{SmolStr, ToSmolStr};
-use squalid::{OptionExt, _d};
+use squalid::_d;
 use tracing::{instrument, trace_span};
 
 use crate::{
@@ -149,12 +149,15 @@ impl From<DependencyValue> for AsyncStepResponse {
 }
 
 type AsyncSteps = SmallVec<[AsyncStep; 4]>;
+type RowMultipleColumnsEachOfWhichAreOnlyInternalDependencyMulti<'a> =
+    SmallVec<[IsInternalDependenciesOf<'a>; 4]>;
 
 enum AsyncInstruction<'a> {
     Simple(AsyncInstructionSimple<'a>),
     RowMultipleColumnsEachOfWhichAreOnlyInternalDependency {
         step: AsyncStep,
-        is_internal_dependencies_of: HashMap<SmolStr, IsInternalDependenciesOf<'a>>,
+        is_internal_dependencies_of:
+            HashMap<SmolStr, RowMultipleColumnsEachOfWhichAreOnlyInternalDependencyMulti<'a>>,
     },
 }
 
@@ -217,18 +220,21 @@ impl<'a> AsyncInstructions<'a> {
                             id_column_name: step.id_column_name,
                             id: step.id,
                         }),
-                        is_internal_dependencies_of: [
-                            (
-                                internal_dependency_names.remove(0),
-                                is_internal_dependencies_of,
-                            ),
-                            (
-                                instruction_internal_dependency_names.remove(0),
-                                instruction_is_internal_dependencies_of,
-                            ),
-                        ]
-                        .into_iter()
-                        .collect(),
+                        is_internal_dependencies_of: {
+                            let mut multi_map: HashMap<
+                                SmolStr,
+                                RowMultipleColumnsEachOfWhichAreOnlyInternalDependencyMulti,
+                            > = _d();
+                            multi_map
+                                .entry(internal_dependency_names.remove(0))
+                                .or_default()
+                                .push(is_internal_dependencies_of);
+                            multi_map
+                                .entry(instruction_internal_dependency_names.remove(0))
+                                .or_default()
+                                .push(instruction_is_internal_dependencies_of);
+                            multi_map
+                        },
                     }
                 }
                 AsyncInstruction::RowMultipleColumnsEachOfWhichAreOnlyInternalDependency {
@@ -243,11 +249,9 @@ impl<'a> AsyncInstructions<'a> {
                     } = step.into_multiple_columns();
                     columns.push(instruction_step.column);
                     is_internal_dependencies_of
-                        .insert(
-                            instruction_internal_dependency_names.remove(0),
-                            instruction_is_internal_dependencies_of,
-                        )
-                        .assert_none();
+                        .entry(instruction_internal_dependency_names.remove(0))
+                        .or_default()
+                        .push(instruction_is_internal_dependencies_of);
                     AsyncInstruction::RowMultipleColumnsEachOfWhichAreOnlyInternalDependency {
                         step: AsyncStep::MultipleColumns(AsyncStepMultipleColumns {
                             table_name,
@@ -465,12 +469,16 @@ pub async fn produce_response(
                             let column_value = column_values.remove(&column_name).unwrap();
                             let internal_dependency_values: InternalDependencyValues =
                                 [(column_name, column_value)].into_iter().collect();
-                            do_simple_async_instruction_follow(
-                                is_internal_dependencies_of,
-                                internal_dependency_values,
-                                &mut produced,
-                                &mut next_async_instructions,
-                                schema,
+                            is_internal_dependencies_of.into_iter().for_each(
+                                |is_internal_dependencies_of| {
+                                    do_simple_async_instruction_follow(
+                                        is_internal_dependencies_of,
+                                        internal_dependency_values.clone(),
+                                        &mut produced,
+                                        &mut next_async_instructions,
+                                        schema,
+                                    );
+                                },
                             );
                         },
                     );
