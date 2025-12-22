@@ -148,7 +148,18 @@ pub async fn produce_response(
                             &list_of_ids_is_internal_dependencies_of.field_name,
                             &mut produced,
                         );
-                    list_of_ids_is_internal_dependencies_of.field_plan;
+                    // TODO: maybe make sure that I've made sure this list type
+                    // is of a concrete object type?
+                    let type_name = list_of_ids_is_internal_dependencies_of
+                        .field_plan
+                        .field_type
+                        .type_
+                        .name();
+                    let selection_set = &list_of_ids_is_internal_dependencies_of
+                        .field_plan
+                        .selection_set_by_type
+                        .as_ref()
+                        .unwrap()[type_name];
                     unimplemented!()
                 }
             },
