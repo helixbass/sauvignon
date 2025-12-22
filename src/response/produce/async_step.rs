@@ -24,11 +24,7 @@ type ColumnSpecs = SmallVec<[ColumnSpec; 12]>;
 
 #[derive(Debug)]
 pub enum AsyncStep {
-    ListOfColumn {
-        table_name: SmolStr,
-        column: ColumnSpec,
-        wheres: WheresResolved,
-    },
+    ListOfColumn(AsyncStepListOfColumn),
     Column(AsyncStepColumn),
     MultipleColumns(AsyncStepMultipleColumns),
     ListOfIdAndFollowOnColumns {
@@ -43,11 +39,11 @@ impl AsyncStep {
     #[instrument(level = "trace", skip(self, database))]
     pub async fn run(&self, database: &Database) -> AsyncStepResponse {
         match self {
-            Self::ListOfColumn {
+            Self::ListOfColumn(AsyncStepListOfColumn {
                 table_name,
                 column,
                 wheres,
-            } => DependencyValue::List(
+            }) => DependencyValue::List(
                 database
                     .get_column_list(table_name, &column.name, column.dependency_type, wheres)
                     .await,
@@ -136,6 +132,13 @@ pub struct AsyncStepMultipleColumns {
     pub columns: ColumnSpecs,
     pub id_column_name: SmolStr,
     pub id: Id,
+}
+
+#[derive(Debug)]
+pub struct AsyncStepListOfColumn {
+    pub table_name: SmolStr,
+    pub column: ColumnSpec,
+    pub wheres: WheresResolved,
 }
 
 pub enum AsyncStepResponse {
@@ -293,6 +296,15 @@ impl<'a> AsyncInstructions<'a> {
             self.instructions.push(updated_instruction);
             return;
         }
+        if let Some(combineable_with_index) =
+            is_list_of_ids_and_follow_on_column_getters_combineable(
+                &instruction,
+                &self.instructions,
+            )
+        {
+            unimplemented!();
+            return;
+        }
         self.instructions.push(instruction);
     }
 }
@@ -333,6 +345,44 @@ fn is_row_multiple_columns_each_of_which_are_only_internal_dependency_combineabl
                     return false;
                 }
                 let AsyncStep::Column(existing_column_step) = &simple.steps[0] else {
+                    return false;
+                };
+                existing_column_step.table_name == column_step.table_name
+                    && existing_column_step.id_column_name == column_step.id_column_name
+                    && existing_column_step.id == column_step.id
+            }
+            AsyncInstruction::RowMultipleColumnsEachOfWhichAreOnlyInternalDependency {
+                step,
+                ..
+            } => {
+                let step = step.as_multiple_columns();
+                step.table_name == column_step.table_name
+                    && step.id_column_name == column_step.id_column_name
+                    && step.id == column_step.id
+            }
+            _ => false,
+        })
+}
+
+fn is_list_of_ids_and_follow_on_column_getters_combineable(
+    instruction: &AsyncInstruction,
+    existing: &AsyncInstructionsStore,
+) -> Option<usize> {
+    let instruction = instruction.as_simple();
+    if instruction.steps.len() != 1 {
+        return None;
+    }
+    let AsyncStep::ListOfColumn(list_of_column_step) = &instruction.steps[0] else {
+        return None;
+    };
+    existing
+        .into_iter()
+        .position(|existing_instruction| match existing_instruction {
+            AsyncInstruction::Simple(simple) => {
+                if simple.steps.len() != 1 {
+                    return false;
+                }
+                let AsyncStep::ListOfColumn(existing_column_step) = &simple.steps[0] else {
                     return false;
                 };
                 existing_column_step.table_name == column_step.table_name

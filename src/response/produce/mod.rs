@@ -24,7 +24,7 @@ mod chunk;
 pub use async_step::ColumnSpec;
 use async_step::{
     AsyncInstruction, AsyncInstructionSimple, AsyncInstructions, AsyncStep, AsyncStepColumn,
-    AsyncSteps, DependencyNames, IsInternalDependenciesOf,
+    AsyncStepListOfColumn, AsyncSteps, DependencyNames, IsInternalDependenciesOf,
     IsInternalDependenciesOfObjectFieldListOfObjects,
 };
 use chunk::Produced;
@@ -723,7 +723,7 @@ fn column_getter_list_step(
     internal_dependency: &InternalDependency,
     external_dependency_values: &ExternalDependencyValues,
 ) -> AsyncStep {
-    AsyncStep::ListOfColumn {
+    AsyncStep::ListOfColumn(AsyncStepListOfColumn {
         table_name: column_getter_list.table_name.clone(),
         column: ColumnSpec {
             name: column_getter_list.column_name.clone(),
@@ -741,7 +741,7 @@ fn column_getter_list_step(
                 )
             })
             .collect::<WheresResolved>(),
-    }
+    })
 }
 
 #[instrument(
