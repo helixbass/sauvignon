@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::ops::Deref;
 
+use indexmap::IndexMap;
 use smallvec::{smallvec, SmallVec};
 use smol_str::SmolStr;
 use squalid::_d;
@@ -31,6 +32,12 @@ pub enum AsyncStep {
     },
     Column(AsyncStepColumn),
     MultipleColumns(AsyncStepMultipleColumns),
+    ListOfIdAndFollowOnColumns {
+        table_name: SmolStr,
+        id_column: ColumnSpec,
+        wheres: WheresResolved,
+        other_columns: ColumnSpecs,
+    },
 }
 
 impl AsyncStep {
@@ -73,6 +80,19 @@ impl AsyncStep {
                     .get_columns(table_name, columns, id, id_column_name)
                     .await,
             ),
+            Self::ListOfIdAndFollowOnColumns {
+                table_name,
+                id_column,
+                wheres,
+                other_columns,
+            } => {
+                unimplemented!()
+                // AsyncStepResponse::IndexMapOfDependencyValueMap(
+                // database
+                //     .get_column_list(table_name, &column.name, column.dependency_type, wheres)
+                //     .await,
+                // )
+            }
         }
     }
 
@@ -117,6 +137,7 @@ pub struct AsyncStepMultipleColumns {
 pub enum AsyncStepResponse {
     DependencyValue(DependencyValue),
     DependencyValueMap(HashMap<SmolStr, DependencyValue>),
+    IndexMapOfDependencyValueMap(IndexMap<i32, HashMap<SmolStr, DependencyValue>>),
 }
 
 impl AsyncStepResponse {
