@@ -1,7 +1,6 @@
 use std::collections::{HashMap, HashSet};
 use std::ops::Deref;
 
-use indexmap::IndexMap;
 use smallvec::{smallvec, SmallVec};
 use smol_str::SmolStr;
 use squalid::_d;
@@ -91,14 +90,11 @@ impl AsyncStep {
                     .cloned()
                     .chain(other_columns.into_iter().cloned())
                     .collect();
-                AsyncStepResponse::IndexMapOfDependencyValueMap(
+                AsyncStepResponse::ListOfDependencyValueMap(
                     database
                         .as_postgres()
                         .get_columns_list(table_name, &columns, wheres)
-                        .await
-                        .into_iter()
-                        .map(|row| (row[&id_column.name].as_id().as_int(), row))
-                        .collect(),
+                        .await,
                 )
             }
         }

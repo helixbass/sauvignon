@@ -2,7 +2,8 @@ use std::collections::HashMap;
 
 use futures::future;
 use indexmap::IndexMap;
-use itertools::{Either, Itertools};
+use itertools::Itertools;
+use smallvec::{smallvec, SmallVec};
 use smol_str::{SmolStr, ToSmolStr};
 use squalid::_d;
 use tracing::{instrument, trace_span};
@@ -57,16 +58,18 @@ pub async fn produce_response(
         let responses = future::join_all(current_async_instructions.iter().flat_map(
             |async_instruction| {
                 match async_instruction {
-                    AsyncInstruction::Simple(async_instruction) => Either::Left(
-                        async_instruction
-                            .steps
-                            .iter()
-                            .map(|step| step.run(database)),
-                    ),
+                    AsyncInstruction::Simple(async_instruction) => async_instruction
+                        .steps
+                        .iter()
+                        .map(|step| step.run(database))
+                        .collect::<SmallVec<[_; 4]>>(),
                     AsyncInstruction::RowMultipleColumnsEachOfWhichAreOnlyInternalDependency {
                         step,
                         ..
-                    } => Either::Right([step.run(database)].into_iter()),
+                    } => smallvec![step.run(database)],
+                    AsyncInstruction::ListOfIdsAndFollowOnColumnGetters { step, .. } => {
+                        smallvec![step.run(database)]
+                    }
                 }
             },
         ))
