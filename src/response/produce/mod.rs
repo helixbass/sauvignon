@@ -160,6 +160,34 @@ pub async fn produce_response(
                         .selection_set_by_type
                         .as_ref()
                         .unwrap()[type_name];
+                    let mut still_unhandled_selection_set: IndexMap<SmolStr, FieldPlan> = _d();
+                    items_external_dependency_values
+                        .into_iter()
+                        .enumerate()
+                        .for_each(|(index_in_list, external_dependency_values)| {
+                            produced.push(Produced::ListItemNewObject {
+                                parent_list_index,
+                                index_in_list,
+                            });
+                            let parent_object_index = produced.len() - 1;
+
+                            unimplemented!();
+
+                            make_progress_selection_set(
+                                match &mut selection_sets {
+                                    SingleOrIterator::Single(type_name) => type_name,
+                                    SingleOrIterator::Iterator(type_names) => {
+                                        type_names.next().unwrap()
+                                    }
+                                },
+                                parent_object_index,
+                                external_dependency_values,
+                                produced,
+                                current_async_instructions,
+                                schema,
+                                None,
+                            );
+                        });
                     unimplemented!()
                 }
             },
