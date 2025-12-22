@@ -20,7 +20,7 @@ pub struct ColumnSpec {
     pub dependency_type: DependencyType,
 }
 
-type ColumnSpecs = SmallVec<[ColumnSpec; 12]>;
+pub type ColumnSpecs = SmallVec<[ColumnSpec; 12]>;
 
 #[derive(Debug)]
 pub enum AsyncStep {
@@ -116,6 +116,20 @@ impl AsyncStep {
             _ => panic!("expected column"),
         }
     }
+
+    pub fn as_list_of_column(&self) -> &AsyncStepListOfColumn {
+        match self {
+            Self::ListOfColumn(list_of_column) => list_of_column,
+            _ => panic!("expected list of column"),
+        }
+    }
+
+    pub fn into_list_of_column(self) -> AsyncStepListOfColumn {
+        match self {
+            Self::ListOfColumn(list_of_column) => list_of_column,
+            _ => panic!("expected list of column"),
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -195,9 +209,13 @@ pub enum AsyncInstruction<'a> {
 
 impl<'a> AsyncInstruction<'a> {
     pub fn as_simple(&self) -> &AsyncInstructionSimple<'a> {
+        self.maybe_as_simple().expect("expected simple")
+    }
+
+    pub fn maybe_as_simple(&self) -> Option<&AsyncInstructionSimple<'a>> {
         match self {
-            Self::Simple(simple) => simple,
-            _ => panic!("expected simple"),
+            Self::Simple(simple) => Some(simple),
+            _ => None,
         }
     }
 
@@ -330,7 +348,7 @@ fn is_row_multiple_columns_each_of_which_are_only_internal_dependency_combineabl
     instruction: &AsyncInstruction,
     existing: &AsyncInstructionsStore,
 ) -> Option<usize> {
-    let instruction = instruction.as_simple();
+    let instruction = instruction.maybe_as_simple()?;
     if instruction.steps.len() != 1 {
         return None;
     }
@@ -372,7 +390,7 @@ fn is_list_of_ids_and_follow_on_column_getters_combineable(
     if instruction.steps.len() != 1 {
         return None;
     }
-    let AsyncStep::ListOfColumn(list_of_column_step) = &instruction.steps[0] else {
+    let AsyncStep::Column(column_step) = &instruction.steps[0] else {
         return None;
     };
     existing
@@ -382,7 +400,7 @@ fn is_list_of_ids_and_follow_on_column_getters_combineable(
                 if simple.steps.len() != 1 {
                     return false;
                 }
-                let AsyncStep::ListOfColumn(existing_column_step) = &simple.steps[0] else {
+                let AsyncStep::ListOfColumn(existing_list_of_column_step) = &simple.steps[0] else {
                     return false;
                 };
                 existing_column_step.table_name == column_step.table_name
