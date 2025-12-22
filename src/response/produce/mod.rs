@@ -124,13 +124,14 @@ pub async fn produce_response(
                     step: _,
                     list_of_ids_is_internal_dependencies_of,
                     id_column_name,
+                    follow_on_columns,
                 } => {
                     let rows = responses
                         .next()
                         .unwrap()
-                        .into_index_map_of_dependency_value_map();
+                        .into_list_of_dependency_value_map();
                     let list_of_ids_internal_dependency_value = DependencyValue::List(
-                        rows.values()
+                        rows.iter()
                             .map(|row| row[&id_column_name].clone())
                             .collect(),
                     );
@@ -148,8 +149,6 @@ pub async fn produce_response(
                             &list_of_ids_is_internal_dependencies_of.field_name,
                             &mut produced,
                         );
-                    // TODO: maybe make sure that I've made sure this list type
-                    // is of a concrete object type?
                     let type_name = list_of_ids_is_internal_dependencies_of
                         .field_plan
                         .field_type
@@ -160,35 +159,39 @@ pub async fn produce_response(
                         .selection_set_by_type
                         .as_ref()
                         .unwrap()[type_name];
-                    let mut still_unhandled_selection_set: IndexMap<SmolStr, FieldPlan> = _d();
                     items_external_dependency_values
                         .into_iter()
+                        .zip(rows)
                         .enumerate()
-                        .for_each(|(index_in_list, external_dependency_values)| {
+                        .for_each(|(index_in_list, (external_dependency_values, mut row))| {
                             produced.push(Produced::ListItemNewObject {
                                 parent_list_index,
                                 index_in_list,
                             });
                             let parent_object_index = produced.len() - 1;
 
-                            unimplemented!();
+                            let already_resolved_internal_dependency_values = follow_on_columns
+                                .iter()
+                                .map(|column_name| {
+                                    (
+                                        column_name.clone(),
+                                        [(column_name.clone(), row.remove(column_name).unwrap())]
+                                            .into_iter()
+                                            .collect(),
+                                    )
+                                })
+                                .collect();
 
                             make_progress_selection_set(
-                                match &mut selection_sets {
-                                    SingleOrIterator::Single(type_name) => type_name,
-                                    SingleOrIterator::Iterator(type_names) => {
-                                        type_names.next().unwrap()
-                                    }
-                                },
+                                selection_set,
                                 parent_object_index,
                                 external_dependency_values,
-                                produced,
-                                current_async_instructions,
+                                &mut produced,
+                                &mut next_async_instructions,
                                 schema,
-                                None,
+                                Some(already_resolved_internal_dependency_values),
                             );
                         });
-                    unimplemented!()
                 }
             },
         );

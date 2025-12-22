@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::ops::Deref;
 
 use indexmap::IndexMap;
@@ -145,7 +145,7 @@ pub struct AsyncStepMultipleColumns {
 pub enum AsyncStepResponse {
     DependencyValue(DependencyValue),
     DependencyValueMap(HashMap<SmolStr, DependencyValue>),
-    IndexMapOfDependencyValueMap(IndexMap<i32, HashMap<SmolStr, DependencyValue>>),
+    ListOfDependencyValueMap(Vec<HashMap<SmolStr, DependencyValue>>),
 }
 
 impl AsyncStepResponse {
@@ -163,12 +163,10 @@ impl AsyncStepResponse {
         }
     }
 
-    pub fn into_index_map_of_dependency_value_map(
-        self,
-    ) -> IndexMap<i32, HashMap<SmolStr, DependencyValue>> {
+    pub fn into_list_of_dependency_value_map(self) -> Vec<HashMap<SmolStr, DependencyValue>> {
         match self {
-            Self::IndexMapOfDependencyValueMap(map) => map,
-            _ => panic!("expected index map of dependency value map"),
+            Self::VecOfDependencyValueMap(map) => map,
+            _ => panic!("expected vec of dependency value map"),
         }
     }
 }
@@ -192,6 +190,7 @@ pub enum AsyncInstruction<'a> {
         step: AsyncStep,
         list_of_ids_is_internal_dependencies_of: IsInternalDependenciesOf<'a>,
         id_column_name: SmolStr,
+        follow_on_columns: HashSet<SmolStr>,
     },
 }
 
