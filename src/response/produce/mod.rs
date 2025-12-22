@@ -116,6 +116,22 @@ pub async fn produce_response(
                         },
                     );
                 }
+                AsyncInstruction::ListOfIdsAndFollowOnColumnGetters {
+                    step: _,
+                    list_of_ids_is_internal_dependencies_of,
+                    id_column_name,
+                } => {
+                    let rows = responses
+                        .next()
+                        .unwrap()
+                        .into_index_map_of_dependency_value_map();
+                    let list_of_ids_internal_dependency_value = DependencyValue::List(
+                        rows.values()
+                            .map(|row| row[&id_column_name].clone())
+                            .collect(),
+                    );
+                    unimplemented!()
+                }
             },
         );
 
@@ -762,13 +778,15 @@ fn populate_concrete_or_union_or_interface_list<'a: 'b, 'b>(
     current_async_instructions: &'b mut AsyncInstructions<'a>,
     schema: &Schema,
 ) {
-    let populated = populator.populate(external_dependency_values, &internal_dependency_values);
-    produced.push(Produced::FieldNewListOfObjects {
+    let (populated, parent_list_index) = populate_and_push_list(
+        populator,
+        external_dependency_values,
+        internal_dependency_values,
         parent_object_index,
         index_of_field_in_object,
-        field_name: field_name.clone(),
-    });
-    let parent_list_index = produced.len() - 1;
+        field_name,
+        produced,
+    );
 
     let selection_set_by_type = field_plan.selection_set_by_type.as_ref().unwrap();
     enum SingleOrIterator<'a, TIterator: Iterator<Item = &'a IndexMap<SmolStr, FieldPlan<'a>>>> {
@@ -807,6 +825,24 @@ fn populate_concrete_or_union_or_interface_list<'a: 'b, 'b>(
                 schema,
             );
         });
+}
+
+fn populate_and_push_list(
+    populator: &PopulatorList,
+    external_dependency_values: &ExternalDependencyValues,
+    internal_dependency_values: &InternalDependencyValues,
+    parent_object_index: IndexInProduced,
+    index_of_field_in_object: usize,
+    field_name: &SmolStr,
+    produced: &mut Vec<Produced>,
+) -> (Vec<ExternalDependencyValues>, IndexInProduced) {
+    let populated = populator.populate(external_dependency_values, &internal_dependency_values);
+    produced.push(Produced::FieldNewListOfObjects {
+        parent_object_index,
+        index_of_field_in_object,
+        field_name: field_name.clone(),
+    });
+    (populated, produced.len() - 1)
 }
 
 #[instrument(

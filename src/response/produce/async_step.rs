@@ -162,6 +162,15 @@ impl AsyncStepResponse {
             _ => panic!("expected dependency value map"),
         }
     }
+
+    pub fn into_index_map_of_dependency_value_map(
+        self,
+    ) -> IndexMap<i32, HashMap<SmolStr, DependencyValue>> {
+        match self {
+            Self::IndexMapOfDependencyValueMap(map) => map,
+            _ => panic!("expected index map of dependency value map"),
+        }
+    }
 }
 
 impl From<DependencyValue> for AsyncStepResponse {
@@ -171,15 +180,18 @@ impl From<DependencyValue> for AsyncStepResponse {
 }
 
 pub type AsyncSteps = SmallVec<[AsyncStep; 4]>;
-type RowMultipleColumnsEachOfWhichAreOnlyInternalDependencyMulti<'a> =
-    SmallVec<[IsInternalDependenciesOf<'a>; 4]>;
+type IsInternalDependenciesOfs<'a> = SmallVec<[IsInternalDependenciesOf<'a>; 4]>;
 
 pub enum AsyncInstruction<'a> {
     Simple(AsyncInstructionSimple<'a>),
     RowMultipleColumnsEachOfWhichAreOnlyInternalDependency {
         step: AsyncStep,
-        is_internal_dependencies_of:
-            HashMap<SmolStr, RowMultipleColumnsEachOfWhichAreOnlyInternalDependencyMulti<'a>>,
+        is_internal_dependencies_of: HashMap<SmolStr, IsInternalDependenciesOfs<'a>>,
+    },
+    ListOfIdsAndFollowOnColumnGetters {
+        step: AsyncStep,
+        list_of_ids_is_internal_dependencies_of: IsInternalDependenciesOf<'a>,
+        id_column_name: SmolStr,
     },
 }
 
@@ -243,10 +255,7 @@ impl<'a> AsyncInstructions<'a> {
                             id: step.id,
                         }),
                         is_internal_dependencies_of: {
-                            let mut multi_map: HashMap<
-                                SmolStr,
-                                RowMultipleColumnsEachOfWhichAreOnlyInternalDependencyMulti,
-                            > = _d();
+                            let mut multi_map: HashMap<SmolStr, IsInternalDependenciesOfs> = _d();
                             multi_map
                                 .entry(internal_dependency_names.remove(0))
                                 .or_default()
