@@ -268,7 +268,7 @@ impl PostgresDatabase {
     pub async fn get_columns(
         &self,
         table_name: &str,
-        columns: &[ColumnSpec],
+        columns: &[ColumnSpec<'_>],
         id: &Id,
         id_column_name: &str,
     ) -> HashMap<SmolStr, DependencyValue> {
@@ -298,7 +298,7 @@ impl PostgresDatabase {
     pub async fn get_columns_list(
         &self,
         table_name: &str,
-        columns: &[ColumnSpec],
+        columns: &[ColumnSpec<'_>],
         wheres: &[WhereResolved],
     ) -> Vec<HashMap<SmolStr, DependencyValue>> {
         let mut query_builder = QueryBuilder::default();

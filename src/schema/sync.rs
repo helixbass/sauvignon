@@ -45,7 +45,7 @@ fn compute_sync_response_fields(
                             field_plan.column_token.unwrap(),
                             external_dependency_values.get("id").unwrap().as_id(),
                             &column_getter.id_column_name,
-                            internal_dependency.type_,
+                            &internal_dependency.type_,
                         );
                         match &resolver.carver_or_populator {
                             CarverOrPopulator::Carver(carver) => carver.carve(
@@ -79,7 +79,7 @@ fn compute_sync_response_fields(
                         // allocating giant Vec?
                         let list = database.get_column_list_sync(
                             field_plan.column_token.unwrap(),
-                            internal_dependency.type_,
+                            &internal_dependency.type_,
                             // TODO: optimize this to not allocate Vec
                             // for single-where case
                             &column_getter_list

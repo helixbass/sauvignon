@@ -23,19 +23,19 @@ pub struct ColumnSpec<'a> {
 pub type ColumnSpecs<'a> = SmallVec<[ColumnSpec<'a>; 12]>;
 
 #[derive(Debug)]
-pub enum AsyncStep {
-    ListOfColumn(AsyncStepListOfColumn),
-    Column(AsyncStepColumn),
-    MultipleColumns(AsyncStepMultipleColumns),
+pub enum AsyncStep<'a> {
+    ListOfColumn(AsyncStepListOfColumn<'a>),
+    Column(AsyncStepColumn<'a>),
+    MultipleColumns(AsyncStepMultipleColumns<'a>),
     ListOfIdAndFollowOnColumns {
         table_name: SmolStr,
-        id_column: ColumnSpec,
+        id_column: ColumnSpec<'a>,
         wheres: WheresResolved,
-        other_columns: ColumnSpecs,
+        other_columns: ColumnSpecs<'a>,
     },
 }
 
-impl AsyncStep {
+impl<'a> AsyncStep<'a> {
     #[instrument(level = "trace", skip(self, database))]
     pub async fn run(&self, database: &Database) -> AsyncStepResponse {
         match self {
@@ -96,21 +96,21 @@ impl AsyncStep {
         }
     }
 
-    pub fn as_multiple_columns(&self) -> &AsyncStepMultipleColumns {
+    pub fn as_multiple_columns(&self) -> &AsyncStepMultipleColumns<'a> {
         match self {
             Self::MultipleColumns(multiple_columns) => multiple_columns,
             _ => panic!("expected multiple columns"),
         }
     }
 
-    pub fn into_multiple_columns(self) -> AsyncStepMultipleColumns {
+    pub fn into_multiple_columns(self) -> AsyncStepMultipleColumns<'a> {
         match self {
             Self::MultipleColumns(multiple_columns) => multiple_columns,
             _ => panic!("expected multiple columns"),
         }
     }
 
-    pub fn into_column(self) -> AsyncStepColumn {
+    pub fn into_column(self) -> AsyncStepColumn<'a> {
         match self {
             Self::Column(column) => column,
             _ => panic!("expected column"),
@@ -118,14 +118,14 @@ impl AsyncStep {
     }
 
     #[allow(dead_code)]
-    pub fn as_list_of_column(&self) -> &AsyncStepListOfColumn {
+    pub fn as_list_of_column(&self) -> &AsyncStepListOfColumn<'a> {
         match self {
             Self::ListOfColumn(list_of_column) => list_of_column,
             _ => panic!("expected list of column"),
         }
     }
 
-    pub fn into_list_of_column(self) -> AsyncStepListOfColumn {
+    pub fn into_list_of_column(self) -> AsyncStepListOfColumn<'a> {
         match self {
             Self::ListOfColumn(list_of_column) => list_of_column,
             _ => panic!("expected list of column"),
@@ -134,25 +134,25 @@ impl AsyncStep {
 }
 
 #[derive(Debug)]
-pub struct AsyncStepColumn {
+pub struct AsyncStepColumn<'a> {
     pub table_name: SmolStr,
-    pub column: ColumnSpec,
+    pub column: ColumnSpec<'a>,
     pub id_column_name: SmolStr,
     pub id: Id,
 }
 
 #[derive(Debug)]
-pub struct AsyncStepMultipleColumns {
+pub struct AsyncStepMultipleColumns<'a> {
     pub table_name: SmolStr,
-    pub columns: ColumnSpecs,
+    pub columns: ColumnSpecs<'a>,
     pub id_column_name: SmolStr,
     pub id: Id,
 }
 
 #[derive(Debug)]
-pub struct AsyncStepListOfColumn {
+pub struct AsyncStepListOfColumn<'a> {
     pub table_name: SmolStr,
-    pub column: ColumnSpec,
+    pub column: ColumnSpec<'a>,
     pub wheres: WheresResolved,
 }
 
@@ -191,17 +191,17 @@ impl From<DependencyValue> for AsyncStepResponse {
     }
 }
 
-pub type AsyncSteps = SmallVec<[AsyncStep; 4]>;
+pub type AsyncSteps<'a> = SmallVec<[AsyncStep<'a>; 4]>;
 type IsInternalDependenciesOfs<'a> = SmallVec<[IsInternalDependenciesOf<'a>; 4]>;
 
 pub enum AsyncInstruction<'a> {
     Simple(AsyncInstructionSimple<'a>),
     RowMultipleColumnsEachOfWhichAreOnlyInternalDependency {
-        step: AsyncStep,
+        step: AsyncStep<'a>,
         is_internal_dependencies_of: HashMap<SmolStr, IsInternalDependenciesOfs<'a>>,
     },
     ListOfIdsAndFollowOnColumnGetters {
-        step: AsyncStep,
+        step: AsyncStep<'a>,
         list_of_ids_is_internal_dependencies_of: IsInternalDependenciesOf<'a>,
         list_of_ids_internal_dependency_name: SmolStr,
         id_column_name: SmolStr,
@@ -231,7 +231,7 @@ impl<'a> AsyncInstruction<'a> {
 }
 
 pub struct AsyncInstructionSimple<'a> {
-    pub steps: AsyncSteps,
+    pub steps: AsyncSteps<'a>,
     pub internal_dependency_names: DependencyNames,
     pub is_internal_dependencies_of: IsInternalDependenciesOf<'a>,
 }

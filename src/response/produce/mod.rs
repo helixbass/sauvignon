@@ -700,11 +700,11 @@ fn make_progress_selection_set<'a: 'b, 'b>(
     );
 }
 
-fn get_follow_on_columns(
-    selection_set: &IndexMap<SmolStr, FieldPlan<'_>>,
+fn get_follow_on_columns<'a>(
+    selection_set: &IndexMap<SmolStr, FieldPlan<'a>>,
     id_column_name: &str,
     table_name: &str,
-) -> ColumnSpecs {
+) -> ColumnSpecs<'a> {
     selection_set.values().filter_map(|field_plan| {
         let internal_dependency = &field_plan
             .field_type
@@ -719,15 +719,15 @@ fn get_follow_on_columns(
         }
         Some(ColumnSpec {
             name: column_getter.column_name.clone(),
-            dependency_type: internal_dependency.type_,
+            dependency_type: &internal_dependency.type_,
         })
     }).collect()
 }
 
-fn extract_dependency_steps(
-    field_plan: &FieldPlan<'_>,
+fn extract_dependency_steps<'a>(
+    field_plan: &FieldPlan<'a>,
     external_dependency_values: &ExternalDependencyValues,
-) -> (AsyncSteps, DependencyNames) {
+) -> (AsyncSteps<'a>, DependencyNames) {
     field_plan
         .field_type
         .resolver
@@ -756,16 +756,16 @@ fn extract_dependency_steps(
         .unzip()
 }
 
-fn column_getter_step(
+fn column_getter_step<'a>(
     column_getter: &ColumnGetter,
-    internal_dependency: &InternalDependency,
+    internal_dependency: &'a InternalDependency,
     external_dependency_values: &ExternalDependencyValues,
-) -> AsyncStep {
+) -> AsyncStep<'a> {
     AsyncStep::Column(AsyncStepColumn {
         table_name: column_getter.table_name.clone(),
         column: ColumnSpec {
             name: column_getter.column_name.clone(),
-            dependency_type: internal_dependency.type_,
+            dependency_type: &internal_dependency.type_,
         },
         id_column_name: column_getter.id_column_name.clone(),
         id: external_dependency_values
@@ -776,16 +776,16 @@ fn column_getter_step(
     })
 }
 
-fn column_getter_list_step(
+fn column_getter_list_step<'a>(
     column_getter_list: &ColumnGetterList,
-    internal_dependency: &InternalDependency,
+    internal_dependency: &'a InternalDependency,
     external_dependency_values: &ExternalDependencyValues,
-) -> AsyncStep {
+) -> AsyncStep<'a> {
     AsyncStep::ListOfColumn(AsyncStepListOfColumn {
         table_name: column_getter_list.table_name.clone(),
         column: ColumnSpec {
             name: column_getter_list.column_name.clone(),
-            dependency_type: internal_dependency.type_,
+            dependency_type: &internal_dependency.type_,
         },
         wheres: column_getter_list
             .wheres
