@@ -12,12 +12,14 @@ use uuid::Uuid;
 
 use crate::{AnyHashMap, Error};
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum DependencyType {
     Id,
     String,
+    List(Box<DependencyType>),
     ListOfIds,
     ListOfStrings,
+    Optional(Box<DependencyType>),
     OptionalInt,
     OptionalFloat,
     OptionalString,
@@ -25,6 +27,16 @@ pub enum DependencyType {
     OptionalId,
     Int,
     Date,
+    Map(Box<DependencyType>),
+}
+
+impl DependencyType {
+    pub fn as_list_inner(&self) -> &Self {
+        match self {
+            Self::List(dependency_type) => dependency_type,
+            _ => panic!("expected list"),
+        }
+    }
 }
 
 pub struct ExternalDependency {
@@ -235,6 +247,7 @@ pub enum DependencyValue {
     Timestamp(Timestamp),
     Int(i32),
     Date(NaiveDate),
+    Map(HashMap<SmolStr, DependencyValue>),
 }
 
 impl DependencyValue {

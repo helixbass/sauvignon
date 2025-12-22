@@ -43,7 +43,7 @@ impl DatabaseInterface for Database {
         column_name: &str,
         id: &Id,
         id_column_name: &str,
-        dependency_type: DependencyType,
+        dependency_type: &DependencyType,
     ) -> DependencyValue {
         match self {
             Self::Postgres(database) => {
@@ -63,7 +63,7 @@ impl DatabaseInterface for Database {
         &self,
         table_name: &str,
         column_name: &str,
-        dependency_type: DependencyType,
+        dependency_type: &DependencyType,
         wheres: &[WhereResolved],
     ) -> Vec<DependencyValue> {
         match self {
@@ -85,7 +85,7 @@ impl DatabaseInterface for Database {
         column_token: ColumnToken,
         id: &Id,
         id_column_name: &str,
-        dependency_type: DependencyType,
+        dependency_type: &DependencyType,
     ) -> DependencyValue {
         match self {
             Self::Postgres(database) => {
@@ -100,7 +100,7 @@ impl DatabaseInterface for Database {
     fn get_column_list_sync(
         &self,
         column_token: ColumnToken,
-        dependency_type: DependencyType,
+        dependency_type: &DependencyType,
         wheres: &[WhereResolved],
     ) -> Vec<DependencyValue> {
         match self {
@@ -136,14 +136,14 @@ pub trait DatabaseInterface: Send + Sync {
         column_name: &str,
         id: &Id,
         id_column_name: &str,
-        dependency_type: DependencyType,
+        dependency_type: &DependencyType,
     ) -> DependencyValue;
 
     async fn get_column_list(
         &self,
         table_name: &str,
         column_name: &str,
-        dependency_type: DependencyType,
+        dependency_type: &DependencyType,
         wheres: &[WhereResolved],
     ) -> Vec<DependencyValue>;
 
@@ -152,13 +152,13 @@ pub trait DatabaseInterface: Send + Sync {
         column_token: ColumnToken,
         id: &Id,
         id_column_name: &str,
-        dependency_type: DependencyType,
+        dependency_type: &DependencyType,
     ) -> DependencyValue;
 
     fn get_column_list_sync(
         &self,
         column_token: ColumnToken,
-        dependency_type: DependencyType,
+        dependency_type: &DependencyType,
         wheres: &[WhereResolved],
     ) -> Vec<DependencyValue>;
 
@@ -193,17 +193,17 @@ impl PostgresDatabase {
     pub fn to_dependency_value(
         &self,
         column_value: PgValueRef<'_>,
-        dependency_type: DependencyType,
+        dependency_type: &DependencyType,
         massager: Option<&ColumnValueMassager>,
     ) -> DependencyValue {
         match dependency_type {
-            DependencyType::Id | DependencyType::ListOfIds => {
+            DependencyType::Id => {
                 assert!(massager.is_none());
                 DependencyValue::Id(Id::Int(
                     <i32 as Decode<Postgres>>::decode(column_value).unwrap(),
                 ))
             }
-            DependencyType::String | DependencyType::ListOfStrings => match massager {
+            DependencyType::String => match massager {
                 None => DependencyValue::String(
                     <SmolStrSqlx as Decode<Postgres>>::decode(column_value)
                         .unwrap()
@@ -261,6 +261,7 @@ impl PostgresDatabase {
                     <NaiveDate as Decode<Postgres>>::decode(column_value).unwrap(),
                 )
             }
+            _ => unreachable!(),
         }
     }
 
@@ -357,7 +358,7 @@ impl DatabaseInterface for PostgresDatabase {
         column_name: &str,
         id: &Id,
         id_column_name: &str,
-        dependency_type: DependencyType,
+        dependency_type: &DependencyType,
     ) -> DependencyValue {
         // TODO: should check that table names and column names can never be SQL injection?
         let query = format!(
@@ -389,9 +390,10 @@ impl DatabaseInterface for PostgresDatabase {
         &self,
         table_name: &str,
         column_name: &str,
-        dependency_type: DependencyType,
+        dependency_type: &DependencyType,
         wheres: &[WhereResolved],
     ) -> Vec<DependencyValue> {
+        let dependency_type = dependency_type.as_list_inner();
         let mut query_builder = QueryBuilder::default();
         query_builder.push("SELECT ");
         query_builder.push(column_name);
@@ -422,7 +424,7 @@ impl DatabaseInterface for PostgresDatabase {
         _column_token: ColumnToken,
         _id: &Id,
         _id_column_name: &str,
-        _dependency_type: DependencyType,
+        _dependency_type: &DependencyType,
     ) -> DependencyValue {
         unreachable!()
     }
@@ -430,7 +432,7 @@ impl DatabaseInterface for PostgresDatabase {
     fn get_column_list_sync(
         &self,
         _column_token: ColumnToken,
-        _dependency_type: DependencyType,
+        _dependency_type: &DependencyType,
         _wheres: &[WhereResolved],
     ) -> Vec<DependencyValue> {
         unreachable!()

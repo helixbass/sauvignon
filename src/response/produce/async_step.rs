@@ -15,12 +15,12 @@ use crate::{
 };
 
 #[derive(Clone, Debug)]
-pub struct ColumnSpec {
+pub struct ColumnSpec<'a> {
     pub name: SmolStr,
-    pub dependency_type: DependencyType,
+    pub dependency_type: &'a DependencyType,
 }
 
-pub type ColumnSpecs = SmallVec<[ColumnSpec; 12]>;
+pub type ColumnSpecs<'a> = SmallVec<[ColumnSpec<'a>; 12]>;
 
 #[derive(Debug)]
 pub enum AsyncStep {

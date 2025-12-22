@@ -1356,7 +1356,7 @@ fn get_internal_dependency_value_synchronous(
         }
         InternalDependencyResolver::Argument(argument_resolver) => {
             let argument = arguments.unwrap().get(&argument_resolver.name).unwrap();
-            match (internal_dependency.type_, &argument.value) {
+            match (&internal_dependency.type_, &argument.value) {
                 (DependencyType::Id, Value::Int(argument_value)) => {
                     DependencyValue::Id(Id::Int(*argument_value))
                 }
