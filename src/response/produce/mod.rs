@@ -748,6 +748,11 @@ fn extract_dependency_steps<'a>(
                             &external_dependency_values,
                         )
                     }
+                    InternalDependencyResolver::Custom(resolve_internal_dependency) => {
+                        AsyncStep::Custom(
+                            unimplemented!()
+                        )
+                    }
                     _ => unreachable!(),
                 },
                 internal_dependency.name.clone(),
