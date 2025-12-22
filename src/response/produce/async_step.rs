@@ -352,6 +352,7 @@ fn is_row_multiple_columns_each_of_which_are_only_internal_dependency_combineabl
                     && step.id_column_name == column_step.id_column_name
                     && step.id == column_step.id
             }
+            _ => false,
         })
 }
 
@@ -373,14 +374,7 @@ pub enum IsInternalDependenciesOf<'a> {
         field_name: SmolStr,
         field_plan: &'a FieldPlan<'a>,
     },
-    ObjectFieldListOfObjects {
-        parent_object_index: IndexInProduced,
-        index_of_field_in_object: usize,
-        populator: &'a PopulatorList,
-        external_dependency_values: ExternalDependencyValues,
-        field_name: SmolStr,
-        field_plan: &'a FieldPlan<'a>,
-    },
+    ObjectFieldListOfObjects(IsInternalDependenciesOfObjectFieldListOfObjects<'a>),
     ObjectFieldUnionOrInterfaceObject {
         parent_object_index: IndexInProduced,
         index_of_field_in_object: usize,
@@ -423,4 +417,24 @@ pub enum IsInternalDependenciesOf<'a> {
         field_name: SmolStr,
         field_plan: &'a FieldPlan<'a>,
     },
+}
+
+impl<'a> IsInternalDependenciesOf<'a> {
+    pub fn as_object_field_list_of_objects(
+        &self,
+    ) -> &IsInternalDependenciesOfObjectFieldListOfObjects<'a> {
+        match self {
+            Self::ObjectFieldListOfObjects(list) => list,
+            _ => panic!("expected object field list of objects"),
+        }
+    }
+}
+
+pub struct IsInternalDependenciesOfObjectFieldListOfObjects<'a> {
+    pub parent_object_index: IndexInProduced,
+    pub index_of_field_in_object: usize,
+    pub populator: &'a PopulatorList,
+    pub external_dependency_values: ExternalDependencyValues,
+    pub field_name: SmolStr,
+    pub field_plan: &'a FieldPlan<'a>,
 }

@@ -22,6 +22,7 @@ pub use async_step::ColumnSpec;
 use async_step::{
     AsyncInstruction, AsyncInstructionSimple, AsyncInstructions, AsyncStep, AsyncStepColumn,
     AsyncSteps, DependencyNames, IsInternalDependenciesOf,
+    IsInternalDependenciesOfObjectFieldListOfObjects,
 };
 use chunk::Produced;
 
@@ -130,6 +131,21 @@ pub async fn produce_response(
                             .map(|row| row[&id_column_name].clone())
                             .collect(),
                     );
+                    let list_of_ids_is_internal_dependencies_of =
+                        list_of_ids_is_internal_dependencies_of.as_object_field_list_of_objects();
+                    let (items_external_dependency_values, parent_list_index) =
+                        populate_and_push_list(
+                            list_of_ids_is_internal_dependencies_of.populator,
+                            &list_of_ids_is_internal_dependencies_of.external_dependency_values,
+                            &[(id_column_name, list_of_ids_internal_dependency_value)]
+                                .into_iter()
+                                .collect(),
+                            list_of_ids_is_internal_dependencies_of.parent_object_index,
+                            list_of_ids_is_internal_dependencies_of.index_of_field_in_object,
+                            &list_of_ids_is_internal_dependencies_of.field_name,
+                            &mut produced,
+                        );
+                    list_of_ids_is_internal_dependencies_of.field_plan;
                     unimplemented!()
                 }
             },
@@ -159,14 +175,16 @@ fn do_simple_async_instruction_follow<'a: 'b, 'b>(
     schema: &Schema,
 ) {
     match is_internal_dependencies_of {
-        IsInternalDependenciesOf::ObjectFieldListOfObjects {
-            parent_object_index,
-            index_of_field_in_object,
-            populator,
-            external_dependency_values,
-            field_name,
-            field_plan,
-        } => {
+        IsInternalDependenciesOf::ObjectFieldListOfObjects(
+            IsInternalDependenciesOfObjectFieldListOfObjects {
+                parent_object_index,
+                index_of_field_in_object,
+                populator,
+                external_dependency_values,
+                field_name,
+                field_plan,
+            },
+        ) => {
             populate_list(
                 &external_dependency_values,
                 &internal_dependency_values,
@@ -827,6 +845,19 @@ fn populate_concrete_or_union_or_interface_list<'a: 'b, 'b>(
         });
 }
 
+fn list_follow_on() {
+    unimplemented!()
+}
+
+#[instrument(
+    level = "trace",
+    skip(
+        populator,
+        external_dependency_values,
+        internal_dependency_values,
+        produced,
+    )
+)]
 fn populate_and_push_list(
     populator: &PopulatorList,
     external_dependency_values: &ExternalDependencyValues,
