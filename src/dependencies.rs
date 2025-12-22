@@ -74,6 +74,13 @@ impl InternalDependencyResolver {
             Self::IntrospectionTypePossibleTypes => true,
         }
     }
+
+    pub fn maybe_as_column_getter(&self) -> Option<&ColumnGetter> {
+        match self {
+            Self::ColumnGetter(column_getter) => Some(column_getter),
+            _ => None,
+        }
+    }
 }
 
 pub struct ColumnGetter {

@@ -5,7 +5,7 @@ use indexmap::IndexMap;
 use itertools::Itertools;
 use smallvec::{smallvec, SmallVec};
 use smol_str::{SmolStr, ToSmolStr};
-use squalid::_d;
+use squalid::{_d, EverythingExt};
 use tracing::{instrument, trace_span};
 
 use crate::{
@@ -623,6 +623,7 @@ fn make_progress_selection_set<'a: 'b, 'b>(
                                 let step = steps.remove(0).into_list_of_column();
                                 let other_columns = get_follow_on_columns(
                                     &field_plan.selection_set_by_type.as_ref().unwrap()[field_plan.field_type.type_.name()],
+                                    &step.column.name,
                                 );
                                 current_async_instructions.push(AsyncInstruction::ListOfIdsAndFollowOnColumnGetters {
                                     list_of_ids_is_internal_dependencies_of: is_internal_dependencies_of,
@@ -688,8 +689,25 @@ fn make_progress_selection_set<'a: 'b, 'b>(
 
 fn get_follow_on_columns(
     selection_set: &IndexMap<SmolStr, FieldPlan<'_>>,
+    id_column_name: &str,
 ) -> ColumnSpecs {
-    selection_set.
+    selection_set.into_iter().filter_map(|(field_name, field_plan)| {
+        let internal_dependency = &field_plan
+            .field_type
+            .resolver
+            .internal_dependencies
+            .when(|internal_dependencies| internal_dependencies.len() == 1)?
+            [0];
+        let column_getter = internal_dependency.resolver.maybe_as_column_getter()?;
+        if column_getter.id_column_name != id_column_name ||
+            column_getter.table_name != table_name {
+            return None;
+        }
+        Some(ColumnSpec {
+            name: column_getter.column_name.clone(),
+            dependency_type: internal_dependency.type_,
+        })
+    }).collect()
 }
 
 fn extract_dependency_steps(
