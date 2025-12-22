@@ -81,11 +81,13 @@ impl<'a> AsyncStep<'a> {
                 wheres,
                 other_columns,
             } => {
-                let columns: ColumnSpecs = [id_column]
-                    .into_iter()
-                    .cloned()
-                    .chain(other_columns.into_iter().cloned())
-                    .collect();
+                let columns: ColumnSpecs = [ColumnSpec {
+                    name: id_column.name.clone(),
+                    dependency_type: id_column.dependency_type.as_list_inner(),
+                }]
+                .into_iter()
+                .chain(other_columns.into_iter().cloned())
+                .collect();
                 AsyncStepResponse::ListOfDependencyValueMap(
                     database
                         .as_postgres()
