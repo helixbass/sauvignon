@@ -15,7 +15,7 @@ use crate::{
     UnionOrInterfaceTypePopulatorList, WheresResolved,
 };
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct ColumnSpec {
     pub name: SmolStr,
     pub dependency_type: DependencyType,
@@ -86,12 +86,20 @@ impl AsyncStep {
                 wheres,
                 other_columns,
             } => {
-                unimplemented!()
-                // AsyncStepResponse::IndexMapOfDependencyValueMap(
-                // database
-                //     .get_column_list(table_name, &column.name, column.dependency_type, wheres)
-                //     .await,
-                // )
+                let columns: ColumnSpecs = [id_column]
+                    .into_iter()
+                    .cloned()
+                    .chain(other_columns.into_iter().cloned())
+                    .collect();
+                AsyncStepResponse::IndexMapOfDependencyValueMap(
+                    database
+                        .as_postgres()
+                        .get_columns_list(table_name, &columns, wheres)
+                        .await
+                        .into_iter()
+                        .map(|row| (row[&id_column.name].as_id().as_int(), row))
+                        .collect(),
+                )
             }
         }
     }
