@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use futures::future;
 use indexmap::IndexMap;
 use itertools::{Either, Itertools};
@@ -45,6 +47,7 @@ pub async fn produce_response(
         &mut produced,
         &mut current_async_instructions,
         schema,
+        None,
     );
     loop {
         if current_async_instructions.is_empty() {
@@ -351,6 +354,7 @@ fn do_simple_async_instruction_follow<'a: 'b, 'b>(
         produced,
         current_async_instructions,
         schema,
+        already_resolved_internal_dependency_values,
     )
 )]
 fn make_progress_selection_set<'a: 'b, 'b>(
@@ -360,10 +364,19 @@ fn make_progress_selection_set<'a: 'b, 'b>(
     produced: &mut Vec<Produced>,
     current_async_instructions: &'b mut AsyncInstructions<'a>,
     schema: &Schema,
+    mut already_resolved_internal_dependency_values: Option<
+        HashMap<SmolStr, InternalDependencyValues>,
+    >,
 ) {
     field_plans.into_iter().enumerate().for_each(
         |(index_of_field_in_object, (field_name, field_plan))| {
-            let can_resolve_all_internal_dependencies_synchronously = field_plan
+            let already_resolved_internal_dependency_values_this_field =
+                already_resolved_internal_dependency_values.as_mut().and_then(|already_resolved_internal_dependency_values| {
+                    already_resolved_internal_dependency_values.remove(field_name)
+                });
+            let can_resolve_all_internal_dependencies_synchronously =
+                already_resolved_internal_dependency_values_this_field.is_some() ||
+                field_plan
                 .field_type
                 .resolver
                 .internal_dependencies
@@ -373,23 +386,26 @@ fn make_progress_selection_set<'a: 'b, 'b>(
                 });
             match can_resolve_all_internal_dependencies_synchronously {
                 true => {
-                    let internal_dependency_values: InternalDependencyValues = field_plan
-                        .field_type
-                        .resolver
-                        .internal_dependencies
-                        .iter()
-                        .map(|internal_dependency| {
-                            (
-                                internal_dependency.name.clone(),
-                                get_internal_dependency_value_synchronous(
-                                    field_plan.arguments.as_ref(),
-                                    &external_dependency_values,
-                                    internal_dependency,
-                                    schema,
-                                ),
-                            )
-                        })
-                        .collect();
+                    let internal_dependency_values =
+                        already_resolved_internal_dependency_values_this_field.unwrap_or_else(|| {
+                            field_plan
+                            .field_type
+                            .resolver
+                            .internal_dependencies
+                            .iter()
+                            .map(|internal_dependency| {
+                                (
+                                    internal_dependency.name.clone(),
+                                    get_internal_dependency_value_synchronous(
+                                        field_plan.arguments.as_ref(),
+                                        &external_dependency_values,
+                                        internal_dependency,
+                                        schema,
+                                    ),
+                                )
+                            })
+                            .collect()
+                        });
                     match &field_plan.field_type.resolver.carver_or_populator {
                         CarverOrPopulator::Carver(carver) => {
                             produced.push(Produced::FieldScalar {
@@ -841,6 +857,7 @@ fn populate_concrete_or_union_or_interface_list<'a: 'b, 'b>(
                 produced,
                 current_async_instructions,
                 schema,
+                None,
             );
         });
 }
@@ -1026,6 +1043,7 @@ fn post_populate_concrete_or_union_or_interface_object<'a: 'b, 'b>(
         produced,
         current_async_instructions,
         schema,
+        None,
     );
 }
 
