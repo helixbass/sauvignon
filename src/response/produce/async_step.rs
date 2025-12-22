@@ -117,6 +117,7 @@ impl AsyncStep {
         }
     }
 
+    #[allow(dead_code)]
     pub fn as_list_of_column(&self) -> &AsyncStepListOfColumn {
         match self {
             Self::ListOfColumn(list_of_column) => list_of_column,
@@ -208,6 +209,7 @@ pub enum AsyncInstruction<'a> {
 }
 
 impl<'a> AsyncInstruction<'a> {
+    #[allow(dead_code)]
     pub fn as_simple(&self) -> &AsyncInstructionSimple<'a> {
         self.maybe_as_simple().expect("expected simple")
     }
@@ -314,15 +316,6 @@ impl<'a> AsyncInstructions<'a> {
             self.instructions.push(updated_instruction);
             return;
         }
-        if let Some(combineable_with_index) =
-            is_list_of_ids_and_follow_on_column_getters_combineable(
-                &instruction,
-                &self.instructions,
-            )
-        {
-            unimplemented!();
-            return;
-        }
         self.instructions.push(instruction);
     }
 }
@@ -363,44 +356,6 @@ fn is_row_multiple_columns_each_of_which_are_only_internal_dependency_combineabl
                     return false;
                 }
                 let AsyncStep::Column(existing_column_step) = &simple.steps[0] else {
-                    return false;
-                };
-                existing_column_step.table_name == column_step.table_name
-                    && existing_column_step.id_column_name == column_step.id_column_name
-                    && existing_column_step.id == column_step.id
-            }
-            AsyncInstruction::RowMultipleColumnsEachOfWhichAreOnlyInternalDependency {
-                step,
-                ..
-            } => {
-                let step = step.as_multiple_columns();
-                step.table_name == column_step.table_name
-                    && step.id_column_name == column_step.id_column_name
-                    && step.id == column_step.id
-            }
-            _ => false,
-        })
-}
-
-fn is_list_of_ids_and_follow_on_column_getters_combineable(
-    instruction: &AsyncInstruction,
-    existing: &AsyncInstructionsStore,
-) -> Option<usize> {
-    let instruction = instruction.as_simple();
-    if instruction.steps.len() != 1 {
-        return None;
-    }
-    let AsyncStep::Column(column_step) = &instruction.steps[0] else {
-        return None;
-    };
-    existing
-        .into_iter()
-        .position(|existing_instruction| match existing_instruction {
-            AsyncInstruction::Simple(simple) => {
-                if simple.steps.len() != 1 {
-                    return false;
-                }
-                let AsyncStep::ListOfColumn(existing_list_of_column_step) = &simple.steps[0] else {
                     return false;
                 };
                 existing_column_step.table_name == column_step.table_name
