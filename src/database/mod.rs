@@ -3,8 +3,11 @@ use std::collections::HashMap;
 use async_trait::async_trait;
 use chrono::NaiveDate;
 use smol_str::SmolStr;
-use sqlx::{postgres::PgValueRef, Decode, Pool, Postgres, QueryBuilder, Row};
-use squalid::_d;
+use sqlx::{
+    postgres::{PgRow, PgValueRef},
+    Decode, Pool, Postgres, QueryBuilder, Row,
+};
+use squalid::{EverythingExt, _d};
 use tracing::{instrument, trace_span, Instrument};
 
 use crate::{
@@ -194,13 +197,13 @@ impl PostgresDatabase {
         massager: Option<&ColumnValueMassager>,
     ) -> DependencyValue {
         match dependency_type {
-            DependencyType::Id => {
+            DependencyType::Id | DependencyType::ListOfIds => {
                 assert!(massager.is_none());
                 DependencyValue::Id(Id::Int(
                     <i32 as Decode<Postgres>>::decode(column_value).unwrap(),
                 ))
             }
-            DependencyType::String => match massager {
+            DependencyType::String | DependencyType::ListOfStrings => match massager {
                 None => DependencyValue::String(
                     <SmolStrSqlx as Decode<Postgres>>::decode(column_value)
                         .unwrap()
@@ -258,7 +261,6 @@ impl PostgresDatabase {
                     <NaiveDate as Decode<Postgres>>::decode(column_value).unwrap(),
                 )
             }
-            _ => unimplemented!(),
         }
     }
 
@@ -283,7 +285,50 @@ impl PostgresDatabase {
         query_builder.push(id_column_name);
         query_builder.push(" = ");
         query_builder.push_bind(id.as_int());
-        let row = query_builder.build().fetch_one(&self.pool).await.unwrap();
+        query_builder
+            .build()
+            .fetch_one(&self.pool)
+            .instrument(trace_span!("fetch columns"))
+            .await
+            .unwrap()
+            .thrush(|row| self.row_to_hash_map(&row, columns, table_name))
+    }
+
+    pub async fn get_columns_list(
+        &self,
+        table_name: &str,
+        columns: &[ColumnSpec],
+        wheres: &[WhereResolved],
+    ) -> Vec<HashMap<SmolStr, DependencyValue>> {
+        let mut query_builder = QueryBuilder::default();
+        query_builder.push("SELECT ");
+        columns.into_iter().enumerate().for_each(|(index, column)| {
+            query_builder.push(&column.name);
+            if index != columns.len() - 1 {
+                query_builder.push(", ");
+            }
+        });
+        query_builder.push(" FROM ");
+        query_builder.push(table_name);
+        add_wheres(&mut query_builder, wheres);
+
+        query_builder
+            .build()
+            .fetch_all(&self.pool)
+            .instrument(trace_span!("fetch columns list"))
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|row| self.row_to_hash_map(&row, columns, table_name))
+            .collect()
+    }
+
+    fn row_to_hash_map(
+        &self,
+        row: &PgRow,
+        columns: &[ColumnSpec],
+        table_name: &str,
+    ) -> HashMap<SmolStr, DependencyValue> {
         columns
             .into_iter()
             .map(|column| {
@@ -347,124 +392,29 @@ impl DatabaseInterface for PostgresDatabase {
         dependency_type: DependencyType,
         wheres: &[WhereResolved],
     ) -> Vec<DependencyValue> {
-        match dependency_type {
-            DependencyType::ListOfIds => {
-                // TODO: same as above, sql injection?
-                let query = format!(
-                    "SELECT {} FROM {}{}",
-                    column_name,
-                    table_name,
-                    if wheres.is_empty() {
-                        "".to_owned()
-                    } else {
-                        format!(
-                            " WHERE {}",
-                            wheres
-                                .iter()
-                                .enumerate()
-                                .map(|(index, where_)| {
-                                    format!("{} = ${}", where_.column_name, index + 1)
-                                })
-                                .collect::<String>()
-                        )
-                    }
-                );
-                let mut query = sqlx::query_as::<_, (i32,)>(&query);
-                for where_ in wheres {
-                    // TODO: this is punting on where's specifying
-                    // values
-                    query = match &where_.value {
-                        DependencyValue::Id(id) => query.bind(id.as_int()),
-                        DependencyValue::String(str) => query.bind(SmolStrSqlx(str.clone())),
-                        _ => unimplemented!(),
-                    };
-                }
-                let rows = query
-                    .fetch_all(&self.pool)
-                    .instrument(trace_span!("fetch id column list"))
-                    .await
-                    .unwrap();
-                rows.into_iter()
-                    .map(|(column_value,)| DependencyValue::Id(Id::Int(column_value)))
-                    .collect()
-            }
-            DependencyType::ListOfStrings => {
-                // TODO: same as above, sql injection?
-                let query = format!(
-                    "SELECT {} FROM {}{}",
-                    column_name,
-                    table_name,
-                    if wheres.is_empty() {
-                        "".to_owned()
-                    } else {
-                        format!(
-                            " WHERE {}",
-                            wheres
-                                .iter()
-                                .enumerate()
-                                .map(|(index, where_)| {
-                                    format!("{} = ${}", where_.column_name, index + 1)
-                                })
-                                .collect::<String>()
-                        )
-                    }
-                );
-                match self
-                    .massagers
-                    .get(table_name)
-                    .and_then(|table| table.get(column_name))
-                {
-                    None => {
-                        let mut query = sqlx::query_as::<_, (SmolStrSqlx,)>(&query);
-                        for where_ in wheres {
-                            query = match &where_.value {
-                                DependencyValue::Id(id) => query.bind(id.as_int()),
-                                DependencyValue::String(str) => {
-                                    query.bind(SmolStrSqlx(str.clone()))
-                                }
-                                _ => unimplemented!(),
-                            };
-                        }
-                        let rows = query
-                            .fetch_all(&self.pool)
-                            .instrument(trace_span!("fetch string column list"))
-                            .await
-                            .unwrap();
-                        rows.into_iter()
-                            .map(|(column_value,)| DependencyValue::String(column_value.0))
-                            .collect()
-                    }
-                    Some(massager) => {
-                        let massager = massager.as_string();
-                        let mut query = sqlx::query(&query);
-                        for where_ in wheres {
-                            query = match &where_.value {
-                                DependencyValue::Id(id) => query.bind(id.as_int()),
-                                DependencyValue::String(str) => {
-                                    query.bind(SmolStrSqlx(str.clone()))
-                                }
-                                _ => unimplemented!(),
-                            };
-                        }
-                        let rows = query
-                            .fetch_all(&self.pool)
-                            .instrument(trace_span!("fetch string column list"))
-                            .await
-                            .unwrap();
-                        rows.into_iter()
-                            .map(|row| {
-                                DependencyValue::String(
-                                    massager
-                                        .massage(row.try_get_raw(column_name).unwrap())
-                                        .unwrap(),
-                                )
-                            })
-                            .collect()
-                    }
-                }
-            }
-            _ => unreachable!(),
-        }
+        let mut query_builder = QueryBuilder::default();
+        query_builder.push("SELECT ");
+        query_builder.push(column_name);
+        query_builder.push(" FROM ");
+        query_builder.push(table_name);
+        add_wheres(&mut query_builder, wheres);
+        let rows = query_builder
+            .build()
+            .fetch_all(&self.pool)
+            .instrument(trace_span!("fetch column list"))
+            .await
+            .unwrap();
+        rows.into_iter()
+            .map(|row| {
+                self.to_dependency_value(
+                    row.try_get_raw(0).unwrap(),
+                    dependency_type,
+                    self.massagers
+                        .get(table_name)
+                        .and_then(|table| table.get(column_name)),
+                )
+            })
+            .collect()
     }
 
     fn get_column_sync(
@@ -508,6 +458,25 @@ impl PostgresColumnMassager {
             column_name,
             massager,
         }
+    }
+}
+
+fn add_wheres(query_builder: &mut QueryBuilder<Postgres>, wheres: &[WhereResolved]) {
+    if !wheres.is_empty() {
+        query_builder.push(" WHERE ");
+        wheres.iter().for_each(|where_| {
+            query_builder.push(&where_.column_name);
+            query_builder.push(" = ");
+            match &where_.value {
+                DependencyValue::Id(id) => {
+                    query_builder.push_bind(id.as_int());
+                }
+                DependencyValue::String(str) => {
+                    query_builder.push_bind(SmolStrSqlx(str.clone()));
+                }
+                _ => unimplemented!(),
+            }
+        });
     }
 }
 

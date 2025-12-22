@@ -1,398 +1,36 @@
 use std::collections::HashMap;
-use std::ops::Deref;
 
 use futures::future;
 use indexmap::IndexMap;
-use itertools::{Either, Itertools};
+use itertools::Itertools;
 use smallvec::{smallvec, SmallVec};
 use smol_str::{SmolStr, ToSmolStr};
-use squalid::_d;
+use squalid::{_d, EverythingExt};
 use tracing::{instrument, trace_span};
 
 use crate::{
-    Argument, Carver, CarverList, CarverOrPopulator, ColumnGetter, ColumnGetterList, Database,
-    DatabaseInterface, DependencyType, DependencyValue, ExternalDependencyValues, FieldPlan, Id,
-    InternalDependency, InternalDependencyResolver, InternalDependencyValues, OptionalPopulator,
+    Argument, CarverList, CarverOrPopulator, ColumnGetter, ColumnGetterList, Database,
+    DependencyType, DependencyValue, ExternalDependencyValues, FieldPlan, Id, InternalDependency,
+    InternalDependencyResolver, InternalDependencyValues, OptionalPopulator,
     OptionalPopulatorInterface, OptionalUnionOrInterfaceTypePopulator, Populator,
     PopulatorInterface, PopulatorList, PopulatorListInterface, QueryPlan, ResponseValue, Schema,
     Type, UnionOrInterfaceTypePopulator, UnionOrInterfaceTypePopulatorList, Value, WhereResolved,
     WheresResolved,
 };
 
+mod async_step;
+mod chunk;
+
+pub use async_step::ColumnSpec;
+use async_step::{
+    AsyncInstruction, AsyncInstructionSimple, AsyncInstructions, AsyncStep, AsyncStepColumn,
+    AsyncStepListOfColumn, AsyncSteps, DependencyNames, IsInternalDependenciesOf,
+    IsInternalDependenciesOfObjectFieldListOfObjects,
+    ColumnSpecs,
+};
+use chunk::Produced;
+
 type IndexInProduced = usize;
-
-#[derive(Debug)]
-pub struct ColumnSpec {
-    pub name: SmolStr,
-    pub dependency_type: DependencyType,
-}
-
-type ColumnSpecs = SmallVec<[ColumnSpec; 12]>;
-
-#[derive(Debug)]
-enum AsyncStep {
-    ListOfColumn {
-        table_name: SmolStr,
-        column: ColumnSpec,
-        wheres: WheresResolved,
-    },
-    Column(AsyncStepColumn),
-    MultipleColumns(AsyncStepMultipleColumns),
-}
-
-impl AsyncStep {
-    #[instrument(level = "trace", skip(self, database))]
-    pub async fn run(&self, database: &Database) -> AsyncStepResponse {
-        match self {
-            Self::ListOfColumn {
-                table_name,
-                column,
-                wheres,
-            } => DependencyValue::List(
-                database
-                    .get_column_list(table_name, &column.name, column.dependency_type, wheres)
-                    .await,
-            )
-            .into(),
-            Self::Column(AsyncStepColumn {
-                table_name,
-                column,
-                id_column_name,
-                id,
-            }) => database
-                .get_column(
-                    table_name,
-                    &column.name,
-                    id,
-                    id_column_name,
-                    column.dependency_type,
-                )
-                .await
-                .into(),
-            Self::MultipleColumns(AsyncStepMultipleColumns {
-                table_name,
-                columns,
-                id_column_name,
-                id,
-            }) => AsyncStepResponse::DependencyValueMap(
-                database
-                    .as_postgres()
-                    .get_columns(table_name, columns, id, id_column_name)
-                    .await,
-            ),
-        }
-    }
-
-    pub fn as_multiple_columns(&self) -> &AsyncStepMultipleColumns {
-        match self {
-            Self::MultipleColumns(multiple_columns) => multiple_columns,
-            _ => panic!("expected multiple columns"),
-        }
-    }
-
-    pub fn into_multiple_columns(self) -> AsyncStepMultipleColumns {
-        match self {
-            Self::MultipleColumns(multiple_columns) => multiple_columns,
-            _ => panic!("expected multiple columns"),
-        }
-    }
-
-    pub fn into_column(self) -> AsyncStepColumn {
-        match self {
-            Self::Column(column) => column,
-            _ => panic!("expected column"),
-        }
-    }
-}
-
-#[derive(Debug)]
-struct AsyncStepColumn {
-    pub table_name: SmolStr,
-    pub column: ColumnSpec,
-    pub id_column_name: SmolStr,
-    pub id: Id,
-}
-
-#[derive(Debug)]
-struct AsyncStepMultipleColumns {
-    pub table_name: SmolStr,
-    pub columns: ColumnSpecs,
-    pub id_column_name: SmolStr,
-    pub id: Id,
-}
-
-enum AsyncStepResponse {
-    DependencyValue(DependencyValue),
-    DependencyValueMap(HashMap<SmolStr, DependencyValue>),
-}
-
-impl AsyncStepResponse {
-    pub fn into_dependency_value(self) -> DependencyValue {
-        match self {
-            Self::DependencyValue(dependency_value) => dependency_value,
-            _ => panic!("expected dependency value"),
-        }
-    }
-
-    pub fn into_dependency_value_map(self) -> HashMap<SmolStr, DependencyValue> {
-        match self {
-            Self::DependencyValueMap(map) => map,
-            _ => panic!("expected dependency value map"),
-        }
-    }
-}
-
-impl From<DependencyValue> for AsyncStepResponse {
-    fn from(value: DependencyValue) -> Self {
-        Self::DependencyValue(value)
-    }
-}
-
-type AsyncSteps = SmallVec<[AsyncStep; 4]>;
-type RowMultipleColumnsEachOfWhichAreOnlyInternalDependencyMulti<'a> =
-    SmallVec<[IsInternalDependenciesOf<'a>; 4]>;
-
-enum AsyncInstruction<'a> {
-    Simple(AsyncInstructionSimple<'a>),
-    RowMultipleColumnsEachOfWhichAreOnlyInternalDependency {
-        step: AsyncStep,
-        is_internal_dependencies_of:
-            HashMap<SmolStr, RowMultipleColumnsEachOfWhichAreOnlyInternalDependencyMulti<'a>>,
-    },
-}
-
-impl<'a> AsyncInstruction<'a> {
-    pub fn as_simple(&self) -> &AsyncInstructionSimple<'a> {
-        match self {
-            Self::Simple(simple) => simple,
-            _ => panic!("expected simple"),
-        }
-    }
-
-    pub fn into_simple(self) -> AsyncInstructionSimple<'a> {
-        match self {
-            Self::Simple(simple) => simple,
-            _ => panic!("expected simple"),
-        }
-    }
-}
-
-struct AsyncInstructionSimple<'a> {
-    pub steps: AsyncSteps,
-    pub internal_dependency_names: DependencyNames,
-    pub is_internal_dependencies_of: IsInternalDependenciesOf<'a>,
-}
-
-type AsyncInstructionsStore<'a> = SmallVec<[AsyncInstruction<'a>; 8]>;
-
-#[derive(Default)]
-struct AsyncInstructions<'a> {
-    pub instructions: AsyncInstructionsStore<'a>,
-}
-
-impl<'a> AsyncInstructions<'a> {
-    pub fn push(&mut self, instruction: AsyncInstruction<'a>) {
-        if let Some(combineable_with_index) =
-            is_row_multiple_columns_each_of_which_are_only_internal_dependency_combineable(
-                &instruction,
-                &self.instructions,
-            )
-        {
-            let AsyncInstructionSimple {
-                steps: mut instruction_steps,
-                internal_dependency_names: mut instruction_internal_dependency_names,
-                is_internal_dependencies_of: instruction_is_internal_dependencies_of,
-            } = instruction.into_simple();
-            assert_eq!(instruction_steps.len(), 1);
-            let instruction_step = instruction_steps.remove(0).into_column();
-            let updated_instruction = match self.instructions.remove(combineable_with_index) {
-                AsyncInstruction::Simple(AsyncInstructionSimple {
-                    mut steps,
-                    mut internal_dependency_names,
-                    is_internal_dependencies_of,
-                }) => {
-                    assert_eq!(steps.len(), 1);
-                    let step = steps.remove(0).into_column();
-                    AsyncInstruction::RowMultipleColumnsEachOfWhichAreOnlyInternalDependency {
-                        step: AsyncStep::MultipleColumns(AsyncStepMultipleColumns {
-                            table_name: step.table_name,
-                            columns: smallvec![step.column, instruction_step.column],
-                            id_column_name: step.id_column_name,
-                            id: step.id,
-                        }),
-                        is_internal_dependencies_of: {
-                            let mut multi_map: HashMap<
-                                SmolStr,
-                                RowMultipleColumnsEachOfWhichAreOnlyInternalDependencyMulti,
-                            > = _d();
-                            multi_map
-                                .entry(internal_dependency_names.remove(0))
-                                .or_default()
-                                .push(is_internal_dependencies_of);
-                            multi_map
-                                .entry(instruction_internal_dependency_names.remove(0))
-                                .or_default()
-                                .push(instruction_is_internal_dependencies_of);
-                            multi_map
-                        },
-                    }
-                }
-                AsyncInstruction::RowMultipleColumnsEachOfWhichAreOnlyInternalDependency {
-                    step,
-                    mut is_internal_dependencies_of,
-                } => {
-                    let AsyncStepMultipleColumns {
-                        table_name,
-                        mut columns,
-                        id_column_name,
-                        id,
-                    } = step.into_multiple_columns();
-                    columns.push(instruction_step.column);
-                    is_internal_dependencies_of
-                        .entry(instruction_internal_dependency_names.remove(0))
-                        .or_default()
-                        .push(instruction_is_internal_dependencies_of);
-                    AsyncInstruction::RowMultipleColumnsEachOfWhichAreOnlyInternalDependency {
-                        step: AsyncStep::MultipleColumns(AsyncStepMultipleColumns {
-                            table_name,
-                            columns,
-                            id_column_name,
-                            id,
-                        }),
-                        is_internal_dependencies_of,
-                    }
-                }
-            };
-            self.instructions.push(updated_instruction);
-            return;
-        }
-        self.instructions.push(instruction);
-    }
-}
-
-impl<'a> Deref for AsyncInstructions<'a> {
-    type Target = AsyncInstructionsStore<'a>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.instructions
-    }
-}
-
-impl<'a> IntoIterator for AsyncInstructions<'a> {
-    type Item = <AsyncInstructionsStore<'a> as IntoIterator>::Item;
-    type IntoIter = <AsyncInstructionsStore<'a> as IntoIterator>::IntoIter;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.instructions.into_iter()
-    }
-}
-
-fn is_row_multiple_columns_each_of_which_are_only_internal_dependency_combineable(
-    instruction: &AsyncInstruction,
-    existing: &AsyncInstructionsStore,
-) -> Option<usize> {
-    let instruction = instruction.as_simple();
-    if instruction.steps.len() != 1 {
-        return None;
-    }
-    let AsyncStep::Column(column_step) = &instruction.steps[0] else {
-        return None;
-    };
-    existing
-        .into_iter()
-        .position(|existing_instruction| match existing_instruction {
-            AsyncInstruction::Simple(simple) => {
-                if simple.steps.len() != 1 {
-                    return false;
-                }
-                let AsyncStep::Column(existing_column_step) = &simple.steps[0] else {
-                    return false;
-                };
-                existing_column_step.table_name == column_step.table_name
-                    && existing_column_step.id_column_name == column_step.id_column_name
-                    && existing_column_step.id == column_step.id
-            }
-            AsyncInstruction::RowMultipleColumnsEachOfWhichAreOnlyInternalDependency {
-                step,
-                ..
-            } => {
-                let step = step.as_multiple_columns();
-                step.table_name == column_step.table_name
-                    && step.id_column_name == column_step.id_column_name
-                    && step.id == column_step.id
-            }
-        })
-}
-
-type DependencyNames = SmallVec<[SmolStr; 4]>;
-
-enum IsInternalDependenciesOf<'a> {
-    ObjectFieldScalar {
-        parent_object_index: IndexInProduced,
-        index_of_field_in_object: usize,
-        carver: &'a Box<dyn Carver>,
-        external_dependency_values: ExternalDependencyValues,
-        field_name: SmolStr,
-    },
-    ObjectFieldObject {
-        parent_object_index: IndexInProduced,
-        index_of_field_in_object: usize,
-        populator: &'a Populator,
-        external_dependency_values: ExternalDependencyValues,
-        field_name: SmolStr,
-        field_plan: &'a FieldPlan<'a>,
-    },
-    ObjectFieldListOfObjects {
-        parent_object_index: IndexInProduced,
-        index_of_field_in_object: usize,
-        populator: &'a PopulatorList,
-        external_dependency_values: ExternalDependencyValues,
-        field_name: SmolStr,
-        field_plan: &'a FieldPlan<'a>,
-    },
-    ObjectFieldUnionOrInterfaceObject {
-        parent_object_index: IndexInProduced,
-        index_of_field_in_object: usize,
-        type_populator: &'a Box<dyn UnionOrInterfaceTypePopulator>,
-        populator: &'a Populator,
-        external_dependency_values: ExternalDependencyValues,
-        field_name: SmolStr,
-        field_plan: &'a FieldPlan<'a>,
-    },
-    ObjectFieldListOfScalars {
-        parent_object_index: IndexInProduced,
-        index_of_field_in_object: usize,
-        carver: &'a Box<dyn CarverList>,
-        external_dependency_values: ExternalDependencyValues,
-        field_name: SmolStr,
-    },
-    ObjectFieldOptionalObject {
-        parent_object_index: IndexInProduced,
-        index_of_field_in_object: usize,
-        populator: &'a OptionalPopulator,
-        external_dependency_values: ExternalDependencyValues,
-        field_name: SmolStr,
-        field_plan: &'a FieldPlan<'a>,
-    },
-    ObjectFieldOptionalUnionOrInterfaceObject {
-        parent_object_index: IndexInProduced,
-        index_of_field_in_object: usize,
-        type_populator: &'a Box<dyn OptionalUnionOrInterfaceTypePopulator>,
-        populator: &'a Populator,
-        external_dependency_values: ExternalDependencyValues,
-        field_name: SmolStr,
-        field_plan: &'a FieldPlan<'a>,
-    },
-    ObjectFieldListOfUnionOrInterfaceObjects {
-        parent_object_index: IndexInProduced,
-        index_of_field_in_object: usize,
-        type_populator: &'a Box<dyn UnionOrInterfaceTypePopulatorList>,
-        populator: &'a PopulatorList,
-        external_dependency_values: ExternalDependencyValues,
-        field_name: SmolStr,
-        field_plan: &'a FieldPlan<'a>,
-    },
-}
 
 #[instrument(level = "trace", skip(schema, database, query_plan))]
 pub async fn produce_response(
@@ -411,6 +49,7 @@ pub async fn produce_response(
         &mut produced,
         &mut current_async_instructions,
         schema,
+        None,
     );
     loop {
         if current_async_instructions.is_empty() {
@@ -420,16 +59,18 @@ pub async fn produce_response(
         let responses = future::join_all(current_async_instructions.iter().flat_map(
             |async_instruction| {
                 match async_instruction {
-                    AsyncInstruction::Simple(async_instruction) => Either::Left(
-                        async_instruction
-                            .steps
-                            .iter()
-                            .map(|step| step.run(database)),
-                    ),
+                    AsyncInstruction::Simple(async_instruction) => async_instruction
+                        .steps
+                        .iter()
+                        .map(|step| step.run(database))
+                        .collect::<SmallVec<[_; 4]>>(),
                     AsyncInstruction::RowMultipleColumnsEachOfWhichAreOnlyInternalDependency {
                         step,
                         ..
-                    } => Either::Right([step.run(database)].into_iter()),
+                    } => smallvec![step.run(database)],
+                    AsyncInstruction::ListOfIdsAndFollowOnColumnGetters { step, .. } => {
+                        smallvec![step.run(database)]
+                    }
                 }
             },
         ))
@@ -483,6 +124,80 @@ pub async fn produce_response(
                         },
                     );
                 }
+                AsyncInstruction::ListOfIdsAndFollowOnColumnGetters {
+                    step: _,
+                    list_of_ids_is_internal_dependencies_of,
+                    list_of_ids_internal_dependency_name,
+                    id_column_name,
+                    follow_on_columns,
+                } => {
+                    let rows = responses
+                        .next()
+                        .unwrap()
+                        .into_list_of_dependency_value_map();
+                    let list_of_ids_internal_dependency_value = DependencyValue::List(
+                        rows.iter()
+                            .map(|row| row[&id_column_name].clone())
+                            .collect(),
+                    );
+                    let list_of_ids_is_internal_dependencies_of =
+                        list_of_ids_is_internal_dependencies_of.as_object_field_list_of_objects();
+                    let (items_external_dependency_values, parent_list_index) =
+                        populate_and_push_list(
+                            list_of_ids_is_internal_dependencies_of.populator,
+                            &list_of_ids_is_internal_dependencies_of.external_dependency_values,
+                            &[(list_of_ids_internal_dependency_name, list_of_ids_internal_dependency_value)]
+                                .into_iter()
+                                .collect(),
+                            list_of_ids_is_internal_dependencies_of.parent_object_index,
+                            list_of_ids_is_internal_dependencies_of.index_of_field_in_object,
+                            &list_of_ids_is_internal_dependencies_of.field_name,
+                            &mut produced,
+                        );
+                    let type_name = list_of_ids_is_internal_dependencies_of
+                        .field_plan
+                        .field_type
+                        .type_
+                        .name();
+                    let selection_set = &list_of_ids_is_internal_dependencies_of
+                        .field_plan
+                        .selection_set_by_type
+                        .as_ref()
+                        .unwrap()[type_name];
+                    items_external_dependency_values
+                        .into_iter()
+                        .zip(rows)
+                        .enumerate()
+                        .for_each(|(index_in_list, (external_dependency_values, mut row))| {
+                            produced.push(Produced::ListItemNewObject {
+                                parent_list_index,
+                                index_in_list,
+                            });
+                            let parent_object_index = produced.len() - 1;
+
+                            let already_resolved_internal_dependency_values = follow_on_columns
+                                .iter()
+                                .map(|column_name| {
+                                    (
+                                        column_name.clone(),
+                                        [(column_name.clone(), row.remove(column_name).unwrap())]
+                                            .into_iter()
+                                            .collect(),
+                                    )
+                                })
+                                .collect();
+
+                            make_progress_selection_set(
+                                selection_set,
+                                parent_object_index,
+                                external_dependency_values,
+                                &mut produced,
+                                &mut next_async_instructions,
+                                schema,
+                                Some(already_resolved_internal_dependency_values),
+                            );
+                        });
+                }
             },
         );
 
@@ -510,14 +225,16 @@ fn do_simple_async_instruction_follow<'a: 'b, 'b>(
     schema: &Schema,
 ) {
     match is_internal_dependencies_of {
-        IsInternalDependenciesOf::ObjectFieldListOfObjects {
-            parent_object_index,
-            index_of_field_in_object,
-            populator,
-            external_dependency_values,
-            field_name,
-            field_plan,
-        } => {
+        IsInternalDependenciesOf::ObjectFieldListOfObjects(
+            IsInternalDependenciesOfObjectFieldListOfObjects {
+                parent_object_index,
+                index_of_field_in_object,
+                populator,
+                external_dependency_values,
+                field_name,
+                field_plan,
+            },
+        ) => {
             populate_list(
                 &external_dependency_values,
                 &internal_dependency_values,
@@ -684,6 +401,7 @@ fn do_simple_async_instruction_follow<'a: 'b, 'b>(
         produced,
         current_async_instructions,
         schema,
+        already_resolved_internal_dependency_values,
     )
 )]
 fn make_progress_selection_set<'a: 'b, 'b>(
@@ -693,10 +411,19 @@ fn make_progress_selection_set<'a: 'b, 'b>(
     produced: &mut Vec<Produced>,
     current_async_instructions: &'b mut AsyncInstructions<'a>,
     schema: &Schema,
+    mut already_resolved_internal_dependency_values: Option<
+        HashMap<SmolStr, InternalDependencyValues>,
+    >,
 ) {
     field_plans.into_iter().enumerate().for_each(
         |(index_of_field_in_object, (field_name, field_plan))| {
-            let can_resolve_all_internal_dependencies_synchronously = field_plan
+            let already_resolved_internal_dependency_values_this_field =
+                already_resolved_internal_dependency_values.as_mut().and_then(|already_resolved_internal_dependency_values| {
+                    already_resolved_internal_dependency_values.remove(field_name)
+                });
+            let can_resolve_all_internal_dependencies_synchronously =
+                already_resolved_internal_dependency_values_this_field.is_some() ||
+                field_plan
                 .field_type
                 .resolver
                 .internal_dependencies
@@ -706,23 +433,26 @@ fn make_progress_selection_set<'a: 'b, 'b>(
                 });
             match can_resolve_all_internal_dependencies_synchronously {
                 true => {
-                    let internal_dependency_values: InternalDependencyValues = field_plan
-                        .field_type
-                        .resolver
-                        .internal_dependencies
-                        .iter()
-                        .map(|internal_dependency| {
-                            (
-                                internal_dependency.name.clone(),
-                                get_internal_dependency_value_synchronous(
-                                    field_plan.arguments.as_ref(),
-                                    &external_dependency_values,
-                                    internal_dependency,
-                                    schema,
-                                ),
-                            )
-                        })
-                        .collect();
+                    let internal_dependency_values =
+                        already_resolved_internal_dependency_values_this_field.unwrap_or_else(|| {
+                            field_plan
+                            .field_type
+                            .resolver
+                            .internal_dependencies
+                            .iter()
+                            .map(|internal_dependency| {
+                                (
+                                    internal_dependency.name.clone(),
+                                    get_internal_dependency_value_synchronous(
+                                        field_plan.arguments.as_ref(),
+                                        &external_dependency_values,
+                                        internal_dependency,
+                                        schema,
+                                    ),
+                                )
+                            })
+                            .collect()
+                        });
                     match &field_plan.field_type.resolver.carver_or_populator {
                         CarverOrPopulator::Carver(carver) => {
                             produced.push(Produced::FieldScalar {
@@ -879,20 +609,52 @@ fn make_progress_selection_set<'a: 'b, 'b>(
                             }));
                         }
                         CarverOrPopulator::PopulatorList(populator) => {
-                            let (steps, internal_dependency_names) = extract_dependency_steps(field_plan, &external_dependency_values);
+                            let (mut steps, internal_dependency_names) = extract_dependency_steps(field_plan, &external_dependency_values);
+                            let is_internal_dependencies_of = IsInternalDependenciesOf::ObjectFieldListOfObjects(IsInternalDependenciesOfObjectFieldListOfObjects {
+                                parent_object_index,
+                                populator,
+                                external_dependency_values: external_dependency_values
+                                    .clone(),
+                                index_of_field_in_object,
+                                field_name: field_name.clone(),
+                                field_plan,
+                            });
+                            'special: {
+                                if steps.len() == 1
+                                    && matches!(&steps[0], AsyncStep::ListOfColumn(_)) 
+                                    && schema.maybe_type(field_plan.field_type.type_.name()).is_some()
+                                {
+                                    let step = steps[0].as_list_of_column();
+                                    let other_columns = get_follow_on_columns(
+                                        &field_plan.selection_set_by_type.as_ref().unwrap()[field_plan.field_type.type_.name()],
+                                        &step.column.name,
+                                        &step.table_name,
+                                    );
+                                    if other_columns.is_empty() {
+                                        break 'special;
+                                    }
+                                    let step = steps.remove(0).into_list_of_column();
+                                    current_async_instructions.push(AsyncInstruction::ListOfIdsAndFollowOnColumnGetters {
+                                        list_of_ids_is_internal_dependencies_of: is_internal_dependencies_of,
+                                        list_of_ids_internal_dependency_name: internal_dependency_names.tap(|internal_dependency_names| {
+                                            assert_eq!(internal_dependency_names.len(), 1);
+                                        }).remove(0),
+                                        id_column_name: step.column.name.clone(),
+                                        follow_on_columns: other_columns.iter().map(|column_spec| column_spec.name.clone()).collect(),
+                                        step: AsyncStep::ListOfIdAndFollowOnColumns {
+                                            table_name: step.table_name,
+                                            id_column: step.column,
+                                            wheres: step.wheres,
+                                            other_columns,
+                                        },
+                                    });
+                                    return;
+                                }
+                            }
                             current_async_instructions.push(AsyncInstruction::Simple(AsyncInstructionSimple {
                                 steps,
                                 internal_dependency_names,
-                                is_internal_dependencies_of:
-                                    IsInternalDependenciesOf::ObjectFieldListOfObjects {
-                                        parent_object_index,
-                                        populator,
-                                        external_dependency_values: external_dependency_values
-                                            .clone(),
-                                        index_of_field_in_object,
-                                        field_name: field_name.clone(),
-                                        field_plan,
-                                    },
+                                is_internal_dependencies_of,
                             }));
                         }
                         CarverOrPopulator::CarverList(carver) => {
@@ -936,6 +698,30 @@ fn make_progress_selection_set<'a: 'b, 'b>(
             }
         },
     );
+}
+
+fn get_follow_on_columns(
+    selection_set: &IndexMap<SmolStr, FieldPlan<'_>>,
+    id_column_name: &str,
+    table_name: &str,
+) -> ColumnSpecs {
+    selection_set.values().filter_map(|field_plan| {
+        let internal_dependency = &field_plan
+            .field_type
+            .resolver
+            .internal_dependencies
+            .when_ref(|internal_dependencies| internal_dependencies.len() == 1)?
+            [0];
+        let column_getter = internal_dependency.resolver.maybe_as_column_getter()?;
+        if column_getter.id_column_name != id_column_name ||
+            column_getter.table_name != table_name {
+            return None;
+        }
+        Some(ColumnSpec {
+            name: column_getter.column_name.clone(),
+            dependency_type: internal_dependency.type_,
+        })
+    }).collect()
 }
 
 fn extract_dependency_steps(
@@ -995,7 +781,7 @@ fn column_getter_list_step(
     internal_dependency: &InternalDependency,
     external_dependency_values: &ExternalDependencyValues,
 ) -> AsyncStep {
-    AsyncStep::ListOfColumn {
+    AsyncStep::ListOfColumn(AsyncStepListOfColumn {
         table_name: column_getter_list.table_name.clone(),
         column: ColumnSpec {
             name: column_getter_list.column_name.clone(),
@@ -1013,7 +799,7 @@ fn column_getter_list_step(
                 )
             })
             .collect::<WheresResolved>(),
-    }
+    })
 }
 
 #[instrument(
@@ -1129,13 +915,15 @@ fn populate_concrete_or_union_or_interface_list<'a: 'b, 'b>(
     current_async_instructions: &'b mut AsyncInstructions<'a>,
     schema: &Schema,
 ) {
-    let populated = populator.populate(external_dependency_values, &internal_dependency_values);
-    produced.push(Produced::FieldNewListOfObjects {
+    let (populated, parent_list_index) = populate_and_push_list(
+        populator,
+        external_dependency_values,
+        internal_dependency_values,
         parent_object_index,
         index_of_field_in_object,
-        field_name: field_name.clone(),
-    });
-    let parent_list_index = produced.len() - 1;
+        field_name,
+        produced,
+    );
 
     let selection_set_by_type = field_plan.selection_set_by_type.as_ref().unwrap();
     enum SingleOrIterator<'a, TIterator: Iterator<Item = &'a IndexMap<SmolStr, FieldPlan<'a>>>> {
@@ -1172,8 +960,36 @@ fn populate_concrete_or_union_or_interface_list<'a: 'b, 'b>(
                 produced,
                 current_async_instructions,
                 schema,
+                None,
             );
         });
+}
+
+#[instrument(
+    level = "trace",
+    skip(
+        populator,
+        external_dependency_values,
+        internal_dependency_values,
+        produced,
+    )
+)]
+fn populate_and_push_list(
+    populator: &PopulatorList,
+    external_dependency_values: &ExternalDependencyValues,
+    internal_dependency_values: &InternalDependencyValues,
+    parent_object_index: IndexInProduced,
+    index_of_field_in_object: usize,
+    field_name: &SmolStr,
+    produced: &mut Vec<Produced>,
+) -> (Vec<ExternalDependencyValues>, IndexInProduced) {
+    let populated = populator.populate(external_dependency_values, &internal_dependency_values);
+    produced.push(Produced::FieldNewListOfObjects {
+        parent_object_index,
+        index_of_field_in_object,
+        field_name: field_name.clone(),
+    });
+    (populated, produced.len() - 1)
 }
 
 #[instrument(
@@ -1326,6 +1142,7 @@ fn post_populate_concrete_or_union_or_interface_object<'a: 'b, 'b>(
         produced,
         current_async_instructions,
         schema,
+        None,
     );
 }
 
@@ -1555,276 +1372,4 @@ fn get_internal_dependency_value_synchronous(
         }
         _ => unreachable!(),
     }
-}
-
-enum Produced {
-    NewRootObject,
-    FieldNewObject {
-        parent_object_index: IndexInProduced,
-        index_of_field_in_object: usize,
-        field_name: SmolStr,
-    },
-    FieldNewListOfObjects {
-        parent_object_index: IndexInProduced,
-        index_of_field_in_object: usize,
-        field_name: SmolStr,
-    },
-    FieldNewListOfScalars {
-        parent_object_index: IndexInProduced,
-        index_of_field_in_object: usize,
-        field_name: SmolStr,
-    },
-    ListItemNewObject {
-        parent_list_index: IndexInProduced,
-        index_in_list: usize,
-    },
-    FieldScalar {
-        parent_object_index: IndexInProduced,
-        index_of_field_in_object: usize,
-        field_name: SmolStr,
-        value: ResponseValue,
-    },
-    ListItemScalar {
-        parent_list_index: IndexInProduced,
-        index_in_list: usize,
-        value: ResponseValue,
-    },
-    FieldNewNull {
-        parent_object_index: IndexInProduced,
-        index_of_field_in_object: usize,
-        field_name: SmolStr,
-    },
-}
-
-struct ObjectFieldStuff {
-    pub field_name: SmolStr,
-    pub value_stub: FieldValueStub,
-    pub index_of_field_in_object: usize,
-}
-
-enum FieldValueStub {
-    Value(ResponseValue),
-    ObjectIndexInProduced(IndexInProduced),
-    ListIndexInProduced(IndexInProduced),
-}
-
-struct ListOfObjectsItemStuff {
-    pub index_in_list: usize,
-    pub object_index_in_produced: IndexInProduced,
-}
-
-struct ListOfScalarsItemStuff {
-    pub index_in_list: usize,
-    pub value: ResponseValue,
-}
-
-impl From<Vec<Produced>> for ResponseValue {
-    fn from(produced: Vec<Produced>) -> Self {
-        let mut objects_by_index: HashMap<IndexInProduced, Vec<ObjectFieldStuff>> = _d();
-        let mut lists_of_objects_by_index: HashMap<IndexInProduced, Vec<ListOfObjectsItemStuff>> =
-            _d();
-        let mut lists_of_scalars_by_index: HashMap<IndexInProduced, Vec<ListOfScalarsItemStuff>> =
-            _d();
-
-        for (index, step) in produced.into_iter().enumerate() {
-            match step {
-                Produced::NewRootObject => {
-                    assert_eq!(index, 0);
-
-                    objects_by_index.insert(index, _d());
-                }
-                Produced::FieldNewObject {
-                    parent_object_index,
-                    index_of_field_in_object,
-                    field_name,
-                } => {
-                    objects_by_index.insert(index, _d());
-
-                    objects_by_index
-                        .get_mut(&parent_object_index)
-                        .unwrap()
-                        .push(ObjectFieldStuff {
-                            field_name,
-                            index_of_field_in_object,
-                            value_stub: FieldValueStub::ObjectIndexInProduced(index),
-                        });
-                }
-                Produced::FieldNewListOfObjects {
-                    parent_object_index,
-                    index_of_field_in_object,
-                    field_name,
-                } => {
-                    lists_of_objects_by_index.insert(index, _d());
-
-                    objects_by_index
-                        .get_mut(&parent_object_index)
-                        .unwrap()
-                        .push(ObjectFieldStuff {
-                            field_name,
-                            index_of_field_in_object,
-                            value_stub: FieldValueStub::ListIndexInProduced(index),
-                        });
-                }
-                Produced::FieldNewListOfScalars {
-                    parent_object_index,
-                    index_of_field_in_object,
-                    field_name,
-                } => {
-                    lists_of_scalars_by_index.insert(index, _d());
-
-                    objects_by_index
-                        .get_mut(&parent_object_index)
-                        .unwrap()
-                        .push(ObjectFieldStuff {
-                            field_name,
-                            index_of_field_in_object,
-                            value_stub: FieldValueStub::ListIndexInProduced(index),
-                        });
-                }
-                Produced::ListItemNewObject {
-                    parent_list_index,
-                    index_in_list,
-                } => {
-                    objects_by_index.insert(index, _d());
-
-                    lists_of_objects_by_index
-                        .get_mut(&parent_list_index)
-                        .unwrap()
-                        .push(ListOfObjectsItemStuff {
-                            index_in_list,
-                            object_index_in_produced: index,
-                        });
-                }
-                Produced::ListItemScalar {
-                    parent_list_index,
-                    index_in_list,
-                    value,
-                } => {
-                    lists_of_scalars_by_index
-                        .get_mut(&parent_list_index)
-                        .unwrap()
-                        .push(ListOfScalarsItemStuff {
-                            index_in_list,
-                            value,
-                        });
-                }
-                Produced::FieldScalar {
-                    parent_object_index,
-                    index_of_field_in_object,
-                    field_name,
-                    value,
-                } => {
-                    objects_by_index
-                        .get_mut(&parent_object_index)
-                        .unwrap()
-                        .push(ObjectFieldStuff {
-                            field_name,
-                            index_of_field_in_object,
-                            value_stub: FieldValueStub::Value(value),
-                        });
-                }
-                Produced::FieldNewNull {
-                    parent_object_index,
-                    index_of_field_in_object,
-                    field_name,
-                } => {
-                    objects_by_index
-                        .get_mut(&parent_object_index)
-                        .unwrap()
-                        .push(ObjectFieldStuff {
-                            field_name,
-                            index_of_field_in_object,
-                            value_stub: FieldValueStub::Value(ResponseValue::Null),
-                        });
-                }
-            }
-        }
-
-        ResponseValue::Map(construct_object(
-            0,
-            &mut objects_by_index,
-            &mut lists_of_objects_by_index,
-            &mut lists_of_scalars_by_index,
-        ))
-    }
-}
-
-#[instrument(
-    level = "trace",
-    skip(objects_by_index, lists_of_objects_by_index, lists_of_scalars_by_index)
-)]
-fn construct_object(
-    object_index: usize,
-    objects_by_index: &mut HashMap<IndexInProduced, Vec<ObjectFieldStuff>>,
-    lists_of_objects_by_index: &mut HashMap<IndexInProduced, Vec<ListOfObjectsItemStuff>>,
-    lists_of_scalars_by_index: &mut HashMap<IndexInProduced, Vec<ListOfScalarsItemStuff>>,
-) -> IndexMap<SmolStr, ResponseValue> {
-    let mut fields = objects_by_index.remove(&object_index).unwrap();
-    // TODO: simultaneously check that we have consecutive expected
-    // index_of_field_in_object's?
-    fields.sort_by_key(|field| field.index_of_field_in_object);
-    fields
-        .into_iter()
-        .map(|object_field_stuff| {
-            (
-                object_field_stuff.field_name,
-                match object_field_stuff.value_stub {
-                    FieldValueStub::Value(value) => value,
-                    FieldValueStub::ObjectIndexInProduced(index_in_produced) => {
-                        ResponseValue::Map(construct_object(
-                            index_in_produced,
-                            objects_by_index,
-                            lists_of_objects_by_index,
-                            lists_of_scalars_by_index,
-                        ))
-                    }
-                    FieldValueStub::ListIndexInProduced(index_in_produced) => {
-                        ResponseValue::List(
-                            match lists_of_objects_by_index.contains_key(&index_in_produced) {
-                                true => {
-                                    let mut items = lists_of_objects_by_index
-                                        .remove(&index_in_produced)
-                                        .unwrap();
-                                    // TODO: like above also here simultaneously check
-                                    // that we have consecutive expected
-                                    // index_of_field_in_object's?
-                                    items.sort_by_key(|list_of_objects_item_stuff| {
-                                        list_of_objects_item_stuff.index_in_list
-                                    });
-                                    items
-                                        .into_iter()
-                                        .map(|list_of_objects_item_stuff| {
-                                            ResponseValue::Map(construct_object(
-                                                list_of_objects_item_stuff.object_index_in_produced,
-                                                objects_by_index,
-                                                lists_of_objects_by_index,
-                                                lists_of_scalars_by_index,
-                                            ))
-                                        })
-                                        .collect()
-                                }
-                                false => {
-                                    let mut items = lists_of_scalars_by_index
-                                        .remove(&index_in_produced)
-                                        .unwrap();
-                                    // TODO: like above also here simultaneously check
-                                    // that we have consecutive expected
-                                    // index_of_field_in_object's?
-                                    items.sort_by_key(|list_of_scalars_item_stuff| {
-                                        list_of_scalars_item_stuff.index_in_list
-                                    });
-                                    items
-                                        .into_iter()
-                                        .map(|list_of_scalars_item_stuff| {
-                                            list_of_scalars_item_stuff.value
-                                        })
-                                        .collect()
-                                }
-                            },
-                        )
-                    }
-                },
-            )
-        })
-        .collect()
 }
