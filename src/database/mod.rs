@@ -3,8 +3,11 @@ use std::collections::HashMap;
 use async_trait::async_trait;
 use chrono::NaiveDate;
 use smol_str::SmolStr;
-use sqlx::{postgres::PgValueRef, Decode, Pool, Postgres, QueryBuilder, Row};
-use squalid::_d;
+use sqlx::{
+    postgres::{PgRow, PgValueRef},
+    Decode, Pool, Postgres, QueryBuilder, Row,
+};
+use squalid::{EverythingExt, _d};
 use tracing::{instrument, trace_span, Instrument};
 
 use crate::{
@@ -282,12 +285,50 @@ impl PostgresDatabase {
         query_builder.push(id_column_name);
         query_builder.push(" = ");
         query_builder.push_bind(id.as_int());
-        let row = query_builder
+        query_builder
             .build()
             .fetch_one(&self.pool)
             .instrument(trace_span!("fetch columns"))
             .await
-            .unwrap();
+            .unwrap()
+            .thrush(|row| self.row_to_hash_map(&row, columns, table_name))
+    }
+
+    pub async fn get_columns_list(
+        &self,
+        table_name: &str,
+        columns: &[ColumnSpec],
+        wheres: &[WhereResolved],
+    ) -> Vec<HashMap<SmolStr, DependencyValue>> {
+        let mut query_builder = QueryBuilder::default();
+        query_builder.push("SELECT ");
+        columns.into_iter().enumerate().for_each(|(index, column)| {
+            query_builder.push(&column.name);
+            if index != columns.len() - 1 {
+                query_builder.push(", ");
+            }
+        });
+        query_builder.push(" FROM ");
+        query_builder.push(table_name);
+        add_wheres(&mut query_builder, wheres);
+
+        query_builder
+            .build()
+            .fetch_all(&self.pool)
+            .instrument(trace_span!("fetch columns list"))
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|row| self.row_to_hash_map(&row, columns, table_name))
+            .collect()
+    }
+
+    fn row_to_hash_map(
+        &self,
+        row: &PgRow,
+        columns: &[ColumnSpec],
+        table_name: &str,
+    ) -> HashMap<SmolStr, DependencyValue> {
         columns
             .into_iter()
             .map(|column| {
@@ -305,45 +346,6 @@ impl PostgresDatabase {
             })
             .collect()
     }
-
-    // pub async fn get_columns_list(
-    //     &self,
-    //     table_name: &str,
-    //     columns: &[ColumnSpec],
-    //     wheres: &[WhereResolved],
-    // ) -> Vec<HashMap<SmolStr, DependencyValue>> {
-    //     let mut query_builder = QueryBuilder::default();
-    //     query_builder.push("SELECT ");
-    //     columns.into_iter().enumerate().for_each(|(index, column)| {
-    //         query_builder.push(&column.name);
-    //         if index != columns.len() - 1 {
-    //             query_builder.push(", ");
-    //         }
-    //     });
-    //     query_builder.push(" FROM ");
-    //     query_builder.push(table_name);
-    //     query_builder.push(" WHERE ");
-    //     query_builder.push(id_column_name);
-    //     query_builder.push(" = ");
-    //     query_builder.push_bind(id.as_int());
-    //     let row = query_builder.build().fetch_one(&self.pool).instrument(trace_span!("fetch columns list")).await.unwrap();
-    //     columns
-    //         .into_iter()
-    //         .map(|column| {
-    //             let column_value = row.try_get_raw(&*column.name).unwrap();
-    //             (
-    //                 column.name.clone(),
-    //                 self.to_dependency_value(
-    //                     column_value,
-    //                     column.dependency_type,
-    //                     self.massagers
-    //                         .get(table_name)
-    //                         .and_then(|table| table.get(&column.name)),
-    //                 ),
-    //             )
-    //         })
-    //         .collect()
-    // }
 }
 
 #[async_trait]
@@ -395,22 +397,7 @@ impl DatabaseInterface for PostgresDatabase {
         query_builder.push(column_name);
         query_builder.push(" FROM ");
         query_builder.push(table_name);
-        if !wheres.is_empty() {
-            query_builder.push(" WHERE ");
-            wheres.iter().for_each(|where_| {
-                query_builder.push(&where_.column_name);
-                query_builder.push(" = ");
-                match &where_.value {
-                    DependencyValue::Id(id) => {
-                        query_builder.push_bind(id.as_int());
-                    }
-                    DependencyValue::String(str) => {
-                        query_builder.push_bind(SmolStrSqlx(str.clone()));
-                    }
-                    _ => unimplemented!(),
-                }
-            });
-        }
+        add_wheres(&mut query_builder, wheres);
         let rows = query_builder
             .build()
             .fetch_all(&self.pool)
@@ -471,6 +458,25 @@ impl PostgresColumnMassager {
             column_name,
             massager,
         }
+    }
+}
+
+fn add_wheres(query_builder: &mut QueryBuilder<Postgres>, wheres: &[WhereResolved]) {
+    if !wheres.is_empty() {
+        query_builder.push(" WHERE ");
+        wheres.iter().for_each(|where_| {
+            query_builder.push(&where_.column_name);
+            query_builder.push(" = ");
+            match &where_.value {
+                DependencyValue::Id(id) => {
+                    query_builder.push_bind(id.as_int());
+                }
+                DependencyValue::String(str) => {
+                    query_builder.push_bind(SmolStrSqlx(str.clone()));
+                }
+                _ => unimplemented!(),
+            }
+        });
     }
 }
 
