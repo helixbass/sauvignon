@@ -161,7 +161,7 @@ impl AsyncStepResponse {
 
     pub fn into_list_of_dependency_value_map(self) -> Vec<HashMap<SmolStr, DependencyValue>> {
         match self {
-            Self::VecOfDependencyValueMap(map) => map,
+            Self::ListOfDependencyValueMap(map) => map,
             _ => panic!("expected vec of dependency value map"),
         }
     }
@@ -288,6 +288,7 @@ impl<'a> AsyncInstructions<'a> {
                         is_internal_dependencies_of,
                     }
                 }
+                AsyncInstruction::ListOfIdsAndFollowOnColumnGetters { .. } => unreachable!(),
             };
             self.instructions.push(updated_instruction);
             return;

@@ -612,7 +612,7 @@ fn make_progress_selection_set<'a: 'b, 'b>(
                                 steps,
                                 internal_dependency_names,
                                 is_internal_dependencies_of:
-                                    IsInternalDependenciesOf::ObjectFieldListOfObjects {
+                                    IsInternalDependenciesOf::ObjectFieldListOfObjects(IsInternalDependenciesOfObjectFieldListOfObjects {
                                         parent_object_index,
                                         populator,
                                         external_dependency_values: external_dependency_values
@@ -620,7 +620,7 @@ fn make_progress_selection_set<'a: 'b, 'b>(
                                         index_of_field_in_object,
                                         field_name: field_name.clone(),
                                         field_plan,
-                                    },
+                                    }),
                             }));
                         }
                         CarverOrPopulator::CarverList(carver) => {
@@ -905,10 +905,6 @@ fn populate_concrete_or_union_or_interface_list<'a: 'b, 'b>(
                 None,
             );
         });
-}
-
-fn list_follow_on() {
-    unimplemented!()
 }
 
 #[instrument(
