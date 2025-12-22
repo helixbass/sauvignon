@@ -328,7 +328,7 @@ impl ToTokens for FieldProcessed {
                             vec![::sauvignon::ExternalDependency::new("id".into(), ::sauvignon::DependencyType::Id)],
                             vec![::sauvignon::InternalDependency::new(
                                 #self_column_name.into(),
-                                ::sauvignon::DependencyType::OptionalInt,
+                                ::sauvignon::DependencyType::Optional(::std::boxed::Box::new(::sauvignon::DependencyType::Int)),
                                 ::sauvignon::InternalDependencyResolver::ColumnGetter(::sauvignon::ColumnGetter::new(
                                     #table_name.into(),
                                     #self_column_name.into(),
@@ -354,7 +354,7 @@ impl ToTokens for FieldProcessed {
                             vec![::sauvignon::ExternalDependency::new("id".into(), ::sauvignon::DependencyType::Id)],
                             vec![::sauvignon::InternalDependency::new(
                                 #self_column_name.into(),
-                                ::sauvignon::DependencyType::OptionalFloat,
+                                ::sauvignon::DependencyType::Optional(::std::boxed::Box::new(::sauvignon::DependencyType::Float)),
                                 ::sauvignon::InternalDependencyResolver::ColumnGetter(::sauvignon::ColumnGetter::new(
                                     #table_name.into(),
                                     #self_column_name.into(),
@@ -381,7 +381,7 @@ impl ToTokens for FieldProcessed {
                             vec![::sauvignon::ExternalDependency::new("id".into(), ::sauvignon::DependencyType::Id)],
                             vec![::sauvignon::InternalDependency::new(
                                 #self_column_name.into(),
-                                ::sauvignon::DependencyType::OptionalString,
+                                ::sauvignon::DependencyType::Optional(::std::boxed::Box::new(::sauvignon::DependencyType::String)),
                                 ::sauvignon::InternalDependencyResolver::ColumnGetter(::sauvignon::ColumnGetter::new(
                                     #table_name.into(),
                                     #self_column_name.into(),
@@ -485,7 +485,7 @@ impl ToTokens for FieldProcessed {
                             vec![::sauvignon::ExternalDependency::new("id".into(), ::sauvignon::DependencyType::Id)],
                             vec![::sauvignon::InternalDependency::new(
                                 #self_column_name.into(),
-                                ::sauvignon::DependencyType::OptionalString,
+                                ::sauvignon::DependencyType::Optional(::std::boxed::Box::new(::sauvignon::DependencyType::String)),
                                 ::sauvignon::InternalDependencyResolver::ColumnGetter(::sauvignon::ColumnGetter::new(
                                     #table_name.into(),
                                     #self_column_name.into(),
@@ -671,7 +671,7 @@ impl ToTokens for FieldProcessed {
                                         vec![::sauvignon::ExternalDependency::new("id".into(), ::sauvignon::DependencyType::Id)],
                                         vec![::sauvignon::InternalDependency::new(
                                             #self_belongs_to_foreign_key_column_name.into(),
-                                            ::sauvignon::DependencyType::OptionalId,
+                                            ::sauvignon::DependencyType::Optional(::std::boxed::Box::new(::sauvignon::DependencyType::Id)),
                                             ::sauvignon::InternalDependencyResolver::ColumnGetter(::sauvignon::ColumnGetter::new(
                                                 #self_table_name.into(),
                                                 #self_belongs_to_foreign_key_column_name.into(),
@@ -752,7 +752,7 @@ impl ToTokens for FieldProcessed {
                                     vec![::sauvignon::ExternalDependency::new("id".into(), ::sauvignon::DependencyType::Id)],
                                     vec![::sauvignon::InternalDependency::new(
                                         "ids".into(),
-                                        ::sauvignon::DependencyType::ListOfIds,
+                                        ::sauvignon::DependencyType::List(::std::boxed::Box::new(::sauvignon::DependencyType::Id)),
                                         ::sauvignon::InternalDependencyResolver::ColumnGetterList(::sauvignon::ColumnGetterList::new(
                                             #foreign_key_table_name.into(),
                                             "id".into(),
@@ -779,7 +779,7 @@ impl ToTokens for FieldProcessed {
                                             vec![::sauvignon::ExternalDependency::new("id".into(), ::sauvignon::DependencyType::Id)],
                                             vec![::sauvignon::InternalDependency::new(
                                                 #internal_dependency_name.into(),
-                                                ::sauvignon::DependencyType::ListOfStrings,
+                                                ::sauvignon::DependencyType::List(::std::boxed::Box::new(::sauvignon::DependencyType::String)),
                                                 ::sauvignon::InternalDependencyResolver::ColumnGetterList(::sauvignon::ColumnGetterList::new(
                                                     #through.into(),
                                                     #through_other_column_name.into(),
@@ -801,7 +801,7 @@ impl ToTokens for FieldProcessed {
                                             vec![::sauvignon::ExternalDependency::new("id".into(), ::sauvignon::DependencyType::Id)],
                                             vec![::sauvignon::InternalDependency::new(
                                                 "ids".into(),
-                                                ::sauvignon::DependencyType::ListOfIds,
+                                                ::sauvignon::DependencyType::List(::std::boxed::Box::new(::sauvignon::DependencyType::Id)),
                                                 ::sauvignon::InternalDependencyResolver::ColumnGetterList(::sauvignon::ColumnGetterList::new(
                                                     #through.into(),
                                                     #through_other_column_name.into(),
@@ -1464,10 +1464,10 @@ impl ToTokens for InternalDependencyProcessed {
                 #dependency_type
             },
             InternalDependencyTypeProcessed::IdColumnList { .. } => quote! {
-                ::sauvignon::DependencyType::ListOfIds
+                ::sauvignon::DependencyType::List(::std::boxed::Box::new(::sauvignon::DependencyType::Id))
             },
             InternalDependencyTypeProcessed::OptionalIntColumn { .. } => quote! {
-                ::sauvignon::DependencyType::OptionalInt
+                ::sauvignon::DependencyType::Optional(::std::boxed::Box::new(::sauvignon::DependencyType::Int))
             },
         };
         let resolver = match &self.type_ {

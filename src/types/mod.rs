@@ -370,7 +370,7 @@ pub fn introspection_type_type() -> Type {
                         )],
                         vec![InternalDependency::new(
                             "names".into(),
-                            DependencyType::ListOfStrings,
+                            DependencyType::List(Box::new(DependencyType::String)),
                             InternalDependencyResolver::IntrospectionTypeInterfaces,
                         )],
                         CarverOrPopulator::PopulatorList(
@@ -389,7 +389,7 @@ pub fn introspection_type_type() -> Type {
                         )],
                         vec![InternalDependency::new(
                             "names".into(),
-                            DependencyType::ListOfStrings,
+                            DependencyType::List(Box::new(DependencyType::String)),
                             InternalDependencyResolver::IntrospectionTypePossibleTypes,
                         )],
                         CarverOrPopulator::PopulatorList(

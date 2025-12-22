@@ -213,28 +213,36 @@ impl PostgresDatabase {
                     DependencyValue::String(massager.as_string().massage(column_value).unwrap())
                 }
             },
-            DependencyType::OptionalInt => {
+            DependencyType::Optional(dependency_type)
+                if matches!(&**dependency_type, DependencyType::Int) =>
+            {
                 assert!(massager.is_none());
                 DependencyValue::OptionalInt(
                     <Option<i32> as Decode<Postgres>>::decode(column_value).unwrap(),
                 )
             }
-            DependencyType::OptionalFloat => {
+            DependencyType::Optional(dependency_type)
+                if matches!(&**dependency_type, DependencyType::Float) =>
+            {
                 assert!(massager.is_none());
                 DependencyValue::OptionalFloat(
                     <Option<f64> as Decode<Postgres>>::decode(column_value).unwrap(),
                 )
             }
-            DependencyType::OptionalString => match massager {
-                None => DependencyValue::OptionalString(
-                    <Option<SmolStrSqlx> as Decode<Postgres>>::decode(column_value)
-                        .unwrap()
-                        .map(|column_value| column_value.0),
-                ),
-                Some(massager) => DependencyValue::OptionalString(
-                    massager.as_optional_string().massage(column_value).unwrap(),
-                ),
-            },
+            DependencyType::Optional(dependency_type)
+                if matches!(&**dependency_type, DependencyType::String) =>
+            {
+                match massager {
+                    None => DependencyValue::OptionalString(
+                        <Option<SmolStrSqlx> as Decode<Postgres>>::decode(column_value)
+                            .unwrap()
+                            .map(|column_value| column_value.0),
+                    ),
+                    Some(massager) => DependencyValue::OptionalString(
+                        massager.as_optional_string().massage(column_value).unwrap(),
+                    ),
+                }
+            }
             DependencyType::Timestamp => {
                 assert!(massager.is_none());
                 DependencyValue::Timestamp(
@@ -243,7 +251,9 @@ impl PostgresDatabase {
                         .to_jiff(),
                 )
             }
-            DependencyType::OptionalId => {
+            DependencyType::Optional(dependency_type)
+                if matches!(&**dependency_type, DependencyType::Id) =>
+            {
                 assert!(massager.is_none());
                 DependencyValue::OptionalId(
                     <Option<i32> as Decode<Postgres>>::decode(column_value)
