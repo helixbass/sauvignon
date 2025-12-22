@@ -215,10 +215,10 @@ async fn compute_response(
     request: &Request,
     database: (&Database, bool),
 ) -> ResponseValue {
+    let query_plan = QueryPlan::new(&request, schema, database.0.column_tokens());
     if database.1 {
-        return compute_sync_response(schema, request, database.0);
+        return compute_sync_response(schema, database.0, &query_plan);
     }
-    let query_plan = QueryPlan::new(&request, schema);
     produce_response(schema, database.0, &query_plan).await
 }
 

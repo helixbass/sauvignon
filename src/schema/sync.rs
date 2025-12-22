@@ -7,8 +7,8 @@ use tracing::instrument;
 
 use crate::{
     request, types, Argument, CarverOrPopulator, ColumnToken, ColumnTokens, Database,
-    DatabaseInterface, ExternalDependencyValues, InternalDependencyResolver,
-    InternalDependencyValues, OperationType, Request, ResponseValue, Schema, Selection,
+    DatabaseInterface, ExternalDependencyValues, FieldPlan, InternalDependencyResolver,
+    InternalDependencyValues, OperationType, QueryPlan, Request, ResponseValue, Schema, Selection,
     WhereResolved, WheresResolved,
 };
 
@@ -131,14 +131,12 @@ impl<'a> SyncFieldPlan<'a> {
     }
 }
 
-#[instrument(level = "trace", skip(schema, request, database))]
+#[instrument(level = "trace", skip(schema, database, query_plan))]
 pub fn compute_sync_response(
     schema: &Schema,
-    request: &Request,
     database: &Database,
+    query_plan: &QueryPlan,
 ) -> ResponseValue {
-    let query_plan = SyncQueryPlan::new(request, schema, database);
-
     ResponseValue::Map(compute_sync_response_fields(
         &query_plan.field_plans,
         schema,
@@ -152,7 +150,7 @@ pub fn compute_sync_response(
     skip(field_plans, schema, database, external_dependency_values)
 )]
 fn compute_sync_response_fields(
-    field_plans: &IndexMap<SmolStr, SyncFieldPlan<'_>>,
+    field_plans: &IndexMap<SmolStr, FieldPlan<'_>>,
     schema: &Schema,
     database: &Database,
     external_dependency_values: ExternalDependencyValues,
@@ -167,7 +165,7 @@ fn compute_sync_response_fields(
                 match &internal_dependency.resolver {
                     InternalDependencyResolver::ColumnGetter(column_getter) => {
                         let value = database.get_column_sync(
-                            field_plan.column_token,
+                            field_plan.column_token.unwrap(),
                             external_dependency_values.get("id").unwrap().as_id(),
                             &column_getter.id_column_name,
                             internal_dependency.type_,
@@ -203,7 +201,7 @@ fn compute_sync_response_fields(
                         // from .get_column_list_sync() to avoid
                         // allocating giant Vec?
                         let list = database.get_column_list_sync(
-                            field_plan.column_token,
+                            field_plan.column_token.unwrap(),
                             internal_dependency.type_,
                             // TODO: optimize this to not allocate Vec
                             // for single-where case
