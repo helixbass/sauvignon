@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::error;
 use std::mem;
 
+use async_trait::async_trait;
 use chrono::NaiveDate;
 use jiff::Timestamp;
 use smallvec::SmallVec;
@@ -68,6 +69,7 @@ pub enum InternalDependencyResolver {
     LiteralValue(LiteralValueInternalDependencyResolver),
     IntrospectionTypeInterfaces,
     IntrospectionTypePossibleTypes,
+    Custom(Box<dyn ResolveInternalDependency>),
 }
 
 impl InternalDependencyResolver {
@@ -79,6 +81,7 @@ impl InternalDependencyResolver {
             Self::LiteralValue(_) => true,
             Self::IntrospectionTypeInterfaces => true,
             Self::IntrospectionTypePossibleTypes => true,
+            Self::Custom(_) => false,
         }
     }
 
@@ -88,6 +91,15 @@ impl InternalDependencyResolver {
             _ => None,
         }
     }
+}
+
+#[async_trait]
+pub trait ResolveInternalDependency {
+    async fn resolve(
+        &self,
+        external_dependency_values: &ExternalDependencyValue,
+        preceding_internal_dependency_values: &InternalDependencyValues,
+    ) -> DependencyValue;
 }
 
 pub struct ColumnGetter {
