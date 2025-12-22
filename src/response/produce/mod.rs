@@ -127,6 +127,7 @@ pub async fn produce_response(
                 AsyncInstruction::ListOfIdsAndFollowOnColumnGetters {
                     step: _,
                     list_of_ids_is_internal_dependencies_of,
+                    list_of_ids_internal_dependency_name,
                     id_column_name,
                     follow_on_columns,
                 } => {
@@ -145,7 +146,7 @@ pub async fn produce_response(
                         populate_and_push_list(
                             list_of_ids_is_internal_dependencies_of.populator,
                             &list_of_ids_is_internal_dependencies_of.external_dependency_values,
-                            &[(id_column_name, list_of_ids_internal_dependency_value)]
+                            &[(list_of_ids_internal_dependency_name, list_of_ids_internal_dependency_value)]
                                 .into_iter()
                                 .collect(),
                             list_of_ids_is_internal_dependencies_of.parent_object_index,
@@ -618,8 +619,10 @@ fn make_progress_selection_set<'a: 'b, 'b>(
                                 field_name: field_name.clone(),
                                 field_plan,
                             });
-                            if steps.len() == 1 && matches!(&steps[0], AsyncStep::ListOfColumn(_)) 
-                                && schema.maybe_type(field_plan.field_type.type_.name()).is_some() {
+                            if steps.len() == 1
+                                && matches!(&steps[0], AsyncStep::ListOfColumn(_)) 
+                                && schema.maybe_type(field_plan.field_type.type_.name()).is_some()
+                            {
                                 let step = steps.remove(0).into_list_of_column();
                                 let other_columns = get_follow_on_columns(
                                     &field_plan.selection_set_by_type.as_ref().unwrap()[field_plan.field_type.type_.name()],
@@ -628,6 +631,9 @@ fn make_progress_selection_set<'a: 'b, 'b>(
                                 );
                                 current_async_instructions.push(AsyncInstruction::ListOfIdsAndFollowOnColumnGetters {
                                     list_of_ids_is_internal_dependencies_of: is_internal_dependencies_of,
+                                    list_of_ids_internal_dependency_name: internal_dependency_names.tap(|internal_dependency_names| {
+                                        assert_eq!(internal_dependency_names.len(), 1);
+                                    }).remove(0),
                                     id_column_name: step.column.name.clone(),
                                     follow_on_columns: other_columns.iter().map(|column_spec| column_spec.name.clone()).collect(),
                                     step: AsyncStep::ListOfIdAndFollowOnColumns {

@@ -203,6 +203,7 @@ pub enum AsyncInstruction<'a> {
     ListOfIdsAndFollowOnColumnGetters {
         step: AsyncStep,
         list_of_ids_is_internal_dependencies_of: IsInternalDependenciesOf<'a>,
+        list_of_ids_internal_dependency_name: SmolStr,
         id_column_name: SmolStr,
         follow_on_columns: HashSet<SmolStr>,
     },
