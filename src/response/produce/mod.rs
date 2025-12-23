@@ -49,6 +49,7 @@ pub async fn produce_response(
         &mut produced,
         &mut current_async_instructions,
         schema,
+        database,
         None,
     );
     loop {
@@ -98,6 +99,7 @@ pub async fn produce_response(
                         &mut produced,
                         &mut next_async_instructions,
                         schema,
+                        database,
                     );
                 }
                 AsyncInstruction::RowMultipleColumnsEachOfWhichAreOnlyInternalDependency {
@@ -118,6 +120,7 @@ pub async fn produce_response(
                                         &mut produced,
                                         &mut next_async_instructions,
                                         schema,
+                                        database,
                                     );
                                 },
                             );
@@ -194,6 +197,7 @@ pub async fn produce_response(
                                 &mut produced,
                                 &mut next_async_instructions,
                                 schema,
+                                database,
                                 Some(already_resolved_internal_dependency_values),
                             );
                         });
@@ -215,6 +219,7 @@ pub async fn produce_response(
         produced,
         current_async_instructions,
         schema,
+        database,
     )
 )]
 fn do_simple_async_instruction_follow<'a: 'b, 'b>(
@@ -223,6 +228,7 @@ fn do_simple_async_instruction_follow<'a: 'b, 'b>(
     produced: &mut Vec<Produced>,
     current_async_instructions: &'b mut AsyncInstructions<'a>,
     schema: &Schema,
+    database: &Database,
 ) {
     match is_internal_dependencies_of {
         IsInternalDependenciesOf::ObjectFieldListOfObjects(
@@ -246,6 +252,7 @@ fn do_simple_async_instruction_follow<'a: 'b, 'b>(
                 field_plan,
                 current_async_instructions,
                 schema,
+                database,
             );
         }
         IsInternalDependenciesOf::ObjectFieldScalar {
@@ -281,6 +288,7 @@ fn do_simple_async_instruction_follow<'a: 'b, 'b>(
                 field_plan,
                 current_async_instructions,
                 schema,
+                database,
             );
         }
         IsInternalDependenciesOf::ObjectFieldUnionOrInterfaceObject {
@@ -304,6 +312,7 @@ fn do_simple_async_instruction_follow<'a: 'b, 'b>(
                 field_plan,
                 current_async_instructions,
                 schema,
+                database,
             );
         }
         IsInternalDependenciesOf::ObjectFieldListOfScalars {
@@ -342,6 +351,7 @@ fn do_simple_async_instruction_follow<'a: 'b, 'b>(
                 field_plan,
                 current_async_instructions,
                 schema,
+                database,
             );
         }
         IsInternalDependenciesOf::ObjectFieldOptionalUnionOrInterfaceObject {
@@ -365,6 +375,7 @@ fn do_simple_async_instruction_follow<'a: 'b, 'b>(
                 field_plan,
                 current_async_instructions,
                 schema,
+                database,
             );
         }
         IsInternalDependenciesOf::ObjectFieldListOfUnionOrInterfaceObjects {
@@ -388,6 +399,7 @@ fn do_simple_async_instruction_follow<'a: 'b, 'b>(
                 field_plan,
                 current_async_instructions,
                 schema,
+                database,
             );
         }
     }
@@ -401,6 +413,7 @@ fn do_simple_async_instruction_follow<'a: 'b, 'b>(
         produced,
         current_async_instructions,
         schema,
+        database,
         already_resolved_internal_dependency_values,
     )
 )]
@@ -411,6 +424,7 @@ fn make_progress_selection_set<'a: 'b, 'b>(
     produced: &mut Vec<Produced>,
     current_async_instructions: &'b mut AsyncInstructions<'a>,
     schema: &Schema,
+    database: &Database,
     mut already_resolved_internal_dependency_values: Option<
         HashMap<SmolStr, InternalDependencyValues>,
     >,
@@ -448,6 +462,7 @@ fn make_progress_selection_set<'a: 'b, 'b>(
                                         &internal_dependency_values,
                                         internal_dependency,
                                         schema,
+                                        database,
                                     );
                                 internal_dependency_values.insert(
                                     internal_dependency.name.clone(),
@@ -480,6 +495,7 @@ fn make_progress_selection_set<'a: 'b, 'b>(
                                 field_plan,
                                 current_async_instructions,
                                 schema,
+                                database,
                             )
                         }
                         CarverOrPopulator::PopulatorList(populator) => {
@@ -494,6 +510,7 @@ fn make_progress_selection_set<'a: 'b, 'b>(
                                 field_plan,
                                 current_async_instructions,
                                 schema,
+                                database,
                             );
                         }
                         CarverOrPopulator::UnionOrInterfaceTypePopulator(type_populator, populator) => {
@@ -509,6 +526,7 @@ fn make_progress_selection_set<'a: 'b, 'b>(
                                 field_plan,
                                 current_async_instructions,
                                 schema,
+                                database,
                             )
                         }
                         CarverOrPopulator::CarverList(carver) => {
@@ -815,6 +833,7 @@ fn column_getter_list_step<'a>(
         field_plan,
         current_async_instructions,
         schema,
+        database,
     )
 )]
 fn populate_list<'a: 'b, 'b>(
@@ -828,6 +847,7 @@ fn populate_list<'a: 'b, 'b>(
     field_plan: &'a FieldPlan<'a>,
     current_async_instructions: &'b mut AsyncInstructions<'a>,
     schema: &Schema,
+    database: &Database,
 ) {
     populate_concrete_or_union_or_interface_list(
         external_dependency_values,
@@ -841,6 +861,7 @@ fn populate_list<'a: 'b, 'b>(
         field_plan,
         current_async_instructions,
         schema,
+        database,
     )
 }
 
@@ -855,6 +876,7 @@ fn populate_list<'a: 'b, 'b>(
         field_plan,
         current_async_instructions,
         schema,
+        database,
     )
 )]
 fn populate_union_or_interface_list<'a: 'b, 'b>(
@@ -869,6 +891,7 @@ fn populate_union_or_interface_list<'a: 'b, 'b>(
     field_plan: &'a FieldPlan<'a>,
     current_async_instructions: &'b mut AsyncInstructions<'a>,
     schema: &Schema,
+    database: &Database,
 ) {
     let type_names =
         type_populator.populate(external_dependency_values, internal_dependency_values);
@@ -884,6 +907,7 @@ fn populate_union_or_interface_list<'a: 'b, 'b>(
         field_plan,
         current_async_instructions,
         schema,
+        database,
     )
 }
 
@@ -903,6 +927,7 @@ enum SingleOrVec<TValue> {
         field_plan,
         current_async_instructions,
         schema,
+        database,
     )
 )]
 fn populate_concrete_or_union_or_interface_list<'a: 'b, 'b>(
@@ -917,6 +942,7 @@ fn populate_concrete_or_union_or_interface_list<'a: 'b, 'b>(
     field_plan: &'a FieldPlan<'a>,
     current_async_instructions: &'b mut AsyncInstructions<'a>,
     schema: &Schema,
+    database: &Database,
 ) {
     let (populated, parent_list_index) = populate_and_push_list(
         populator,
@@ -963,6 +989,7 @@ fn populate_concrete_or_union_or_interface_list<'a: 'b, 'b>(
                 produced,
                 current_async_instructions,
                 schema,
+                database,
                 None,
             );
         });
@@ -1005,6 +1032,7 @@ fn populate_and_push_list(
         field_plan,
         current_async_instructions,
         schema,
+        database,
     )
 )]
 fn populate_object<'a: 'b, 'b>(
@@ -1018,6 +1046,7 @@ fn populate_object<'a: 'b, 'b>(
     field_plan: &'a FieldPlan<'a>,
     current_async_instructions: &'b mut AsyncInstructions<'a>,
     schema: &Schema,
+    database: &Database,
 ) {
     populate_concrete_or_union_or_interface_object(
         external_dependency_values,
@@ -1031,6 +1060,7 @@ fn populate_object<'a: 'b, 'b>(
         field_plan,
         current_async_instructions,
         schema,
+        database,
     )
 }
 
@@ -1045,6 +1075,7 @@ fn populate_object<'a: 'b, 'b>(
         field_plan,
         current_async_instructions,
         schema,
+        database,
     )
 )]
 fn populate_union_or_interface_object<'a: 'b, 'b>(
@@ -1059,6 +1090,7 @@ fn populate_union_or_interface_object<'a: 'b, 'b>(
     field_plan: &'a FieldPlan<'a>,
     current_async_instructions: &'b mut AsyncInstructions<'a>,
     schema: &Schema,
+    database: &Database,
 ) {
     let type_name = type_populator.populate(external_dependency_values, internal_dependency_values);
     populate_concrete_or_union_or_interface_object(
@@ -1073,6 +1105,7 @@ fn populate_union_or_interface_object<'a: 'b, 'b>(
         field_plan,
         current_async_instructions,
         schema,
+        database,
     )
 }
 
@@ -1086,6 +1119,7 @@ fn populate_union_or_interface_object<'a: 'b, 'b>(
         field_plan,
         current_async_instructions,
         schema,
+        database,
     )
 )]
 fn populate_concrete_or_union_or_interface_object<'a: 'b, 'b>(
@@ -1100,6 +1134,7 @@ fn populate_concrete_or_union_or_interface_object<'a: 'b, 'b>(
     field_plan: &'a FieldPlan<'a>,
     current_async_instructions: &'b mut AsyncInstructions<'a>,
     schema: &Schema,
+    database: &Database,
 ) {
     post_populate_concrete_or_union_or_interface_object(
         type_name,
@@ -1111,12 +1146,13 @@ fn populate_concrete_or_union_or_interface_object<'a: 'b, 'b>(
         field_plan,
         current_async_instructions,
         schema,
+        database,
     )
 }
 
 #[instrument(
     level = "trace",
-    skip(populated, produced, field_plan, current_async_instructions, schema,)
+    skip(populated, produced, field_plan, current_async_instructions, schema, database)
 )]
 fn post_populate_concrete_or_union_or_interface_object<'a: 'b, 'b>(
     type_name: &str,
@@ -1128,6 +1164,7 @@ fn post_populate_concrete_or_union_or_interface_object<'a: 'b, 'b>(
     field_plan: &'a FieldPlan<'a>,
     current_async_instructions: &'b mut AsyncInstructions<'a>,
     schema: &Schema,
+    database: &Database,
 ) {
     produced.push(Produced::FieldNewObject {
         parent_object_index,
@@ -1145,6 +1182,7 @@ fn post_populate_concrete_or_union_or_interface_object<'a: 'b, 'b>(
         produced,
         current_async_instructions,
         schema,
+        database,
         None,
     );
 }
@@ -1160,6 +1198,7 @@ fn post_populate_concrete_or_union_or_interface_object<'a: 'b, 'b>(
         field_plan,
         current_async_instructions,
         schema,
+        database,
     )
 )]
 fn optionally_populate_union_or_interface_object<'a: 'b, 'b>(
@@ -1174,6 +1213,7 @@ fn optionally_populate_union_or_interface_object<'a: 'b, 'b>(
     field_plan: &'a FieldPlan<'a>,
     current_async_instructions: &'b mut AsyncInstructions<'a>,
     schema: &Schema,
+    database: &Database,
 ) {
     let Some(type_name) =
         type_populator.populate(external_dependency_values, internal_dependency_values)
@@ -1197,6 +1237,7 @@ fn optionally_populate_union_or_interface_object<'a: 'b, 'b>(
         field_plan,
         current_async_instructions,
         schema,
+        database,
     )
 }
 
@@ -1210,6 +1251,7 @@ fn optionally_populate_union_or_interface_object<'a: 'b, 'b>(
         field_plan,
         current_async_instructions,
         schema,
+        database,
     )
 )]
 fn optionally_populate_object<'a: 'b, 'b>(
@@ -1223,6 +1265,7 @@ fn optionally_populate_object<'a: 'b, 'b>(
     field_plan: &'a FieldPlan<'a>,
     current_async_instructions: &'b mut AsyncInstructions<'a>,
     schema: &Schema,
+    database: &Database,
 ) {
     let Some(populated) =
         populator.populate(external_dependency_values, internal_dependency_values)
@@ -1244,6 +1287,7 @@ fn optionally_populate_object<'a: 'b, 'b>(
         field_plan,
         current_async_instructions,
         schema,
+        database,
     )
 }
 
@@ -1292,6 +1336,7 @@ fn carve_list<'a: 'b, 'b>(
         preceding_internal_dependency_values,
         internal_dependency,
         schema,
+        database,
     )
 )]
 fn get_internal_dependency_value_synchronous(
@@ -1300,6 +1345,7 @@ fn get_internal_dependency_value_synchronous(
     preceding_internal_dependency_values: &InternalDependencyValues,
     internal_dependency: &InternalDependency,
     schema: &Schema,
+    database: &Database,
 ) -> DependencyValue {
     match &internal_dependency.resolver {
         InternalDependencyResolver::LiteralValue(literal_value) => literal_value.0.clone(),
@@ -1381,7 +1427,7 @@ fn get_internal_dependency_value_synchronous(
             }
         }
         InternalDependencyResolver::CustomSync(resolve_internal_dependency_sync) => {
-            resolve_internal_dependency_sync.resolve(external_dependency_values, preceding_internal_dependency_values)
+            resolve_internal_dependency_sync.resolve(external_dependency_values, preceding_internal_dependency_values, database)
         }
         _ => unreachable!(),
     }

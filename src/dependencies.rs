@@ -10,7 +10,7 @@ use sqlx::postgres::PgValueRef;
 use squalid::{OptionExt, _d};
 use uuid::Uuid;
 
-use crate::{AnyHashMap, Error};
+use crate::{AnyHashMap, Database, Error};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum DependencyType {
@@ -97,6 +97,7 @@ pub trait ResolveInternalDependencySync: Send + Sync {
         &self,
         external_dependency_values: &ExternalDependencyValues,
         preceding_internal_dependency_values: &InternalDependencyValues,
+        database: &Database,
     ) -> DependencyValue;
 }
 
