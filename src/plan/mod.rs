@@ -77,15 +77,16 @@ impl<'a> FieldPlan<'a> {
                     .map(|argument| (argument.name.clone(), argument.clone()))
                     .collect()
             }),
-            column_token: column_tokens.map(|column_tokens| {
+            column_token: column_tokens.and_then(|column_tokens| {
                 match &field_type.resolver.internal_dependencies[0].resolver {
                     InternalDependencyResolver::ColumnGetter(column_getter) => {
-                        column_tokens[&column_getter.table_name][&column_getter.column_name]
+                        Some(column_tokens[&column_getter.table_name][&column_getter.column_name])
                     }
-                    InternalDependencyResolver::ColumnGetterList(column_getter_list) => {
+                    InternalDependencyResolver::ColumnGetterList(column_getter_list) => Some(
                         column_tokens[&column_getter_list.table_name]
-                            [&column_getter_list.column_name]
-                    }
+                            [&column_getter_list.column_name],
+                    ),
+                    InternalDependencyResolver::CustomSync(_) => None,
                     _ => unimplemented!(),
                 }
             }),
