@@ -12,19 +12,26 @@ use uuid::Uuid;
 
 use crate::{AnyHashMap, Error};
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum DependencyType {
     Id,
     String,
-    ListOfIds,
-    ListOfStrings,
-    OptionalInt,
-    OptionalFloat,
-    OptionalString,
+    List(Box<DependencyType>),
+    Optional(Box<DependencyType>),
     Timestamp,
-    OptionalId,
     Int,
+    Float,
     Date,
+    Map(Box<DependencyType>),
+}
+
+impl DependencyType {
+    pub fn as_list_inner(&self) -> &Self {
+        match self {
+            Self::List(dependency_type) => dependency_type,
+            _ => panic!("expected list"),
+        }
+    }
 }
 
 pub struct ExternalDependency {
@@ -61,6 +68,7 @@ pub enum InternalDependencyResolver {
     LiteralValue(LiteralValueInternalDependencyResolver),
     IntrospectionTypeInterfaces,
     IntrospectionTypePossibleTypes,
+    CustomSync(Box<dyn ResolveInternalDependencySync>),
 }
 
 impl InternalDependencyResolver {
@@ -72,6 +80,7 @@ impl InternalDependencyResolver {
             Self::LiteralValue(_) => true,
             Self::IntrospectionTypeInterfaces => true,
             Self::IntrospectionTypePossibleTypes => true,
+            Self::CustomSync(_) => true,
         }
     }
 
@@ -81,6 +90,14 @@ impl InternalDependencyResolver {
             _ => None,
         }
     }
+}
+
+pub trait ResolveInternalDependencySync: Send + Sync {
+    fn resolve(
+        &self,
+        external_dependency_values: &ExternalDependencyValues,
+        preceding_internal_dependency_values: &InternalDependencyValues,
+    ) -> DependencyValue;
 }
 
 pub struct ColumnGetter {
@@ -235,6 +252,7 @@ pub enum DependencyValue {
     Timestamp(Timestamp),
     Int(i32),
     Date(NaiveDate),
+    Map(HashMap<SmolStr, DependencyValue>),
 }
 
 impl DependencyValue {

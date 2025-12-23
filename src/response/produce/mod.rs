@@ -435,23 +435,26 @@ fn make_progress_selection_set<'a: 'b, 'b>(
                 true => {
                     let internal_dependency_values =
                         already_resolved_internal_dependency_values_this_field.unwrap_or_else(|| {
-                            field_plan
-                            .field_type
-                            .resolver
-                            .internal_dependencies
-                            .iter()
-                            .map(|internal_dependency| {
-                                (
-                                    internal_dependency.name.clone(),
+                            let mut internal_dependency_values = InternalDependencyValues::default();
+                            for internal_dependency in &field_plan
+                                .field_type
+                                .resolver
+                                .internal_dependencies
+                            {
+                                let internal_dependency_value = 
                                     get_internal_dependency_value_synchronous(
                                         field_plan.arguments.as_ref(),
                                         &external_dependency_values,
+                                        &internal_dependency_values,
                                         internal_dependency,
                                         schema,
-                                    ),
-                                )
-                            })
-                            .collect()
+                                    );
+                                internal_dependency_values.insert(
+                                    internal_dependency.name.clone(),
+                                    internal_dependency_value,
+                                ).unwrap();
+                            }
+                            internal_dependency_values
                         });
                     match &field_plan.field_type.resolver.carver_or_populator {
                         CarverOrPopulator::Carver(carver) => {
@@ -700,11 +703,11 @@ fn make_progress_selection_set<'a: 'b, 'b>(
     );
 }
 
-fn get_follow_on_columns(
-    selection_set: &IndexMap<SmolStr, FieldPlan<'_>>,
+fn get_follow_on_columns<'a>(
+    selection_set: &IndexMap<SmolStr, FieldPlan<'a>>,
     id_column_name: &str,
     table_name: &str,
-) -> ColumnSpecs {
+) -> ColumnSpecs<'a> {
     selection_set.values().filter_map(|field_plan| {
         let internal_dependency = &field_plan
             .field_type
@@ -719,15 +722,15 @@ fn get_follow_on_columns(
         }
         Some(ColumnSpec {
             name: column_getter.column_name.clone(),
-            dependency_type: internal_dependency.type_,
+            dependency_type: &internal_dependency.type_,
         })
     }).collect()
 }
 
-fn extract_dependency_steps(
-    field_plan: &FieldPlan<'_>,
+fn extract_dependency_steps<'a>(
+    field_plan: &FieldPlan<'a>,
     external_dependency_values: &ExternalDependencyValues,
-) -> (AsyncSteps, DependencyNames) {
+) -> (AsyncSteps<'a>, DependencyNames) {
     field_plan
         .field_type
         .resolver
@@ -756,16 +759,16 @@ fn extract_dependency_steps(
         .unzip()
 }
 
-fn column_getter_step(
+fn column_getter_step<'a>(
     column_getter: &ColumnGetter,
-    internal_dependency: &InternalDependency,
+    internal_dependency: &'a InternalDependency,
     external_dependency_values: &ExternalDependencyValues,
-) -> AsyncStep {
+) -> AsyncStep<'a> {
     AsyncStep::Column(AsyncStepColumn {
         table_name: column_getter.table_name.clone(),
         column: ColumnSpec {
             name: column_getter.column_name.clone(),
-            dependency_type: internal_dependency.type_,
+            dependency_type: &internal_dependency.type_,
         },
         id_column_name: column_getter.id_column_name.clone(),
         id: external_dependency_values
@@ -776,16 +779,16 @@ fn column_getter_step(
     })
 }
 
-fn column_getter_list_step(
+fn column_getter_list_step<'a>(
     column_getter_list: &ColumnGetterList,
-    internal_dependency: &InternalDependency,
+    internal_dependency: &'a InternalDependency,
     external_dependency_values: &ExternalDependencyValues,
-) -> AsyncStep {
+) -> AsyncStep<'a> {
     AsyncStep::ListOfColumn(AsyncStepListOfColumn {
         table_name: column_getter_list.table_name.clone(),
         column: ColumnSpec {
             name: column_getter_list.column_name.clone(),
-            dependency_type: internal_dependency.type_,
+            dependency_type: &internal_dependency.type_,
         },
         wheres: column_getter_list
             .wheres
@@ -1283,11 +1286,18 @@ fn carve_list<'a: 'b, 'b>(
 
 #[instrument(
     level = "trace",
-    skip(arguments, external_dependency_values, internal_dependency, schema)
+    skip(
+        arguments,
+        external_dependency_values,
+        preceding_internal_dependency_values,
+        internal_dependency,
+        schema,
+    )
 )]
 fn get_internal_dependency_value_synchronous(
     arguments: Option<&IndexMap<SmolStr, Argument>>,
     external_dependency_values: &ExternalDependencyValues,
+    preceding_internal_dependency_values: &InternalDependencyValues,
     internal_dependency: &InternalDependency,
     schema: &Schema,
 ) -> DependencyValue {
@@ -1356,7 +1366,7 @@ fn get_internal_dependency_value_synchronous(
         }
         InternalDependencyResolver::Argument(argument_resolver) => {
             let argument = arguments.unwrap().get(&argument_resolver.name).unwrap();
-            match (internal_dependency.type_, &argument.value) {
+            match (&internal_dependency.type_, &argument.value) {
                 (DependencyType::Id, Value::Int(argument_value)) => {
                     DependencyValue::Id(Id::Int(*argument_value))
                 }
@@ -1369,6 +1379,9 @@ fn get_internal_dependency_value_synchronous(
                 // TODO: truly unreachable?
                 _ => unreachable!(),
             }
+        }
+        InternalDependencyResolver::CustomSync(resolve_internal_dependency_sync) => {
+            resolve_internal_dependency_sync.resolve(external_dependency_values, preceding_internal_dependency_values)
         }
         _ => unreachable!(),
     }

@@ -34,7 +34,8 @@ pub use crate::dependencies::{
     ColumnValueMassagerInterface, DependencyType, DependencyValue, ExternalDependency,
     ExternalDependencyValue, ExternalDependencyValues, Id, InternalDependency,
     InternalDependencyResolver, InternalDependencyValue, InternalDependencyValues,
-    LiteralValueInternalDependencyResolver, Where, WhereResolved, WheresResolved,
+    LiteralValueInternalDependencyResolver, ResolveInternalDependencySync, Where, WhereResolved,
+    WheresResolved,
 };
 pub use crate::error::{Error, Result};
 pub use crate::hash::get_hash;

@@ -5,7 +5,8 @@ use squalid::{OptionExt, _d};
 use tracing::instrument;
 
 use crate::{
-    request, types, Argument, Directive, IndexMap, OperationType, Request, Schema, Selection, Value,
+    request, types, Argument, ColumnToken, ColumnTokens, Directive, IndexMap,
+    InternalDependencyResolver, OperationType, Request, Schema, Selection, Value,
 };
 
 pub struct QueryPlan<'a> {
@@ -13,8 +14,12 @@ pub struct QueryPlan<'a> {
 }
 
 impl<'a> QueryPlan<'a> {
-    #[instrument(level = "trace", skip(request, schema))]
-    pub fn new(request: &'a Request, schema: &'a Schema) -> Self {
+    #[instrument(level = "trace", skip(request, schema, column_tokens))]
+    pub fn new(
+        request: &'a Request,
+        schema: &'a Schema,
+        column_tokens: Option<&ColumnTokens>,
+    ) -> Self {
         let chosen_operation = request.chosen_operation();
         assert_eq!(chosen_operation.operation_type, OperationType::Query);
 
@@ -24,6 +29,7 @@ impl<'a> QueryPlan<'a> {
                 &[schema.query_type_name.clone()].into_iter().collect(),
                 schema,
                 request,
+                column_tokens,
             )
             .remove(&schema.query_type_name)
             .unwrap(),
@@ -36,15 +42,20 @@ pub struct FieldPlan<'a> {
     pub field_type: &'a types::Field,
     pub selection_set_by_type: Option<HashMap<SmolStr, IndexMap<SmolStr, FieldPlan<'a>>>>,
     pub arguments: Option<IndexMap<SmolStr, Argument>>,
+    pub column_token: Option<ColumnToken>,
 }
 
 impl<'a> FieldPlan<'a> {
-    #[instrument(level = "trace", skip(request_field, field_type, schema, request))]
+    #[instrument(
+        level = "trace",
+        skip(request_field, field_type, schema, request, column_tokens)
+    )]
     pub fn new(
         request_field: &'a request::Field,
         field_type: &'a types::Field,
         schema: &'a Schema,
         request: &'a Request,
+        column_tokens: Option<&ColumnTokens>,
     ) -> Self {
         Self {
             name: request_field.name.clone(),
@@ -57,6 +68,7 @@ impl<'a> FieldPlan<'a> {
                     ),
                     schema,
                     request,
+                    column_tokens,
                 )
             }),
             arguments: request_field.arguments.as_ref().map(|arguments| {
@@ -65,16 +77,29 @@ impl<'a> FieldPlan<'a> {
                     .map(|argument| (argument.name.clone(), argument.clone()))
                     .collect()
             }),
+            column_token: column_tokens.map(|column_tokens| {
+                match &field_type.resolver.internal_dependencies[0].resolver {
+                    InternalDependencyResolver::ColumnGetter(column_getter) => {
+                        column_tokens[&column_getter.table_name][&column_getter.column_name]
+                    }
+                    InternalDependencyResolver::ColumnGetterList(column_getter_list) => {
+                        column_tokens[&column_getter_list.table_name]
+                            [&column_getter_list.column_name]
+                    }
+                    _ => unimplemented!(),
+                }
+            }),
         }
     }
 }
 
-#[instrument(level = "trace", skip(selection_set, schema, request))]
+#[instrument(level = "trace", skip(selection_set, schema, request, column_tokens))]
 fn create_field_plans<'a>(
     selection_set: &'a [Selection],
     all_current_concrete_type_names: &HashSet<SmolStr>,
     schema: &'a Schema,
     request: &'a Request,
+    column_tokens: Option<&ColumnTokens>,
 ) -> HashMap<SmolStr, IndexMap<SmolStr, FieldPlan<'a>>> {
     merge_hash_maps(
         selection_set
@@ -102,6 +127,7 @@ fn create_field_plans<'a>(
                                     concrete_type.as_object().field(&field.name),
                                     schema,
                                     request,
+                                    column_tokens,
                                 ),
                             )]
                             .into_iter()
@@ -119,6 +145,7 @@ fn create_field_plans<'a>(
                             .all_concrete_type_names_for_type_or_union_or_interface(&fragment.on),
                         schema,
                         request,
+                        column_tokens,
                     )
                 }
                 Selection::InlineFragment(inline_fragment) => get_overlapping_fragment_types(
@@ -132,6 +159,7 @@ fn create_field_plans<'a>(
                     },
                     schema,
                     request,
+                    column_tokens,
                 ),
             }),
     )
@@ -153,13 +181,17 @@ fn should_skip(directives: &[Directive]) -> bool {
     false
 }
 
-#[instrument(level = "trace", skip(fragment_selection_set, schema, request))]
+#[instrument(
+    level = "trace",
+    skip(fragment_selection_set, schema, request, column_tokens)
+)]
 fn get_overlapping_fragment_types<'a>(
     all_current_concrete_type_names: &HashSet<SmolStr>,
     fragment_selection_set: &'a [Selection],
     all_concrete_type_names_for_fragment: &HashSet<SmolStr>,
     schema: &'a Schema,
     request: &'a Request,
+    column_tokens: Option<&ColumnTokens>,
 ) -> HashMap<SmolStr, IndexMap<SmolStr, FieldPlan<'a>>> {
     create_field_plans(
         fragment_selection_set,
@@ -169,6 +201,7 @@ fn get_overlapping_fragment_types<'a>(
             .collect(),
         schema,
         request,
+        column_tokens,
     )
 }
 
