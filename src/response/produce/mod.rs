@@ -449,27 +449,12 @@ fn make_progress_selection_set<'a: 'b, 'b>(
                 true => {
                     let internal_dependency_values =
                         already_resolved_internal_dependency_values_this_field.unwrap_or_else(|| {
-                            let mut internal_dependency_values = InternalDependencyValues::default();
-                            for internal_dependency in &field_plan
-                                .field_type
-                                .resolver
-                                .internal_dependencies
-                            {
-                                let internal_dependency_value = 
-                                    get_internal_dependency_value_synchronous(
-                                        field_plan.arguments.as_ref(),
-                                        &external_dependency_values,
-                                        &internal_dependency_values,
-                                        internal_dependency,
-                                        schema,
-                                        database,
-                                    );
-                                internal_dependency_values.insert(
-                                    internal_dependency.name.clone(),
-                                    internal_dependency_value,
-                                ).unwrap();
-                            }
-                            internal_dependency_values
+                            get_internal_dependency_values_synchronous(
+                                field_plan,
+                                &external_dependency_values,
+                                schema,
+                                database,
+                            )
                         });
                     match &field_plan.field_type.resolver.carver_or_populator {
                         CarverOrPopulator::Carver(carver) => {
@@ -1331,6 +1316,44 @@ fn carve_list<'a: 'b, 'b>(
 #[instrument(
     level = "trace",
     skip(
+        field_plan,
+        external_dependency_values,
+        schema,
+        database,
+    )
+)]
+pub fn get_internal_dependency_values_synchronous(
+    field_plan: &FieldPlan,
+    external_dependency_values: &ExternalDependencyValues,
+    schema: &Schema,
+    database: &Database,
+) -> InternalDependencyValues {
+    let mut internal_dependency_values = InternalDependencyValues::default();
+    for internal_dependency in &field_plan
+        .field_type
+        .resolver
+        .internal_dependencies
+    {
+        let internal_dependency_value = 
+            get_internal_dependency_value_synchronous(
+                field_plan.arguments.as_ref(),
+                &external_dependency_values,
+                &internal_dependency_values,
+                internal_dependency,
+                schema,
+                database,
+            );
+        internal_dependency_values.insert(
+            internal_dependency.name.clone(),
+            internal_dependency_value,
+        ).unwrap();
+    }
+    internal_dependency_values
+}
+
+#[instrument(
+    level = "trace",
+    skip(
         arguments,
         external_dependency_values,
         preceding_internal_dependency_values,
@@ -1339,7 +1362,7 @@ fn carve_list<'a: 'b, 'b>(
         database,
     )
 )]
-fn get_internal_dependency_value_synchronous(
+pub fn get_internal_dependency_value_synchronous(
     arguments: Option<&IndexMap<SmolStr, Argument>>,
     external_dependency_values: &ExternalDependencyValues,
     preceding_internal_dependency_values: &InternalDependencyValues,
