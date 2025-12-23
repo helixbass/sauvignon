@@ -10,7 +10,7 @@ use syn::{
     parse::{Parse, ParseBuffer, ParseStream, Result},
     parse_macro_input,
     spanned::Spanned,
-    ExprBlock, Ident, LitBool, LitInt, LitStr, Token,
+    Expr, ExprBlock, Ident, LitBool, LitInt, LitStr, Token,
 };
 
 struct Schema {
@@ -1469,6 +1469,11 @@ impl ToTokens for InternalDependencyProcessed {
             InternalDependencyTypeProcessed::OptionalIntColumn { .. } => quote! {
                 ::sauvignon::DependencyType::Optional(::std::boxed::Box::new(::sauvignon::DependencyType::Int))
             },
+            InternalDependencyTypeProcessed::CustomSync { type_, .. } => {
+                quote! {
+                    #type_
+                }
+            }
         };
         let resolver = match &self.type_ {
             InternalDependencyTypeProcessed::LiteralValue(dependency_value) => quote! {
@@ -1506,6 +1511,13 @@ impl ToTokens for InternalDependencyProcessed {
                     ))
                 }
             }
+            InternalDependencyTypeProcessed::CustomSync { resolver, .. } => {
+                quote! {
+                    ::sauvignon::InternalDependencyResolver::CustomSync(
+                        #resolver
+                    )
+                }
+            }
         };
         quote! {
             ::sauvignon::InternalDependency::new(
@@ -1522,6 +1534,7 @@ enum InternalDependencyType {
     LiteralValue(DependencyValue),
     IdColumnList { type_: Option<String> },
     OptionalIntColumn { via_nested: Option<ViaNested> },
+    CustomSync { type_: Expr, resolver: Expr },
 }
 
 impl InternalDependencyType {
@@ -1552,6 +1565,9 @@ impl InternalDependencyType {
                     self_id_column_name: "id".to_owned(),
                 },
             },
+            Self::CustomSync { type_, resolver } => {
+                InternalDependencyTypeProcessed::CustomSync { type_, resolver }
+            }
         }
     }
 }
@@ -1597,6 +1613,7 @@ impl Parse for InternalDependencyType {
                     arguments_content.parse::<Token![=>]>()?;
                     match &*key.to_string() {
                         "via_nested" => {
+                            assert!(via_nested.is_none(), "Already saw 'via_nested' key");
                             via_nested = Some(arguments_content.parse()?);
                         }
                         key => {
@@ -1606,6 +1623,34 @@ impl Parse for InternalDependencyType {
                     arguments_content.parse::<Option<Token![,]>>()?;
                 }
                 Ok(Self::OptionalIntColumn { via_nested })
+            }
+            "custom_sync" => {
+                let arguments_content;
+                parenthesized!(arguments_content in input);
+                let mut type_: Option<Expr> = _d();
+                let mut resolver: Option<Expr> = _d();
+                while !arguments_content.is_empty() {
+                    let key = parse_ident_or_type(&arguments_content)?;
+                    arguments_content.parse::<Token![=>]>()?;
+                    match &*key.to_string() {
+                        "type" => {
+                            assert!(type_.is_none(), "Already saw 'type_' key");
+                            type_ = Some(arguments_content.parse()?);
+                        }
+                        "resolver" => {
+                            assert!(resolver.is_none(), "Already saw 'resolver' key");
+                            resolver = Some(arguments_content.parse()?);
+                        }
+                        key => {
+                            return Err(arguments_content.error(format!("Unexpected key `{key}`")))
+                        }
+                    }
+                    arguments_content.parse::<Option<Token![,]>>()?;
+                }
+                Ok(Self::CustomSync {
+                    type_: type_.expect("Expected `type`"),
+                    resolver: resolver.expect("Expected `resolver`"),
+                })
             }
             _ => {
                 return Err(
@@ -1627,6 +1672,10 @@ enum InternalDependencyTypeProcessed {
         table_name: String,
         column_name: String,
         self_id_column_name: String,
+    },
+    CustomSync {
+        type_: Expr,
+        resolver: Expr,
     },
 }
 

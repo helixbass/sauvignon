@@ -1,3 +1,4 @@
+use std::any::Any;
 use std::collections::HashMap;
 
 use async_trait::async_trait;
@@ -126,10 +127,17 @@ impl DatabaseInterface for Database {
             Self::Dyn(database) => database.column_tokens(),
         }
     }
+
+    fn as_any(&self) -> &dyn Any {
+        match self {
+            Self::Dyn(database) => database.as_any(),
+            Self::Postgres(_) => panic!("should only call .as_any() on Dyn"),
+        }
+    }
 }
 
 #[async_trait]
-pub trait DatabaseInterface: Send + Sync {
+pub trait DatabaseInterface: Send + Sync + Any {
     async fn get_column(
         &self,
         table_name: &str,
@@ -165,6 +173,10 @@ pub trait DatabaseInterface: Send + Sync {
     fn is_sync(&self) -> bool;
 
     fn column_tokens(&self) -> Option<&'static ColumnTokens>;
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
 }
 
 pub struct PostgresDatabase {

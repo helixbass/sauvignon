@@ -22,7 +22,7 @@ pub enum DependencyType {
     Int,
     Float,
     Date,
-    Map(Box<DependencyType>),
+    Map(HashMap<SmolStr, DependencyType>),
 }
 
 impl DependencyType {
