@@ -335,6 +335,13 @@ impl DependencyValue {
             _ => panic!("Expected optional type"),
         }
     }
+
+    pub fn as_map(&self) -> &HashMap<SmolStr, DependencyValue> {
+        match self {
+            Self::Map(map) => map,
+            _ => panic!("Expected map"),
+        }
+    }
 }
 
 pub type InternalDependencyValue = ExternalDependencyValue;
