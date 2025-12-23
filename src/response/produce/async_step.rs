@@ -10,8 +10,8 @@ use super::IndexInProduced;
 use crate::{
     Carver, CarverList, Database, DatabaseInterface, DependencyType, DependencyValue,
     ExternalDependencyValues, FieldPlan, Id, OptionalPopulator,
-    OptionalUnionOrInterfaceTypePopulator, Populator, PopulatorList, ResolveInternalDependency,
-    UnionOrInterfaceTypePopulator, UnionOrInterfaceTypePopulatorList, WheresResolved,
+    OptionalUnionOrInterfaceTypePopulator, Populator, PopulatorList, UnionOrInterfaceTypePopulator,
+    UnionOrInterfaceTypePopulatorList, WheresResolved,
 };
 
 #[derive(Clone, Debug)]
@@ -33,7 +33,6 @@ pub enum AsyncStep<'a> {
         wheres: WheresResolved,
         other_columns: ColumnSpecs<'a>,
     },
-    Custom(&'a dyn ResolveInternalDependency),
 }
 
 impl<'a> AsyncStep<'a> {

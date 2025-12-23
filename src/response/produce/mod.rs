@@ -435,23 +435,26 @@ fn make_progress_selection_set<'a: 'b, 'b>(
                 true => {
                     let internal_dependency_values =
                         already_resolved_internal_dependency_values_this_field.unwrap_or_else(|| {
-                            field_plan
-                            .field_type
-                            .resolver
-                            .internal_dependencies
-                            .iter()
-                            .map(|internal_dependency| {
-                                (
-                                    internal_dependency.name.clone(),
+                            let mut internal_dependency_values = InternalDependencyValues::default();
+                            for internal_dependency in &field_plan
+                                .field_type
+                                .resolver
+                                .internal_dependencies
+                            {
+                                let internal_dependency_value = 
                                     get_internal_dependency_value_synchronous(
                                         field_plan.arguments.as_ref(),
                                         &external_dependency_values,
+                                        &internal_dependency_values,
                                         internal_dependency,
                                         schema,
-                                    ),
-                                )
-                            })
-                            .collect()
+                                    );
+                                internal_dependency_values.insert(
+                                    internal_dependency.name.clone(),
+                                    internal_dependency_value,
+                                ).unwrap();
+                            }
+                            internal_dependency_values
                         });
                     match &field_plan.field_type.resolver.carver_or_populator {
                         CarverOrPopulator::Carver(carver) => {
@@ -746,11 +749,6 @@ fn extract_dependency_steps<'a>(
                             column_getter_list,
                             internal_dependency,
                             &external_dependency_values,
-                        )
-                    }
-                    InternalDependencyResolver::Custom(resolve_internal_dependency) => {
-                        AsyncStep::Custom(
-                            unimplemented!()
                         )
                     }
                     _ => unreachable!(),
@@ -1288,11 +1286,18 @@ fn carve_list<'a: 'b, 'b>(
 
 #[instrument(
     level = "trace",
-    skip(arguments, external_dependency_values, internal_dependency, schema)
+    skip(
+        arguments,
+        external_dependency_values,
+        preceding_internal_dependency_values,
+        internal_dependency,
+        schema,
+    )
 )]
 fn get_internal_dependency_value_synchronous(
     arguments: Option<&IndexMap<SmolStr, Argument>>,
     external_dependency_values: &ExternalDependencyValues,
+    preceding_internal_dependency_values: &InternalDependencyValues,
     internal_dependency: &InternalDependency,
     schema: &Schema,
 ) -> DependencyValue {
@@ -1374,6 +1379,9 @@ fn get_internal_dependency_value_synchronous(
                 // TODO: truly unreachable?
                 _ => unreachable!(),
             }
+        }
+        InternalDependencyResolver::CustomSync(resolve_internal_dependency_sync) => {
+            resolve_internal_dependency_sync.resolve(external_dependency_values, preceding_internal_dependency_values)
         }
         _ => unreachable!(),
     }
