@@ -86,8 +86,7 @@ impl<'a> FieldPlan<'a> {
                         column_tokens[&column_getter_list.table_name]
                             [&column_getter_list.column_name],
                     ),
-                    InternalDependencyResolver::CustomSync(_) => None,
-                    _ => unimplemented!(),
+                    _ => None,
                 }
             }),
         }
