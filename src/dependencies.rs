@@ -92,7 +92,7 @@ impl InternalDependencyResolver {
     }
 }
 
-pub trait ResolveInternalDependencySync {
+pub trait ResolveInternalDependencySync: Send + Sync {
     fn resolve(
         &self,
         external_dependency_values: &ExternalDependencyValues,
