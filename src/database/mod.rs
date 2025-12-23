@@ -174,9 +174,7 @@ pub trait DatabaseInterface: Send + Sync + Any {
 
     fn column_tokens(&self) -> Option<&'static ColumnTokens>;
 
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
+    fn as_any(&self) -> &dyn Any;
 }
 
 pub struct PostgresDatabase {
@@ -466,6 +464,10 @@ impl DatabaseInterface for PostgresDatabase {
 
     fn column_tokens(&self) -> Option<&'static ColumnTokens> {
         None
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
     }
 }
 
