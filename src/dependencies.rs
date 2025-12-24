@@ -10,7 +10,7 @@ use sqlx::postgres::PgValueRef;
 use squalid::{OptionExt, _d};
 use uuid::Uuid;
 
-use crate::{AnyHashMap, Error};
+use crate::{AnyHashMap, Database, Error};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum DependencyType {
@@ -22,7 +22,7 @@ pub enum DependencyType {
     Int,
     Float,
     Date,
-    Map(Box<DependencyType>),
+    Map(HashMap<SmolStr, DependencyType>),
 }
 
 impl DependencyType {
@@ -97,6 +97,7 @@ pub trait ResolveInternalDependencySync: Send + Sync {
         &self,
         external_dependency_values: &ExternalDependencyValues,
         preceding_internal_dependency_values: &InternalDependencyValues,
+        database: &Database,
     ) -> DependencyValue;
 }
 
@@ -333,6 +334,13 @@ impl DependencyValue {
             Self::OptionalFloat(value) => value.map(|value| Self::Float(value)),
             Self::OptionalInt(value) => value.map(|value| Self::Int(value)),
             _ => panic!("Expected optional type"),
+        }
+    }
+
+    pub fn as_map(&self) -> &HashMap<SmolStr, DependencyValue> {
+        match self {
+            Self::Map(map) => map,
+            _ => panic!("Expected map"),
         }
     }
 }

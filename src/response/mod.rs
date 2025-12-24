@@ -9,7 +9,10 @@ use crate::{IndexMap, Location, ParseOrLexError, ValidationError};
 
 mod produce;
 
-pub use produce::{produce_response, ColumnSpec};
+pub use produce::{
+    get_internal_dependency_value_synchronous, get_internal_dependency_values_synchronous,
+    produce_response, ColumnSpec,
+};
 
 #[derive(Serialize)]
 pub struct Response {
