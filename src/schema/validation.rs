@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use itertools::Itertools;
 use smol_str::{format_smolstr, SmolStr, SmolStrBuilder};
@@ -64,6 +64,10 @@ impl Schema {
             return errors.into();
         }
         let errors = validate_fragment_spreads_relevant_type(request, self);
+        if !errors.is_empty() {
+            return errors.into();
+        }
+        let errors = validate_fragment_cycles(request, self);
         if !errors.is_empty() {
             return errors.into();
         }
@@ -1739,6 +1743,118 @@ fn directive_duplicate_validation_error(
             })
             .unwrap_or_default(),
     )
+}
+
+#[instrument(level = "trace", skip(request, schema))]
+fn validate_fragment_cycles(request: &Request, schema: &Schema) -> Vec<ValidationError> {
+    collect_typed(&mut FragmentCyclesCollector::default(), request, schema)
+}
+
+#[derive(Default)]
+struct FragmentCyclesCollector {
+    // previous_fragment_definition_references: HashMap<SmolStr, HashSet<SmolStr>>,
+    referers: HashMap<SmolStr, HashSet<SmolStr>>,
+    current_fragment_definition: Option<(SmolStr, HashSet<SmolStr>)>,
+}
+
+impl FragmentCyclesCollector {
+    fn pass_current_fragment_definition(&mut self) {
+        if let Some((previous_fragment_definition_name, previous_fragment_definition_references)) =
+            self.current_fragment_definition.take()
+        {
+            for previous_fragment_definition_reference in previous_fragment_definition_references {
+                self.referers
+                    .entry(previous_fragment_definition_reference)
+                    .or_default()
+                    .insert(previous_fragment_definition_name.clone());
+            }
+            // self.previous_fragment_definition_references
+            //     .insert(
+            //         previous_fragment_definition_name,
+            //         previous_fragment_definition_references,
+            //     )
+            //     .assert_none();
+        }
+    }
+}
+
+impl CollectorTyped<ValidationError, Vec<ValidationError>> for FragmentCyclesCollector {
+    #[instrument(level = "trace", skip(self, fragment_definition, _schema, _request))]
+    fn visit_fragment_definition(
+        &mut self,
+        fragment_definition: &FragmentDefinition,
+        _schema: &Schema,
+        _request: &Request,
+    ) -> (Vec<ValidationError>, bool) {
+        self.pass_current_fragment_definition();
+        self.current_fragment_definition = Some((fragment_definition.name.clone(), _d()));
+        (_d(), true)
+    }
+
+    #[instrument(level = "trace", skip(self, _operation, _schema, _request))]
+    fn visit_operation(
+        &mut self,
+        _operation: &OperationDefinition,
+        _schema: &Schema,
+        _request: &Request,
+    ) -> (Vec<ValidationError>, bool) {
+        self.pass_current_fragment_definition();
+        (_d(), true)
+    }
+
+    #[instrument(
+        level = "trace",
+        skip(self, fragment_spread, _enclosing_type, _schema, request)
+    )]
+    fn visit_fragment_spread(
+        &mut self,
+        fragment_spread: &FragmentSpread,
+        _enclosing_type: TypeOrUnionOrInterface<'_>,
+        _schema: &Schema,
+        request: &Request,
+    ) -> Vec<ValidationError> {
+        if self.current_fragment_definition.is_none() {
+            return _d();
+        }
+        if self.current_fragment_definition.as_ref().unwrap().0 == fragment_spread.name {
+            return vec![ValidationError::new(
+                format_smolstr!(
+                    "Fragment `{}` is referenced in itself",
+                    fragment_spread.name
+                ),
+                PositionsTracker::current()
+                    .map(|positions_tracker| {
+                        positions_tracker
+                            .fragment_spread_location(fragment_spread, &request.document)
+                    })
+                    .into_iter()
+                    .collect(),
+            )];
+        }
+        if self
+            .referers
+            .get(&fragment_spread.name)
+            .is_some_and(|referer| {
+                referer.contains(&self.current_fragment_definition.as_ref().unwrap().0)
+            })
+        {
+            return vec![ValidationError::new(
+                format_smolstr!(
+                    "Fragment `{}` is referenced cyclically in `{}`",
+                    fragment_spread.name,
+                    self.current_fragment_definition.as_ref().unwrap().0
+                ),
+                PositionsTracker::current()
+                    .map(|positions_tracker| {
+                        positions_tracker
+                            .fragment_spread_location(fragment_spread, &request.document)
+                    })
+                    .into_iter()
+                    .collect(),
+            )];
+        }
+        _d()
+    }
 }
 
 #[derive(Debug)]
