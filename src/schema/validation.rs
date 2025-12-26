@@ -1831,12 +1831,15 @@ impl CollectorTyped<ValidationError, Vec<ValidationError>> for FragmentCyclesCol
                     .collect(),
             )];
         }
+        self.current_fragment_definition
+            .as_mut()
+            .unwrap()
+            .1
+            .insert(fragment_spread.name.clone());
         if self
             .referers
-            .get(&fragment_spread.name)
-            .is_some_and(|referer| {
-                referer.contains(&self.current_fragment_definition.as_ref().unwrap().0)
-            })
+            .get(&self.current_fragment_definition.as_ref().unwrap().0)
+            .is_some_and(|referer| referer.contains(&fragment_spread.name))
         {
             return vec![ValidationError::new(
                 format_smolstr!(
