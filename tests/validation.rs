@@ -1070,3 +1070,83 @@ async fn test_directive_unknown_argument() {
     )
     .await;
 }
+
+#[tokio::test]
+async fn test_fragment_cycle_self() {
+    validation_test(
+        indoc!(
+            r#"
+            {
+              actorKatie {
+                ...actorFragment
+              }
+            }
+
+            fragment actorFragment on Actor {
+                favoriteActorOrDesigner {
+                  ...actorFragment
+                }
+            }
+        "#
+        ),
+        r#"
+            {
+              "errors": [
+                {
+                  "message": "Fragment `actorFragment` is referenced in itself",
+                  "locations": [
+                    {
+                      "line": 9,
+                      "column": 7
+                    }
+                  ]
+                }
+              ]
+            }
+        "#,
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn test_fragment_cycle_mutual() {
+    validation_test(
+        indoc!(
+            r#"
+            {
+              actorKatie {
+                ...actorFragment
+              }
+            }
+
+            fragment actorFragment on Actor {
+                favoriteActorOrDesigner {
+                  ...designerFragment
+                }
+            }
+
+            fragment designerFragment on Designer {
+                favoriteOfActors {
+                  ...actorFragment
+                }
+            }
+        "#
+        ),
+        r#"
+            {
+              "errors": [
+                {
+                  "message": "Fragment `actorFragment` is referenced cyclically in `designerFragment`",
+                  "locations": [
+                    {
+                      "line": 15,
+                      "column": 7
+                    }
+                  ]
+                }
+              ]
+            }
+        "#,
+    )
+    .await;
+}
