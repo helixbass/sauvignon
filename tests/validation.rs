@@ -1150,3 +1150,58 @@ async fn test_fragment_cycle_mutual() {
     )
     .await;
 }
+
+#[tokio::test]
+async fn test_fragment_cycle_mutual_non_direct() {
+    validation_test(
+        indoc!(
+            r#"
+            {
+              actorKatie {
+                ...actorFragment
+              }
+            }
+
+            fragment actorFragment on Actor {
+                favoriteActorOrDesigner {
+                  ...designerFragment
+                }
+            }
+
+            fragment designerFragment on Designer {
+                favoriteOfActors {
+                  ...actorFragment2
+                }
+            }
+
+            fragment actorFragment2 on Actor {
+                favoriteActorOrDesigner {
+                  ...designerFragment2
+                }
+            }
+
+            fragment designerFragment2 on Designer {
+                favoriteOfActors {
+                  ...actorFragment
+                }
+            }
+        "#
+        ),
+        r#"
+            {
+              "errors": [
+                {
+                  "message": "Fragment `actorFragment` is referenced cyclically in `designerFragment2`",
+                  "locations": [
+                    {
+                      "line": 27,
+                      "column": 7
+                    }
+                  ]
+                }
+              ]
+            }
+        "#,
+    )
+    .await;
+}

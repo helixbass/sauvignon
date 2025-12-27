@@ -1764,9 +1764,40 @@ impl FragmentCyclesCollector {
         {
             for previous_fragment_definition_reference in previous_fragment_definition_references {
                 self.referers
-                    .entry(previous_fragment_definition_reference)
+                    .entry(previous_fragment_definition_reference.clone())
                     .or_default()
                     .insert(previous_fragment_definition_name.clone());
+                if let Some(existing_transitive_referers) = self
+                    .referers
+                    .get(&previous_fragment_definition_name)
+                    .cloned()
+                {
+                    existing_transitive_referers.into_iter().for_each(
+                        |existing_transitive_referer| {
+                            self.referers
+                                .entry(previous_fragment_definition_reference.clone())
+                                .or_default()
+                                .insert(existing_transitive_referer);
+                        },
+                    );
+                }
+                let existing_refer_to_this_referred = self
+                    .referers
+                    .iter()
+                    .filter_map(|(name, referers)| {
+                        referers
+                            .contains(&previous_fragment_definition_reference)
+                            .then_some(name.clone())
+                    })
+                    .collect::<Vec<_>>();
+                existing_refer_to_this_referred
+                    .into_iter()
+                    .for_each(|name| {
+                        self.referers
+                            .get_mut(&name)
+                            .unwrap()
+                            .insert(previous_fragment_definition_name.clone());
+                    });
             }
             // self.previous_fragment_definition_references
             //     .insert(
