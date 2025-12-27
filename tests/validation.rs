@@ -1070,3 +1070,190 @@ async fn test_directive_unknown_argument() {
     )
     .await;
 }
+
+#[tokio::test]
+async fn test_fragment_cycle_self() {
+    validation_test(
+        indoc!(
+            r#"
+            {
+              actorKatie {
+                ...actorFragment
+              }
+            }
+
+            fragment actorFragment on Actor {
+                favoriteActorOrDesigner {
+                  ...actorFragment
+                }
+            }
+        "#
+        ),
+        r#"
+            {
+              "errors": [
+                {
+                  "message": "Fragment `actorFragment` is referenced in itself",
+                  "locations": [
+                    {
+                      "line": 9,
+                      "column": 7
+                    }
+                  ]
+                }
+              ]
+            }
+        "#,
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn test_fragment_cycle_mutual() {
+    validation_test(
+        indoc!(
+            r#"
+            {
+              actorKatie {
+                ...actorFragment
+              }
+            }
+
+            fragment actorFragment on Actor {
+                favoriteActorOrDesigner {
+                  ...designerFragment
+                }
+            }
+
+            fragment designerFragment on Designer {
+                favoriteOfActors {
+                  ...actorFragment
+                }
+            }
+        "#
+        ),
+        r#"
+            {
+              "errors": [
+                {
+                  "message": "Fragment `actorFragment` is referenced cyclically in `designerFragment`",
+                  "locations": [
+                    {
+                      "line": 15,
+                      "column": 7
+                    }
+                  ]
+                }
+              ]
+            }
+        "#,
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn test_fragment_cycle_mutual_non_direct() {
+    validation_test(
+        indoc!(
+            r#"
+            {
+              actorKatie {
+                ...actorFragment
+              }
+            }
+
+            fragment actorFragment on Actor {
+                favoriteActorOrDesigner {
+                  ...designerFragment
+                }
+            }
+
+            fragment designerFragment on Designer {
+                favoriteOfActors {
+                  ...actorFragment2
+                }
+            }
+
+            fragment actorFragment2 on Actor {
+                favoriteActorOrDesigner {
+                  ...designerFragment2
+                }
+            }
+
+            fragment designerFragment2 on Designer {
+                favoriteOfActors {
+                  ...actorFragment
+                }
+            }
+        "#
+        ),
+        r#"
+            {
+              "errors": [
+                {
+                  "message": "Fragment `actorFragment` is referenced cyclically in `designerFragment2`",
+                  "locations": [
+                    {
+                      "line": 27,
+                      "column": 7
+                    }
+                  ]
+                }
+              ]
+            }
+        "#,
+    )
+    .await;
+
+    validation_test(
+        indoc!(
+            r#"
+            {
+              actorKatie {
+                ...actorFragment
+              }
+            }
+
+            fragment designerFragment2 on Designer {
+                favoriteOfActors {
+                  ...actorFragment
+                }
+            }
+
+            fragment actorFragment2 on Actor {
+                favoriteActorOrDesigner {
+                  ...designerFragment2
+                }
+            }
+
+            fragment designerFragment on Designer {
+                favoriteOfActors {
+                  ...actorFragment2
+                }
+            }
+
+            fragment actorFragment on Actor {
+                favoriteActorOrDesigner {
+                  ...designerFragment
+                }
+            }
+        "#
+        ),
+        r#"
+            {
+              "errors": [
+                {
+                  "message": "Fragment `designerFragment` is referenced cyclically in `actorFragment`",
+                  "locations": [
+                    {
+                      "line": 27,
+                      "column": 7
+                    }
+                  ]
+                }
+              ]
+            }
+        "#,
+    )
+    .await;
+}

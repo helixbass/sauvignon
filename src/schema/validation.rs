@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use itertools::Itertools;
 use smol_str::{format_smolstr, SmolStr, SmolStrBuilder};
@@ -64,6 +64,10 @@ impl Schema {
             return errors.into();
         }
         let errors = validate_fragment_spreads_relevant_type(request, self);
+        if !errors.is_empty() {
+            return errors.into();
+        }
+        let errors = validate_fragment_cycles(request, self);
         if !errors.is_empty() {
             return errors.into();
         }
@@ -338,7 +342,7 @@ fn collect_selection_set<
 trait CollectorTyped<TItem, TCollection: FromIterator<TItem> + IntoIterator<Item = TItem> + Default>
 {
     fn visit_operation(
-        &self,
+        &mut self,
         _operation: &OperationDefinition,
         _schema: &Schema,
         _request: &Request,
@@ -347,7 +351,7 @@ trait CollectorTyped<TItem, TCollection: FromIterator<TItem> + IntoIterator<Item
     }
 
     fn visit_fragment_definition(
-        &self,
+        &mut self,
         _fragment_definition: &FragmentDefinition,
         _schema: &Schema,
         _request: &Request,
@@ -356,7 +360,7 @@ trait CollectorTyped<TItem, TCollection: FromIterator<TItem> + IntoIterator<Item
     }
 
     fn visit_field(
-        &self,
+        &mut self,
         _field: &SelectionField,
         _type_field: TypeOrInterfaceField<'_>,
         _schema: &Schema,
@@ -366,7 +370,7 @@ trait CollectorTyped<TItem, TCollection: FromIterator<TItem> + IntoIterator<Item
     }
 
     fn visit_fragment_spread(
-        &self,
+        &mut self,
         _fragment_spread: &FragmentSpread,
         _enclosing_type: TypeOrUnionOrInterface<'_>,
         _schema: &Schema,
@@ -376,7 +380,7 @@ trait CollectorTyped<TItem, TCollection: FromIterator<TItem> + IntoIterator<Item
     }
 
     fn visit_inline_fragment(
-        &self,
+        &mut self,
         _inline_fragment: &InlineFragment,
         _enclosing_type: TypeOrUnionOrInterface<'_>,
         _schema: &Schema,
@@ -392,7 +396,7 @@ fn collect_typed<
     TCollection: FromIterator<TItem> + IntoIterator<Item = TItem> + Default,
     TCollector: CollectorTyped<TItem, TCollection>,
 >(
-    collector: &TCollector,
+    collector: &mut TCollector,
     request: &Request,
     schema: &Schema,
 ) -> TCollection {
@@ -445,7 +449,7 @@ fn collect_typed_selection_set<
     TCollection: FromIterator<TItem> + IntoIterator<Item = TItem> + Default,
     TCollector: CollectorTyped<TItem, TCollection>,
 >(
-    collector: &TCollector,
+    collector: &mut TCollector,
     selection_set: &[Selection],
     enclosing_type_name: &str,
     request: &Request,
@@ -844,7 +848,7 @@ fn no_selection_on_object_type_validation_error(
 
 #[instrument(level = "trace", skip(request, schema))]
 fn validate_argument_names_exist(request: &Request, schema: &Schema) -> Vec<ValidationError> {
-    collect_typed(&ArgumentNamesExistCollector::default(), request, schema)
+    collect_typed(&mut ArgumentNamesExistCollector::default(), request, schema)
 }
 
 #[derive(Default)]
@@ -853,7 +857,7 @@ struct ArgumentNamesExistCollector {}
 impl CollectorTyped<ValidationError, Vec<ValidationError>> for ArgumentNamesExistCollector {
     #[instrument(level = "trace", skip(self, field, type_field, _schema, request))]
     fn visit_field(
-        &self,
+        &mut self,
         field: &SelectionField,
         type_field: TypeOrInterfaceField<'_>,
         _schema: &Schema,
@@ -900,7 +904,7 @@ impl CollectorTyped<ValidationError, Vec<ValidationError>> for ArgumentNamesExis
         skip(self, fragment_spread, _enclosing_type, _schema, request)
     )]
     fn visit_fragment_spread(
-        &self,
+        &mut self,
         fragment_spread: &FragmentSpread,
         _enclosing_type: TypeOrUnionOrInterface<'_>,
         _schema: &Schema,
@@ -914,7 +918,7 @@ impl CollectorTyped<ValidationError, Vec<ValidationError>> for ArgumentNamesExis
         skip(self, inline_fragment, _enclosing_type, _schema, request)
     )]
     fn visit_inline_fragment(
-        &self,
+        &mut self,
         inline_fragment: &InlineFragment,
         _enclosing_type: TypeOrUnionOrInterface<'_>,
         _schema: &Schema,
@@ -975,7 +979,11 @@ fn argument_names_exist_validation_error(
 
 #[instrument(level = "trace", skip(request, schema))]
 fn validate_no_duplicate_arguments(request: &Request, schema: &Schema) -> Vec<ValidationError> {
-    collect_typed(&NoDuplicateArgumentsCollector::default(), request, schema)
+    collect_typed(
+        &mut NoDuplicateArgumentsCollector::default(),
+        request,
+        schema,
+    )
 }
 
 #[derive(Default)]
@@ -984,7 +992,7 @@ struct NoDuplicateArgumentsCollector {}
 impl CollectorTyped<ValidationError, Vec<ValidationError>> for NoDuplicateArgumentsCollector {
     #[instrument(level = "trace", skip(self, field, _type_field, _schema, request))]
     fn visit_field(
-        &self,
+        &mut self,
         field: &SelectionField,
         _type_field: TypeOrInterfaceField<'_>,
         _schema: &Schema,
@@ -1039,7 +1047,7 @@ impl CollectorTyped<ValidationError, Vec<ValidationError>> for NoDuplicateArgume
         skip(self, fragment_spread, _enclosing_type, _schema, request)
     )]
     fn visit_fragment_spread(
-        &self,
+        &mut self,
         fragment_spread: &FragmentSpread,
         _enclosing_type: TypeOrUnionOrInterface<'_>,
         _schema: &Schema,
@@ -1053,7 +1061,7 @@ impl CollectorTyped<ValidationError, Vec<ValidationError>> for NoDuplicateArgume
         skip(self, inline_fragment, _enclosing_type, _schema, request)
     )]
     fn visit_inline_fragment(
-        &self,
+        &mut self,
         inline_fragment: &InlineFragment,
         _enclosing_type: TypeOrUnionOrInterface<'_>,
         _schema: &Schema,
@@ -1112,7 +1120,7 @@ fn duplicate_argument_validation_error(name: &str, locations: Vec<Location>) -> 
 
 #[instrument(level = "trace", skip(request, schema))]
 fn validate_required_arguments(request: &Request, schema: &Schema) -> Vec<ValidationError> {
-    collect_typed(&RequiredArgumentCollector::default(), request, schema)
+    collect_typed(&mut RequiredArgumentCollector::default(), request, schema)
 }
 
 #[derive(Default)]
@@ -1121,7 +1129,7 @@ struct RequiredArgumentCollector {}
 impl CollectorTyped<ValidationError, Vec<ValidationError>> for RequiredArgumentCollector {
     #[instrument(level = "trace", skip(self, field, type_field, _schema, request))]
     fn visit_field(
-        &self,
+        &mut self,
         field: &SelectionField,
         type_field: TypeOrInterfaceField<'_>,
         _schema: &Schema,
@@ -1174,7 +1182,7 @@ impl CollectorTyped<ValidationError, Vec<ValidationError>> for RequiredArgumentC
         skip(self, fragment_spread, _enclosing_type, _schema, request)
     )]
     fn visit_fragment_spread(
-        &self,
+        &mut self,
         fragment_spread: &FragmentSpread,
         _enclosing_type: TypeOrUnionOrInterface<'_>,
         _schema: &Schema,
@@ -1200,7 +1208,7 @@ impl CollectorTyped<ValidationError, Vec<ValidationError>> for RequiredArgumentC
         skip(self, inline_fragment, _enclosing_type, _schema, request)
     )]
     fn visit_inline_fragment(
-        &self,
+        &mut self,
         inline_fragment: &InlineFragment,
         _enclosing_type: TypeOrUnionOrInterface<'_>,
         _schema: &Schema,
@@ -1341,7 +1349,11 @@ impl Collector<SmolStr, HashSet<SmolStr>> for FragmentNamesUsedCollector {
 
 #[instrument(level = "trace", skip(request, schema))]
 fn validate_fragment_spreads_exist(request: &Request, schema: &Schema) -> Vec<ValidationError> {
-    collect_typed(&FragmentSpreadsExistCollector::default(), request, schema)
+    collect_typed(
+        &mut FragmentSpreadsExistCollector::default(),
+        request,
+        schema,
+    )
 }
 
 #[derive(Default)]
@@ -1353,7 +1365,7 @@ impl CollectorTyped<ValidationError, Vec<ValidationError>> for FragmentSpreadsEx
         skip(self, fragment_spread, _enclosing_type, _schema, request)
     )]
     fn visit_fragment_spread(
-        &self,
+        &mut self,
         fragment_spread: &FragmentSpread,
         _enclosing_type: TypeOrUnionOrInterface<'_>,
         _schema: &Schema,
@@ -1389,7 +1401,7 @@ fn validate_fragment_spreads_relevant_type(
     schema: &Schema,
 ) -> Vec<ValidationError> {
     collect_typed(
-        &FragmentSpreadsRelevantTypeCollector::default(),
+        &mut FragmentSpreadsRelevantTypeCollector::default(),
         request,
         schema,
     )
@@ -1406,7 +1418,7 @@ impl CollectorTyped<ValidationError, Vec<ValidationError>>
         skip(self, fragment_spread, enclosing_type, schema, request)
     )]
     fn visit_fragment_spread(
-        &self,
+        &mut self,
         fragment_spread: &FragmentSpread,
         enclosing_type: TypeOrUnionOrInterface<'_>,
         schema: &Schema,
@@ -1454,7 +1466,7 @@ impl CollectorTyped<ValidationError, Vec<ValidationError>>
 
 #[instrument(level = "trace", skip(request, schema))]
 fn validate_directives_exist(request: &Request, schema: &Schema) -> Vec<ValidationError> {
-    collect_typed(&DirectivesExistCollector::default(), request, schema)
+    collect_typed(&mut DirectivesExistCollector::default(), request, schema)
 }
 
 #[derive(Default)]
@@ -1463,7 +1475,7 @@ struct DirectivesExistCollector {}
 impl CollectorTyped<ValidationError, Vec<ValidationError>> for DirectivesExistCollector {
     #[instrument(level = "trace", skip(self, operation, _schema, request))]
     fn visit_operation(
-        &self,
+        &mut self,
         operation: &OperationDefinition,
         _schema: &Schema,
         request: &Request,
@@ -1481,7 +1493,7 @@ impl CollectorTyped<ValidationError, Vec<ValidationError>> for DirectivesExistCo
 
     #[instrument(level = "trace", skip(self, fragment_definition, _schema, request))]
     fn visit_fragment_definition(
-        &self,
+        &mut self,
         fragment_definition: &FragmentDefinition,
         _schema: &Schema,
         request: &Request,
@@ -1499,7 +1511,7 @@ impl CollectorTyped<ValidationError, Vec<ValidationError>> for DirectivesExistCo
 
     #[instrument(level = "trace", skip(self, field, _type_field, _schema, request))]
     fn visit_field(
-        &self,
+        &mut self,
         field: &SelectionField,
         _type_field: TypeOrInterfaceField<'_>,
         _schema: &Schema,
@@ -1521,7 +1533,7 @@ impl CollectorTyped<ValidationError, Vec<ValidationError>> for DirectivesExistCo
         skip(self, fragment_spread, _enclosing_type, _schema, request)
     )]
     fn visit_fragment_spread(
-        &self,
+        &mut self,
         fragment_spread: &FragmentSpread,
         _enclosing_type: TypeOrUnionOrInterface<'_>,
         _schema: &Schema,
@@ -1540,7 +1552,7 @@ impl CollectorTyped<ValidationError, Vec<ValidationError>> for DirectivesExistCo
         skip(self, inline_fragment, _enclosing_type, _schema, request)
     )]
     fn visit_inline_fragment(
-        &self,
+        &mut self,
         inline_fragment: &InlineFragment,
         _enclosing_type: TypeOrUnionOrInterface<'_>,
         _schema: &Schema,
@@ -1571,7 +1583,7 @@ fn directive_exists_validation_error(directive: &Directive, request: &Request) -
 
 #[instrument(level = "trace", skip(request, schema))]
 fn validate_directives_place(request: &Request, schema: &Schema) -> Vec<ValidationError> {
-    collect_typed(&DirectivesPlaceCollector::default(), request, schema)
+    collect_typed(&mut DirectivesPlaceCollector::default(), request, schema)
 }
 
 #[derive(Default)]
@@ -1580,7 +1592,7 @@ struct DirectivesPlaceCollector {}
 impl CollectorTyped<ValidationError, Vec<ValidationError>> for DirectivesPlaceCollector {
     #[instrument(level = "trace", skip(self, operation, _schema, request))]
     fn visit_operation(
-        &self,
+        &mut self,
         operation: &OperationDefinition,
         _schema: &Schema,
         request: &Request,
@@ -1597,7 +1609,7 @@ impl CollectorTyped<ValidationError, Vec<ValidationError>> for DirectivesPlaceCo
 
     #[instrument(level = "trace", skip(self, fragment_definition, _schema, request))]
     fn visit_fragment_definition(
-        &self,
+        &mut self,
         fragment_definition: &FragmentDefinition,
         _schema: &Schema,
         request: &Request,
@@ -1629,7 +1641,11 @@ fn directive_place_validation_error(directive: &Directive, request: &Request) ->
 
 #[instrument(level = "trace", skip(request, schema))]
 fn validate_directives_duplicate(request: &Request, schema: &Schema) -> Vec<ValidationError> {
-    collect_typed(&DirectivesDuplicateCollector::default(), request, schema)
+    collect_typed(
+        &mut DirectivesDuplicateCollector::default(),
+        request,
+        schema,
+    )
 }
 
 #[derive(Default)]
@@ -1638,7 +1654,7 @@ struct DirectivesDuplicateCollector {}
 impl CollectorTyped<ValidationError, Vec<ValidationError>> for DirectivesDuplicateCollector {
     #[instrument(level = "trace", skip(self, field, _type_field, _schema, request))]
     fn visit_field(
-        &self,
+        &mut self,
         field: &SelectionField,
         _type_field: TypeOrInterfaceField<'_>,
         _schema: &Schema,
@@ -1664,7 +1680,7 @@ impl CollectorTyped<ValidationError, Vec<ValidationError>> for DirectivesDuplica
         skip(self, fragment_spread, _enclosing_type, _schema, request)
     )]
     fn visit_fragment_spread(
-        &self,
+        &mut self,
         fragment_spread: &FragmentSpread,
         _enclosing_type: TypeOrUnionOrInterface<'_>,
         _schema: &Schema,
@@ -1687,7 +1703,7 @@ impl CollectorTyped<ValidationError, Vec<ValidationError>> for DirectivesDuplica
         skip(self, inline_fragment, _enclosing_type, _schema, request)
     )]
     fn visit_inline_fragment(
-        &self,
+        &mut self,
         inline_fragment: &InlineFragment,
         _enclosing_type: TypeOrUnionOrInterface<'_>,
         _schema: &Schema,
@@ -1727,6 +1743,145 @@ fn directive_duplicate_validation_error(
             })
             .unwrap_or_default(),
     )
+}
+
+#[instrument(level = "trace", skip(request, schema))]
+fn validate_fragment_cycles(request: &Request, schema: &Schema) -> Vec<ValidationError> {
+    collect_typed(&mut FragmentCyclesCollector::default(), request, schema)
+}
+
+#[derive(Default)]
+struct FragmentCyclesCollector {
+    referers: HashMap<SmolStr, HashSet<SmolStr>>,
+    current_fragment_definition: Option<(SmolStr, HashSet<SmolStr>)>,
+}
+
+impl FragmentCyclesCollector {
+    fn pass_current_fragment_definition(&mut self) {
+        if let Some((previous_fragment_definition_name, previous_fragment_definition_references)) =
+            self.current_fragment_definition.take()
+        {
+            for previous_fragment_definition_reference in previous_fragment_definition_references {
+                self.referers
+                    .entry(previous_fragment_definition_reference.clone())
+                    .or_default()
+                    .insert(previous_fragment_definition_name.clone());
+                if let Some(existing_transitive_referers) = self
+                    .referers
+                    .get(&previous_fragment_definition_name)
+                    .cloned()
+                {
+                    existing_transitive_referers.into_iter().for_each(
+                        |existing_transitive_referer| {
+                            self.referers
+                                .entry(previous_fragment_definition_reference.clone())
+                                .or_default()
+                                .insert(existing_transitive_referer);
+                        },
+                    );
+                }
+                let existing_refer_to_this_referred = self
+                    .referers
+                    .iter()
+                    .filter_map(|(name, referers)| {
+                        referers
+                            .contains(&previous_fragment_definition_reference)
+                            .then_some(name.clone())
+                    })
+                    .collect::<Vec<_>>();
+                existing_refer_to_this_referred
+                    .into_iter()
+                    .for_each(|name| {
+                        self.referers
+                            .get_mut(&name)
+                            .unwrap()
+                            .insert(previous_fragment_definition_name.clone());
+                    });
+            }
+        }
+    }
+}
+
+impl CollectorTyped<ValidationError, Vec<ValidationError>> for FragmentCyclesCollector {
+    #[instrument(level = "trace", skip(self, fragment_definition, _schema, _request))]
+    fn visit_fragment_definition(
+        &mut self,
+        fragment_definition: &FragmentDefinition,
+        _schema: &Schema,
+        _request: &Request,
+    ) -> (Vec<ValidationError>, bool) {
+        self.pass_current_fragment_definition();
+        self.current_fragment_definition = Some((fragment_definition.name.clone(), _d()));
+        (_d(), true)
+    }
+
+    #[instrument(level = "trace", skip(self, _operation, _schema, _request))]
+    fn visit_operation(
+        &mut self,
+        _operation: &OperationDefinition,
+        _schema: &Schema,
+        _request: &Request,
+    ) -> (Vec<ValidationError>, bool) {
+        self.pass_current_fragment_definition();
+        (_d(), true)
+    }
+
+    #[instrument(
+        level = "trace",
+        skip(self, fragment_spread, _enclosing_type, _schema, request)
+    )]
+    fn visit_fragment_spread(
+        &mut self,
+        fragment_spread: &FragmentSpread,
+        _enclosing_type: TypeOrUnionOrInterface<'_>,
+        _schema: &Schema,
+        request: &Request,
+    ) -> Vec<ValidationError> {
+        if self.current_fragment_definition.is_none() {
+            return _d();
+        }
+        if self.current_fragment_definition.as_ref().unwrap().0 == fragment_spread.name {
+            return vec![ValidationError::new(
+                format_smolstr!(
+                    "Fragment `{}` is referenced in itself",
+                    fragment_spread.name
+                ),
+                PositionsTracker::current()
+                    .map(|positions_tracker| {
+                        positions_tracker
+                            .fragment_spread_location(fragment_spread, &request.document)
+                    })
+                    .into_iter()
+                    .collect(),
+            )];
+        }
+        self.current_fragment_definition
+            .as_mut()
+            .unwrap()
+            .1
+            .insert(fragment_spread.name.clone());
+        if self
+            .referers
+            .get(&self.current_fragment_definition.as_ref().unwrap().0)
+            .is_some_and(|referer| referer.contains(&fragment_spread.name))
+        {
+            return vec![ValidationError::new(
+                format_smolstr!(
+                    "Fragment `{}` is referenced cyclically in `{}`",
+                    fragment_spread.name,
+                    self.current_fragment_definition.as_ref().unwrap().0
+                ),
+                PositionsTracker::current()
+                    .map(|positions_tracker| {
+                        positions_tracker
+                            .fragment_spread_location(fragment_spread, &request.document)
+                    })
+                    .into_iter()
+                    .collect(),
+            )];
+        }
+        _d()
+    }
 }
 
 #[derive(Debug)]
