@@ -1752,7 +1752,6 @@ fn validate_fragment_cycles(request: &Request, schema: &Schema) -> Vec<Validatio
 
 #[derive(Default)]
 struct FragmentCyclesCollector {
-    // previous_fragment_definition_references: HashMap<SmolStr, HashSet<SmolStr>>,
     referers: HashMap<SmolStr, HashSet<SmolStr>>,
     current_fragment_definition: Option<(SmolStr, HashSet<SmolStr>)>,
 }
@@ -1799,12 +1798,6 @@ impl FragmentCyclesCollector {
                             .insert(previous_fragment_definition_name.clone());
                     });
             }
-            // self.previous_fragment_definition_references
-            //     .insert(
-            //         previous_fragment_definition_name,
-            //         previous_fragment_definition_references,
-            //     )
-            //     .assert_none();
         }
     }
 }

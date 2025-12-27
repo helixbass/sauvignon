@@ -1204,4 +1204,56 @@ async fn test_fragment_cycle_mutual_non_direct() {
         "#,
     )
     .await;
+
+    validation_test(
+        indoc!(
+            r#"
+            {
+              actorKatie {
+                ...actorFragment
+              }
+            }
+
+            fragment designerFragment2 on Designer {
+                favoriteOfActors {
+                  ...actorFragment
+                }
+            }
+
+            fragment actorFragment2 on Actor {
+                favoriteActorOrDesigner {
+                  ...designerFragment2
+                }
+            }
+
+            fragment designerFragment on Designer {
+                favoriteOfActors {
+                  ...actorFragment2
+                }
+            }
+
+            fragment actorFragment on Actor {
+                favoriteActorOrDesigner {
+                  ...designerFragment
+                }
+            }
+        "#
+        ),
+        r#"
+            {
+              "errors": [
+                {
+                  "message": "Fragment `designerFragment` is referenced cyclically in `actorFragment`",
+                  "locations": [
+                    {
+                      "line": 27,
+                      "column": 7
+                    }
+                  ]
+                }
+              ]
+            }
+        "#,
+    )
+    .await;
 }
