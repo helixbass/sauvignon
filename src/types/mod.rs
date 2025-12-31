@@ -2,16 +2,16 @@ use std::collections::HashMap;
 use std::marker::PhantomData;
 
 use derive_builder::Builder;
-use smol_str::SmolStr;
+use smol_str::{SmolStr, ToSmolStr};
 use squalid::{OptionExt, _d};
 use tracing::instrument;
 
 use crate::{
-    ArgumentInternalDependencyResolver, CarverOrPopulator, DependencyType, DependencyValue,
+    ArgumentInternalDependencyResolver, Carver, CarverOrPopulator, DependencyType, DependencyValue,
     EmptyPopulator, ExternalDependency, ExternalDependencyValues, FieldResolver, IndexMap,
     IndexSet, InternalDependency, InternalDependencyResolver, InternalDependencyValues,
     LiteralValueInternalDependencyResolver, OperationType, PopulatorInterface, PopulatorList,
-    PopulatorListInterface, StringCarver, ValuePopulator, ValuePopulatorList,
+    PopulatorListInterface, ResponseValue, StringCarver, ValuePopulator, ValuePopulatorList,
 };
 
 pub enum TypeFull {
@@ -385,12 +385,11 @@ pub fn introspection_type_type() -> Type {
                     .name("name")
                     .type_(TypeFull::Type("String".into()))
                     .resolver(FieldResolver::new(
-                        vec![ExternalDependency::new(
-                            "name".into(),
-                            DependencyType::String,
-                        )],
+                        vec![ExternalDependency::new("name".into(), DependencyType::Any)],
                         vec![],
-                        CarverOrPopulator::Carver(Box::new(StringCarver::new("name".into()))),
+                        CarverOrPopulator::Carver(Box::new(TypeFullNameStringCarver::new(
+                            "name".into(),
+                        ))),
                     ))
                     .build()
                     .unwrap(),
@@ -518,6 +517,36 @@ impl<TValue: Clone + Send + Sync + 'static> PopulatorInterface for AnyValuePopul
         )
         .unwrap();
         ret
+    }
+}
+
+pub struct TypeFullNameStringCarver {
+    pub name: SmolStr,
+}
+
+impl TypeFullNameStringCarver {
+    pub fn new(name: SmolStr) -> Self {
+        Self { name }
+    }
+}
+
+impl Carver for TypeFullNameStringCarver {
+    // #[instrument(
+    //     level = "trace",
+    //     skip(self, external_dependencies, internal_dependencies)
+    // )]
+    fn carve(
+        &self,
+        external_dependencies: &ExternalDependencyValues,
+        _internal_dependencies: &InternalDependencyValues,
+    ) -> ResponseValue {
+        ResponseValue::String(
+            external_dependencies
+                .get_any::<TypeFull>(&self.name)
+                .unwrap()
+                .name()
+                .to_smolstr(),
+        )
     }
 }
 
