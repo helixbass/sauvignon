@@ -1504,7 +1504,7 @@ pub fn get_internal_dependency_value_synchronous(
                             })
                             .unwrap()
                     }
-                }
+                }.to_smolstr()
             )
         }
         InternalDependencyResolver::IntrospectionSchemaQueryType => {

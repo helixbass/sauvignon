@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::marker::PhantomData;
 
 use derive_builder::Builder;
-use smol_str::SmolStr;
+use smol_str::{SmolStr, ToSmolStr};
 use squalid::{OptionExt, _d};
 use tracing::instrument;
 
@@ -350,6 +350,7 @@ pub fn builtin_types() -> HashMap<SmolStr, Type> {
         ("__EnumValue".into(), introspection_type_enum_value()),
         ("__Schema".into(), introspection_type_schema()),
         ("__Field".into(), introspection_type_field()),
+        ("__TypeKind".into(), introspection_type_type_kind()),
         ("ID".into(), id_type()),
     ]
     .into_iter()
@@ -669,6 +670,16 @@ pub fn introspection_type_field() -> Type {
     )
 }
 
+pub fn introspection_type_type_kind() -> Type {
+    use strum::VariantNames;
+    Type::Enum(Enum::new(
+        "__TypeKind".into(),
+        TypeKind::VARIANTS
+            .iter()
+            .map(|variant_name| variant_name.to_smolstr()),
+    ))
+}
+
 pub struct Union {
     pub name: SmolStr,
     pub types: Vec<SmolStr>,
@@ -863,7 +874,8 @@ impl TypeInterface for Enum {
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, strum::Display, strum::VariantNames)]
+#[strum(serialize_all = "SCREAMING_SNAKE_CASE")]
 pub enum TypeKind {
     Scalar,
     Object,
