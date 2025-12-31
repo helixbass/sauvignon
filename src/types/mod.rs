@@ -6,7 +6,7 @@ use squalid::{OptionExt, _d};
 
 use crate::{
     ArgumentInternalDependencyResolver, CarverOrPopulator, DependencyType, DependencyValue,
-    ExternalDependency, FieldResolver, IndexMap, IndexSet, InternalDependency,
+    EmptyPopulator, ExternalDependency, FieldResolver, IndexMap, IndexSet, InternalDependency,
     InternalDependencyResolver, LiteralValueInternalDependencyResolver, OperationType,
     StringCarver, ValuePopulator, ValuePopulatorList,
 };
@@ -109,9 +109,12 @@ impl ObjectTypeBuilder {
             .flatten()
             .if_is(OperationType::Query)
             .map(|_| {
-                [("__type".into(), Field::new_introspection_type())]
-                    .into_iter()
-                    .collect()
+                [
+                    ("__type".into(), Field::new_introspection_type()),
+                    ("__schema".into(), Field::new_introspection_schema()),
+                ]
+                .into_iter()
+                .collect()
             })
     }
 }
@@ -126,6 +129,9 @@ impl ObjectType {
             "__typename" => Some(&self.typename_field),
             "__type" if self.introspection_fields.is_some() => {
                 Some(&self.introspection_fields.as_ref().unwrap()["__type"])
+            }
+            "__schema" if self.introspection_fields.is_some() => {
+                Some(&self.introspection_fields.as_ref().unwrap()["__schema"])
             }
             name => self.fields.get(name),
         }
@@ -292,6 +298,21 @@ impl Field {
                 // TODO: presumably non-null?
                 TypeFull::Type("String".into()),
             )])
+            .build()
+            .unwrap()
+    }
+
+    pub fn new_introspection_schema() -> Self {
+        FieldBuilder::default()
+            .name("__schema")
+            .type_(TypeFull::NonNull(Box::new(TypeFull::Type(
+                "__Schema".into(),
+            ))))
+            .resolver(FieldResolver::new(
+                vec![],
+                vec![],
+                CarverOrPopulator::Populator(EmptyPopulator::new().into()),
+            ))
             .build()
             .unwrap()
     }

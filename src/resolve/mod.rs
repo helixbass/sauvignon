@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use heck_smol_str::ToPascalCase;
 use smol_str::{SmolStr, ToSmolStr};
+use squalid::_d;
 use tracing::instrument;
 
 use crate::{
@@ -412,6 +413,7 @@ impl CarverList for EnumValueCarverList {
 pub enum Populator {
     Value(ValuePopulator),
     Values(ValuesPopulator),
+    Empty(EmptyPopulator),
     Dyn(Box<dyn PopulatorInterface>),
 }
 
@@ -437,6 +439,9 @@ impl PopulatorInterface for Populator {
             Self::Values(populator) => {
                 populator.populate(external_dependencies, internal_dependencies)
             }
+            Self::Empty(populator) => {
+                populator.populate(external_dependencies, internal_dependencies)
+            }
             Self::Dyn(populator) => {
                 populator.populate(external_dependencies, internal_dependencies)
             }
@@ -453,6 +458,12 @@ impl From<ValuePopulator> for Populator {
 impl From<ValuesPopulator> for Populator {
     fn from(value: ValuesPopulator) -> Self {
         Self::Values(value)
+    }
+}
+
+impl From<EmptyPopulator> for Populator {
+    fn from(value: EmptyPopulator) -> Self {
+        Self::Empty(value)
     }
 }
 
@@ -528,6 +539,28 @@ impl PopulatorInterface for ValuesPopulator {
             .unwrap();
         }
         ret
+    }
+}
+
+pub struct EmptyPopulator {}
+
+impl EmptyPopulator {
+    pub fn new() -> Self {
+        Self {}
+    }
+}
+
+impl PopulatorInterface for EmptyPopulator {
+    #[instrument(
+        level = "trace",
+        skip(self, _external_dependencies, _internal_dependencies)
+    )]
+    fn populate(
+        &self,
+        _external_dependencies: &ExternalDependencyValues,
+        _internal_dependencies: &InternalDependencyValues,
+    ) -> ExternalDependencyValues {
+        _d()
     }
 }
 
