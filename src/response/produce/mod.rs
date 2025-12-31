@@ -1334,19 +1334,29 @@ pub fn get_internal_dependency_values_synchronous(
         .resolver
         .internal_dependencies
     {
-        let internal_dependency_value = 
-            get_internal_dependency_value_synchronous(
-                field_plan.arguments.as_ref(),
-                &external_dependency_values,
-                &internal_dependency_values,
-                internal_dependency,
-                schema,
-                database,
-            );
-        internal_dependency_values.insert(
-            internal_dependency.name.clone(),
-            internal_dependency_value,
-        ).unwrap();
+         match &internal_dependency.resolver {
+            InternalDependencyResolver::IntrospectionSchemaQueryType => {
+                let value = get_introspection_schema_query_type_value(schema);
+                internal_dependency_values.insert_any(
+                    internal_dependency.name.clone(),
+                    value,
+                ).unwrap();
+            }
+            _ => {
+                let internal_dependency_value = get_internal_dependency_value_synchronous(
+                    field_plan.arguments.as_ref(),
+                    &external_dependency_values,
+                    &internal_dependency_values,
+                    internal_dependency,
+                    schema,
+                    database,
+                );
+                internal_dependency_values.insert(
+                    internal_dependency.name.clone(),
+                    internal_dependency_value,
+                ).unwrap();
+            }
+        }
     }
     internal_dependency_values
 }
@@ -1507,9 +1517,6 @@ pub fn get_internal_dependency_value_synchronous(
                 }.to_smolstr()
             )
         }
-        InternalDependencyResolver::IntrospectionSchemaQueryType => {
-            DependencyValue::String(schema.query_type_name.clone())
-        }
         InternalDependencyResolver::Argument(argument_resolver) => {
             let argument = arguments.unwrap().get(&argument_resolver.name).unwrap();
             match (&internal_dependency.type_, &argument.value) {
@@ -1531,4 +1538,8 @@ pub fn get_internal_dependency_value_synchronous(
         }
         _ => unreachable!(),
     }
+}
+
+fn get_introspection_schema_query_type_value(schema: &Schema) -> TypeFull {
+    TypeFull::Type(schema.query_type_name.clone())
 }

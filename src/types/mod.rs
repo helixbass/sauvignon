@@ -10,10 +10,12 @@ use crate::{
     ArgumentInternalDependencyResolver, Carver, CarverOrPopulator, DependencyType, DependencyValue,
     EmptyPopulator, EnumValueCarver, ExternalDependency, ExternalDependencyValues, FieldResolver,
     IndexMap, IndexSet, InternalDependency, InternalDependencyResolver, InternalDependencyValues,
-    LiteralValueInternalDependencyResolver, OperationType, PopulatorInterface, PopulatorList,
-    PopulatorListInterface, ResponseValue, StringCarver, ValuePopulator, ValuePopulatorList,
+    LiteralValueInternalDependencyResolver, OperationType, Populator, PopulatorInterface,
+    PopulatorList, PopulatorListInterface, ResponseValue, StringCarver, ValuePopulator,
+    ValuePopulatorList,
 };
 
+#[derive(Clone)]
 pub enum TypeFull {
     Type(SmolStr),
     List(Box<TypeFull>),
@@ -633,10 +635,14 @@ pub fn introspection_type_schema() -> Type {
                     vec![],
                     vec![InternalDependency::new(
                         "name".into(),
-                        DependencyType::String,
+                        DependencyType::Any,
                         InternalDependencyResolver::IntrospectionSchemaQueryType,
                     )],
-                    CarverOrPopulator::Populator(ValuePopulator::new("name".into()).into()),
+                    CarverOrPopulator::Populator(Populator::Dyn(Box::new(AnyValuePopulator::<
+                        TypeFull,
+                    >::new(
+                        "name".into()
+                    )))),
                 ))
                 .build()
                 .unwrap()])
