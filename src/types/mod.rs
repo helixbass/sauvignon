@@ -792,7 +792,10 @@ pub fn introspection_type_field() -> Type {
                             InternalDependencyResolver::IntrospectionFieldType,
                         )],
                         CarverOrPopulator::Populator(Populator::Dyn(Box::new(
-                            AnyValuesPopulator::<TypeFull>::new("type".into()),
+                            AnyValuesPopulator::<TypeFull>::new([(
+                                "type".to_smolstr(),
+                                "name".to_smolstr(),
+                            )]),
                         ))),
                     ))
                     .build()
