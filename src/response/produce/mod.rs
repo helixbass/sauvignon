@@ -1450,6 +1450,35 @@ pub fn get_internal_dependency_value_synchronous(
                     .collect()
             )
         }
+        InternalDependencyResolver::IntrospectionTypeFields => {
+            let _ = trace_span!("resolve introspection type fields").entered();
+            let type_name = external_dependency_values.get("name").unwrap().as_string();
+            DependencyValue::List(
+                schema
+                    .maybe_type(type_name)
+                    .filter(|type_| matches!(type_, Type::Object(_)))
+                    .map(|type_| {
+                        type_
+                            .as_object()
+                            .fields
+                            .keys()
+                            .map(|field_name| DependencyValue::String(field_name.clone()))
+                            .collect()
+                    })
+                    .or_else(|| {
+                        schema.interfaces.get(type_name).map(|interface| {
+                            interface
+                                .fields
+                                .keys()
+                                .map(|field_name| DependencyValue::String(field_name.clone()))
+                                .collect()
+                        })
+                    })
+                    // TODO: this needs to be optional for
+                    // things other than object types and interfaces
+                    .unwrap(),
+            )
+        }
         InternalDependencyResolver::IntrospectionSchemaQueryType => {
             DependencyValue::String(schema.query_type_name.clone())
         }
