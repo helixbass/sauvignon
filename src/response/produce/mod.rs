@@ -1504,6 +1504,13 @@ pub fn get_internal_dependency_values_synchronous(
                     value,
                 ).unwrap();
             }
+            InternalDependencyResolver::IntrospectionTypeFieldType => {
+                let value = get_introspection_type_field_type_value(&internal_dependency_values);
+                internal_dependency_values.insert_any(
+                    internal_dependency.name.clone(),
+                    value,
+                ).unwrap();
+            }
             _ => {
                 let internal_dependency_value = get_internal_dependency_value_synchronous(
                     field_plan.arguments.as_ref(),
@@ -1707,4 +1714,8 @@ pub fn get_internal_dependency_value_synchronous(
 
 fn get_introspection_schema_query_type_value(schema: &Schema) -> TypeFull {
     TypeFull::Type(schema.query_type_name.clone())
+}
+
+fn get_introspection_type_field_type_value(internal_dependency_values: &InternalDependencyValues) -> TypeFull {
+    TypeFull::Type(internal_dependency_values.get("name").unwrap().as_string().clone())
 }

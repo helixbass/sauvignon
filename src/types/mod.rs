@@ -296,14 +296,23 @@ impl Field {
             .type_(TypeFull::Type("__Type".into()))
             .resolver(FieldResolver::new(
                 vec![],
-                vec![InternalDependency::new(
-                    "name".into(),
-                    DependencyType::String,
-                    InternalDependencyResolver::Argument(ArgumentInternalDependencyResolver::new(
+                vec![
+                    InternalDependency::new(
                         "name".into(),
-                    )),
-                )],
-                CarverOrPopulator::Populator(ValuePopulator::new("name".into()).into()),
+                        DependencyType::String,
+                        InternalDependencyResolver::Argument(
+                            ArgumentInternalDependencyResolver::new("name".into()),
+                        ),
+                    ),
+                    InternalDependency::new(
+                        "type".into(),
+                        DependencyType::Any,
+                        InternalDependencyResolver::IntrospectionTypeFieldType,
+                    ),
+                ],
+                CarverOrPopulator::Populator(Populator::Dyn(Box::new(
+                    AnyValuePopulator::<TypeFull>::new("type".into()),
+                ))),
             ))
             .params([Param::new(
                 "name".into(),
