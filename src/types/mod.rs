@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::marker::PhantomData;
 
 use derive_builder::Builder;
 use smol_str::SmolStr;
@@ -9,8 +10,8 @@ use crate::{
     ArgumentInternalDependencyResolver, CarverOrPopulator, DependencyType, DependencyValue,
     EmptyPopulator, ExternalDependency, ExternalDependencyValues, FieldResolver, IndexMap,
     IndexSet, InternalDependency, InternalDependencyResolver, InternalDependencyValues,
-    LiteralValueInternalDependencyResolver, OperationType, PopulatorList, PopulatorListInterface,
-    StringCarver, ValuePopulator, ValuePopulatorList,
+    LiteralValueInternalDependencyResolver, OperationType, PopulatorInterface, PopulatorList,
+    PopulatorListInterface, StringCarver, ValuePopulator, ValuePopulatorList,
 };
 
 pub enum TypeFull {
@@ -481,6 +482,43 @@ pub fn introspection_type_type() -> Type {
             .build()
             .unwrap(),
     )
+}
+
+pub struct AnyValuePopulator<TValue> {
+    pub key: SmolStr,
+    phantom_data: PhantomData<TValue>,
+}
+
+impl<TValue> AnyValuePopulator<TValue> {
+    pub fn new(key: SmolStr) -> Self {
+        Self {
+            key,
+            phantom_data: PhantomData,
+        }
+    }
+}
+
+impl<TValue: Clone + Send + Sync + 'static> PopulatorInterface for AnyValuePopulator<TValue> {
+    #[instrument(
+        level = "trace",
+        skip(self, _external_dependencies, internal_dependencies)
+    )]
+    fn populate(
+        &self,
+        _external_dependencies: &ExternalDependencyValues,
+        internal_dependencies: &InternalDependencyValues,
+    ) -> ExternalDependencyValues {
+        let mut ret = ExternalDependencyValues::default();
+        ret.insert_any(
+            self.key.clone(),
+            internal_dependencies
+                .get_any::<TValue>(&self.key)
+                .unwrap()
+                .clone(),
+        )
+        .unwrap();
+        ret
+    }
 }
 
 pub struct TypeFieldsPopulatorList {}
