@@ -467,8 +467,8 @@ pub fn introspection_type_type() -> Type {
                             DependencyType::List(Box::new(DependencyType::String)),
                             InternalDependencyResolver::IntrospectionTypeInterfaces,
                         )],
-                        CarverOrPopulator::PopulatorList(
-                            ValuePopulatorList::new("name".into()).into(),
+                        CarverOrPopulator::OptionalPopulatorList(
+                            OptionalValuePopulatorList::new("name".into()).into(),
                         ),
                     ))
                     .build()

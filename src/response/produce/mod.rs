@@ -1553,32 +1553,34 @@ pub fn get_internal_dependency_value_synchronous(
         InternalDependencyResolver::LiteralValue(literal_value) => literal_value.0.clone(),
         InternalDependencyResolver::IntrospectionTypeInterfaces => {
             let _ = trace_span!("resolve introspection type interfaces").entered();
-            let type_name = external_dependency_values.get("name").unwrap().as_string();
-            DependencyValue::List(
-                schema
-                    .maybe_type(type_name)
-                    .filter(|type_| matches!(type_, Type::Object(_)))
-                    .map(|type_| {
-                        type_
-                            .as_object()
-                            .implements
-                            .iter()
-                            .map(|implement| DependencyValue::String(implement.clone()))
-                            .collect()
-                    })
-                    .or_else(|| {
-                        schema.interfaces.get(type_name).map(|interface| {
-                            interface
+            let type_ = external_dependency_values.get_any::<TypeFull>("name").unwrap();
+            match type_ {
+                TypeFull::NonNull(_) | TypeFull::List(_) => DependencyValue::OptionalList(None),
+                TypeFull::Type(type_) => {
+                    schema
+                        .maybe_type(type_)
+                        .filter(|type_| matches!(type_, Type::Object(_)))
+                        .map(|type_| {
+                            type_
+                                .as_object()
                                 .implements
                                 .iter()
                                 .map(|implement| DependencyValue::String(implement.clone()))
                                 .collect()
                         })
-                    })
-                    // TODO: this needs to be optional for
-                    // things other than object types and interfaces
-                    .unwrap(),
-            )
+                        .or_else(|| {
+                            schema.interfaces.get(type_).map(|interface| {
+                                interface
+                                    .implements
+                                    .iter()
+                                    .map(|implement| DependencyValue::String(implement.clone()))
+                                    .collect()
+                            })
+                        })
+                        .map(|interfaces| DependencyValue::OptionalList(Some(interfaces)))
+                        .unwrap_or(DependencyValue::OptionalList(None))
+                }
+            }
         }
         InternalDependencyResolver::IntrospectionTypePossibleTypes => {
             let _ = trace_span!("resolve introspection type possible types").entered();
