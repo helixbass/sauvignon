@@ -47,6 +47,13 @@ impl Type {
             _ => panic!("expected object"),
         }
     }
+
+    pub fn as_enum(&self) -> &Enum {
+        match self {
+            Self::Enum(enum_) => enum_,
+            _ => panic!("expected enum"),
+        }
+    }
 }
 
 pub trait TypeInterface {
@@ -395,6 +402,27 @@ pub fn introspection_type_type() -> Type {
                             "names".into(),
                             DependencyType::List(Box::new(DependencyType::String)),
                             InternalDependencyResolver::IntrospectionTypePossibleTypes,
+                        )],
+                        CarverOrPopulator::PopulatorList(
+                            ValuePopulatorList::new("name".into()).into(),
+                        ),
+                    ))
+                    .build()
+                    .unwrap(),
+                FieldBuilder::default()
+                    .name("enumValues")
+                    .type_(TypeFull::List(Box::new(TypeFull::NonNull(Box::new(
+                        TypeFull::Type("__EnumValue".into()),
+                    )))))
+                    .resolver(FieldResolver::new(
+                        vec![ExternalDependency::new(
+                            "name".into(),
+                            DependencyType::String,
+                        )],
+                        vec![InternalDependency::new(
+                            "names".into(),
+                            DependencyType::List(Box::new(DependencyType::String)),
+                            InternalDependencyResolver::IntrospectionTypeEnumValues,
                         )],
                         CarverOrPopulator::PopulatorList(
                             ValuePopulatorList::new("name".into()).into(),

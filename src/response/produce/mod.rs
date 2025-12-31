@@ -1433,6 +1433,23 @@ pub fn get_internal_dependency_value_synchronous(
                     .unwrap(),
             )
         }
+        InternalDependencyResolver::IntrospectionTypeEnumValues => {
+            let _ = trace_span!("resolve introspection type enum values").entered();
+            let enum_name = external_dependency_values.get("name").unwrap().as_string();
+            // TODO: this needs to be optional for
+            // things other than enums
+            DependencyValue::List(
+                schema
+                    .type_(enum_name)
+                    .as_enum()
+                    .variants
+                    .iter()
+                    .map(|variant| {
+                        DependencyValue::String(variant.clone())
+                    })
+                    .collect()
+            )
+        }
         InternalDependencyResolver::Argument(argument_resolver) => {
             let argument = arguments.unwrap().get(&argument_resolver.name).unwrap();
             match (&internal_dependency.type_, &argument.value) {
