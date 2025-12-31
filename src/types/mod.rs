@@ -30,6 +30,13 @@ impl TypeFull {
             Self::NonNull(type_full) => type_full.name(),
         }
     }
+
+    pub fn as_type(&self) -> &str {
+        match self {
+            Self::Type(type_) => type_,
+            _ => panic!("Expected type"),
+        }
+    }
 }
 
 pub enum Type {
@@ -585,7 +592,10 @@ impl PopulatorListInterface for TypeFieldsPopulatorList {
         external_dependencies: &ExternalDependencyValues,
         internal_dependencies: &InternalDependencyValues,
     ) -> Vec<ExternalDependencyValues> {
-        let parent_type_name = external_dependencies.get("name").unwrap();
+        let parent_type_name = external_dependencies
+            .get_any::<TypeFull>("name")
+            .unwrap()
+            .as_type();
         internal_dependencies
             .get("names")
             .unwrap()
@@ -594,8 +604,11 @@ impl PopulatorListInterface for TypeFieldsPopulatorList {
             .map(|field_name| {
                 let mut ret = ExternalDependencyValues::default();
                 ret.insert("name".into(), field_name.clone()).unwrap();
-                ret.insert("parent_type_name".into(), parent_type_name.clone())
-                    .unwrap();
+                ret.insert(
+                    "parent_type_name".into(),
+                    DependencyValue::String(parent_type_name.to_smolstr()),
+                )
+                .unwrap();
                 ret
             })
             .collect()

@@ -254,6 +254,7 @@ pub enum DependencyValue {
     Id(Id),
     String(SmolStr),
     List(Vec<DependencyValue>),
+    OptionalList(Option<Vec<DependencyValue>>),
     Float(f64),
     OptionalInt(Option<i32>),
     OptionalFloat(Option<f64>),

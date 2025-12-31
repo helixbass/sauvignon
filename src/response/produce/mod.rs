@@ -1462,32 +1462,35 @@ pub fn get_internal_dependency_value_synchronous(
         }
         InternalDependencyResolver::IntrospectionTypeFields => {
             let _ = trace_span!("resolve introspection type fields").entered();
-            let type_name = external_dependency_values.get("name").unwrap().as_string();
-            DependencyValue::List(
-                schema
-                    .maybe_type(type_name)
-                    .filter(|type_| matches!(type_, Type::Object(_)))
-                    .map(|type_| {
-                        type_
-                            .as_object()
-                            .fields
-                            .keys()
-                            .map(|field_name| DependencyValue::String(field_name.clone()))
-                            .collect()
-                    })
-                    .or_else(|| {
-                        schema.interfaces.get(type_name).map(|interface| {
-                            interface
+            let type_ = external_dependency_values.get_any::<TypeFull>("name").unwrap();
+            match type_ {
+                TypeFull::NonNull(_) => DependencyValue::OptionalList(None),
+                TypeFull::List(_) => DependencyValue::OptionalList(None),
+                TypeFull::Type(type_) => {
+                    schema
+                        .maybe_type(type_)
+                        .filter(|type_| matches!(type_, Type::Object(_)))
+                        .map(|type_| {
+                            type_
+                                .as_object()
                                 .fields
                                 .keys()
                                 .map(|field_name| DependencyValue::String(field_name.clone()))
                                 .collect()
                         })
-                    })
-                    // TODO: this needs to be optional for
-                    // things other than object types and interfaces
-                    .unwrap(),
-            )
+                        .or_else(|| {
+                            schema.interfaces.get(type_).map(|interface| {
+                                interface
+                                    .fields
+                                    .keys()
+                                    .map(|field_name| DependencyValue::String(field_name.clone()))
+                                    .collect()
+                            })
+                        })
+                        .map(|fields| DependencyValue::OptionalList(Some(fields)))
+                        .unwrap_or(DependencyValue::OptionalList(None))
+                }
+            }
         }
         InternalDependencyResolver::IntrospectionTypeKind => {
             let _ = trace_span!("resolve introspection type kind").entered();
