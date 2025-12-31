@@ -345,6 +345,7 @@ pub fn builtin_types() -> HashMap<SmolStr, Type> {
         ("Float".into(), float_type()),
         ("__Type".into(), introspection_type_type()),
         ("__EnumValue".into(), introspection_type_enum_value()),
+        ("__Schema".into(), introspection_type_schema()),
         ("ID".into(), id_type()),
     ]
     .into_iter()
@@ -471,6 +472,29 @@ pub fn introspection_type_enum_value() -> Type {
                         DependencyType::String,
                     )],
                     vec![],
+                    CarverOrPopulator::Carver(Box::new(StringCarver::new("name".into()))),
+                ))
+                .build()
+                .unwrap()])
+            .build()
+            .unwrap(),
+    )
+}
+
+pub fn introspection_type_schema() -> Type {
+    Type::Object(
+        ObjectTypeBuilder::default()
+            .name("__Schema")
+            .fields([FieldBuilder::default()
+                .name("queryType")
+                .type_(TypeFull::NonNull(Box::new(TypeFull::Type("__Type".into()))))
+                .resolver(FieldResolver::new(
+                    vec![],
+                    vec![InternalDependency::new(
+                        "name".into(),
+                        DependencyType::String,
+                        InternalDependencyResolver::IntrospectionSchemaQueryType,
+                    )],
                     CarverOrPopulator::Carver(Box::new(StringCarver::new("name".into()))),
                 ))
                 .build()
