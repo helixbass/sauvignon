@@ -1584,35 +1584,37 @@ pub fn get_internal_dependency_value_synchronous(
         }
         InternalDependencyResolver::IntrospectionTypePossibleTypes => {
             let _ = trace_span!("resolve introspection type possible types").entered();
-            let type_name = external_dependency_values.get("name").unwrap().as_string();
-            DependencyValue::List(
-                schema
-                    .interface_all_concrete_types
-                    .get(type_name)
-                    .map(|all_concrete_type_names| {
-                        all_concrete_type_names
-                            .into_iter()
-                            .sorted()
-                            .map(|concrete_type_name| {
-                                DependencyValue::String(concrete_type_name.clone())
-                            })
-                            .collect()
-                    })
-                    .or_else(|| {
-                        schema.unions.get(type_name).map(|union| {
-                            union
-                                .types
-                                .iter()
+            let type_ = external_dependency_values.get_any::<TypeFull>("name").unwrap();
+            match type_ {
+                TypeFull::NonNull(_) | TypeFull::List(_) => DependencyValue::OptionalList(None),
+                TypeFull::Type(type_) => {
+                    schema
+                        .interface_all_concrete_types
+                        .get(type_)
+                        .map(|all_concrete_type_names| {
+                            all_concrete_type_names
+                                .into_iter()
+                                .sorted()
                                 .map(|concrete_type_name| {
                                     DependencyValue::String(concrete_type_name.clone())
                                 })
                                 .collect()
                         })
-                    })
-                    // TODO: this needs to be optional for
-                    // things other than interfaces and unions
-                    .unwrap(),
-            )
+                        .or_else(|| {
+                            schema.unions.get(type_).map(|union| {
+                                union
+                                    .types
+                                    .iter()
+                                    .map(|concrete_type_name| {
+                                        DependencyValue::String(concrete_type_name.clone())
+                                    })
+                                    .collect()
+                            })
+                        })
+                        .map(|possible_types| DependencyValue::OptionalList(Some(possible_types)))
+                        .unwrap_or(DependencyValue::OptionalList(None))
+                }
+            }
         }
         InternalDependencyResolver::IntrospectionTypeEnumValues => {
             let _ = trace_span!("resolve introspection type enum values").entered();
