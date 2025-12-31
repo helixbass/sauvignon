@@ -737,3 +737,30 @@ async fn test_introspection_enum_values() {
     )
     .await;
 }
+
+#[tokio::test]
+async fn test_introspection_schema_query_type() {
+    request_test(
+        r#"
+            {
+              __schema {
+                queryType {
+                  name
+                }
+              }
+            }
+        "#,
+        r#"
+            {
+              "data": {
+                "__schema": {
+                  "queryType": {
+                    "name": "Query"
+                  }
+                }
+              }
+            }
+        "#,
+    )
+    .await;
+}
