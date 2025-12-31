@@ -1451,7 +1451,6 @@ pub fn get_internal_dependency_value_synchronous(
             )
         }
         InternalDependencyResolver::IntrospectionSchemaQueryType => {
-            let _ = trace_span!("resolve introspection schema query type").entered();
             DependencyValue::String(schema.query_type_name.clone())
         }
         InternalDependencyResolver::Argument(argument_resolver) => {
