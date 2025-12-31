@@ -495,7 +495,7 @@ pub fn introspection_type_schema() -> Type {
                         DependencyType::String,
                         InternalDependencyResolver::IntrospectionSchemaQueryType,
                     )],
-                    CarverOrPopulator::Carver(Box::new(StringCarver::new("name".into()))),
+                    CarverOrPopulator::Populator(ValuePopulator::new("name".into()).into()),
                 ))
                 .build()
                 .unwrap()])
