@@ -560,6 +560,45 @@ impl<TValue: Clone + Send + Sync + 'static> PopulatorInterface for AnyValuePopul
     }
 }
 
+pub struct AnyValuesPopulator<TValue> {
+    pub keys: HashMap<SmolStr, SmolStr>,
+    phantom_data: PhantomData<TValue>,
+}
+
+impl<TValue> AnyValuesPopulator<TValue> {
+    pub fn new(keys: impl IntoIterator<Item = (SmolStr, SmolStr)>) -> Self {
+        Self {
+            keys: keys.into_iter().collect(),
+            phantom_data: PhantomData,
+        }
+    }
+}
+
+impl<TValue: Clone + Send + Sync + 'static> PopulatorInterface for AnyValuesPopulator<TValue> {
+    #[instrument(
+        level = "trace",
+        skip(self, _external_dependencies, internal_dependencies)
+    )]
+    fn populate(
+        &self,
+        _external_dependencies: &ExternalDependencyValues,
+        internal_dependencies: &InternalDependencyValues,
+    ) -> ExternalDependencyValues {
+        let mut ret = ExternalDependencyValues::default();
+        for (internal_dependency_key, populated_key) in &self.keys {
+            ret.insert_any(
+                populated_key.clone(),
+                internal_dependencies
+                    .get_any::<TValue>(internal_dependency_key)
+                    .unwrap()
+                    .clone(),
+            )
+            .unwrap();
+        }
+        ret
+    }
+}
+
 pub struct TypeFullNameStringCarver {
     pub name: SmolStr,
 }
@@ -752,7 +791,9 @@ pub fn introspection_type_field() -> Type {
                             DependencyType::Any,
                             InternalDependencyResolver::IntrospectionFieldType,
                         )],
-                        CarverOrPopulator::Carver(Box::new(StringCarver::new("name".into()))),
+                        CarverOrPopulator::Populator(Populator::Dyn(Box::new(
+                            AnyValuesPopulator::<TypeFull>::new("type".into()),
+                        ))),
                     ))
                     .build()
                     .unwrap(),
