@@ -746,6 +746,9 @@ async fn test_introspection_schema_query_type() {
               __schema {
                 queryType {
                   name
+                  fields {
+                    name
+                  }
                 }
               }
             }
@@ -755,7 +758,36 @@ async fn test_introspection_schema_query_type() {
               "data": {
                 "__schema": {
                   "queryType": {
-                    "name": "Query"
+                    "name": "Query",
+                    "fields": [
+                      {
+                        "name": "actor"
+                      },
+                      {
+                        "name": "actorKatie"
+                      },
+                      {
+                        "name": "actors"
+                      },
+                      {
+                        "name": "certainActorOrDesigner"
+                      },
+                      {
+                        "name": "bestHasName"
+                      },
+                      {
+                        "name": "actorsAndDesigners"
+                      },
+                      {
+                        "name": "bestCanadianCity"
+                      },
+                      {
+                        "name": "canadianCityQuote"
+                      },
+                      {
+                        "name": "designers"
+                      }
+                    ]
                   }
                 }
               }
