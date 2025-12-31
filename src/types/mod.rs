@@ -362,7 +362,9 @@ pub fn introspection_type_type() -> Type {
                     .unwrap(),
                 FieldBuilder::default()
                     .name("interfaces")
-                    .type_(TypeFull::List(Box::new(TypeFull::Type("__Type".into()))))
+                    .type_(TypeFull::List(Box::new(TypeFull::NonNull(Box::new(
+                        TypeFull::Type("__Type".into()),
+                    )))))
                     .resolver(FieldResolver::new(
                         vec![ExternalDependency::new(
                             "name".into(),
@@ -381,7 +383,9 @@ pub fn introspection_type_type() -> Type {
                     .unwrap(),
                 FieldBuilder::default()
                     .name("possibleTypes")
-                    .type_(TypeFull::List(Box::new(TypeFull::Type("__Type".into()))))
+                    .type_(TypeFull::List(Box::new(TypeFull::NonNull(Box::new(
+                        TypeFull::Type("__Type".into()),
+                    )))))
                     .resolver(FieldResolver::new(
                         vec![ExternalDependency::new(
                             "name".into(),
