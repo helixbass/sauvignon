@@ -12,7 +12,7 @@ use crate::{
     IndexMap, IndexSet, InternalDependency, InternalDependencyResolver, InternalDependencyValues,
     LiteralValueInternalDependencyResolver, OperationType, OptionalPopulatorList,
     OptionalPopulatorListInterface, OptionalValuePopulatorList, Populator, PopulatorInterface,
-    ResponseValue, StringCarver, ValuePopulatorList,
+    ResponseValue, StringCarver,
 };
 
 #[derive(Clone)]
@@ -488,9 +488,9 @@ pub fn introspection_type_type() -> Type {
                             DependencyType::List(Box::new(DependencyType::String)),
                             InternalDependencyResolver::IntrospectionTypePossibleTypes,
                         )],
-                        CarverOrPopulator::PopulatorList(
-                            ValuePopulatorList::new("name".into()).into(),
-                        ),
+                        CarverOrPopulator::OptionalPopulatorList(OptionalPopulatorList::Dyn(
+                            Box::new(TypeNamePopulatorList::new()),
+                        )),
                     ))
                     .build()
                     .unwrap(),
