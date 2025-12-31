@@ -11,8 +11,8 @@ use crate::{
     EmptyPopulator, EnumValueCarver, ExternalDependency, ExternalDependencyValues, FieldResolver,
     IndexMap, IndexSet, InternalDependency, InternalDependencyResolver, InternalDependencyValues,
     LiteralValueInternalDependencyResolver, OperationType, OptionalPopulatorList,
-    OptionalPopulatorListInterface, Populator, PopulatorInterface, ResponseValue, StringCarver,
-    ValuePopulator, ValuePopulatorList,
+    OptionalPopulatorListInterface, OptionalValuePopulatorList, Populator, PopulatorInterface,
+    ResponseValue, StringCarver, ValuePopulatorList,
 };
 
 #[derive(Clone)]
@@ -61,9 +61,13 @@ impl Type {
     }
 
     pub fn as_enum(&self) -> &Enum {
+        self.maybe_as_enum().unwrap()
+    }
+
+    pub fn maybe_as_enum(&self) -> Option<&Enum> {
         match self {
-            Self::Enum(enum_) => enum_,
-            _ => panic!("expected enum"),
+            Self::Enum(enum_) => Some(enum_),
+            _ => None,
         }
     }
 }
@@ -298,26 +302,25 @@ impl Field {
                 vec![],
                 vec![
                     InternalDependency::new(
-                        "name".into(),
+                        "type_name".into(),
                         DependencyType::String,
                         InternalDependencyResolver::Argument(
                             ArgumentInternalDependencyResolver::new("name".into()),
                         ),
                     ),
                     InternalDependency::new(
-                        "type".into(),
+                        "name".into(),
                         DependencyType::Any,
                         InternalDependencyResolver::IntrospectionTypeFieldType,
                     ),
                 ],
                 CarverOrPopulator::Populator(Populator::Dyn(Box::new(
-                    AnyValuePopulator::<TypeFull>::new("type".into()),
+                    AnyValuePopulator::<TypeFull>::new("name".into()),
                 ))),
             ))
             .params([Param::new(
                 "name".into(),
-                // TODO: presumably non-null?
-                TypeFull::Type("String".into()),
+                TypeFull::NonNull(Box::new(TypeFull::Type("String".into()))),
             )])
             .build()
             .unwrap()
@@ -503,11 +506,13 @@ pub fn introspection_type_type() -> Type {
                         )],
                         vec![InternalDependency::new(
                             "names".into(),
-                            DependencyType::List(Box::new(DependencyType::String)),
+                            DependencyType::Optional(Box::new(DependencyType::List(Box::new(
+                                DependencyType::String,
+                            )))),
                             InternalDependencyResolver::IntrospectionTypeEnumValues,
                         )],
-                        CarverOrPopulator::PopulatorList(
-                            ValuePopulatorList::new("name".into()).into(),
+                        CarverOrPopulator::OptionalPopulatorList(
+                            OptionalValuePopulatorList::new("name".into()).into(),
                         ),
                     ))
                     .build()

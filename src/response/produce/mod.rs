@@ -1614,20 +1614,27 @@ pub fn get_internal_dependency_value_synchronous(
         }
         InternalDependencyResolver::IntrospectionTypeEnumValues => {
             let _ = trace_span!("resolve introspection type enum values").entered();
-            let enum_name = external_dependency_values.get("name").unwrap().as_string();
-            // TODO: this needs to be optional for
-            // things other than enums
-            DependencyValue::List(
-                schema
-                    .type_(enum_name)
-                    .as_enum()
-                    .variants
-                    .iter()
-                    .map(|variant| {
-                        DependencyValue::String(variant.clone())
-                    })
-                    .collect()
-            )
+            let enum_name = external_dependency_values.get_any::<TypeFull>("name").unwrap();
+            match enum_name {
+                TypeFull::NonNull(_) | TypeFull::List(_) => DependencyValue::OptionalList(None),
+                TypeFull::Type(enum_name) => {
+                    schema
+                        .maybe_type(enum_name)
+                        .and_then(|type_| type_.maybe_as_enum())
+                        .map(|enum_| {
+                            DependencyValue::OptionalList(Some(
+                                enum_
+                                .variants
+                                .iter()
+                                .map(|variant| {
+                                    DependencyValue::String(variant.clone())
+                                })
+                                .collect()
+                            ))
+                        })
+                        .unwrap_or(DependencyValue::OptionalList(None))
+                }
+            }
         }
         InternalDependencyResolver::IntrospectionTypeFields => {
             let _ = trace_span!("resolve introspection type fields").entered();
@@ -1717,5 +1724,5 @@ fn get_introspection_schema_query_type_value(schema: &Schema) -> TypeFull {
 }
 
 fn get_introspection_type_field_type_value(internal_dependency_values: &InternalDependencyValues) -> TypeFull {
-    TypeFull::Type(internal_dependency_values.get("name").unwrap().as_string().clone())
+    TypeFull::Type(internal_dependency_values.get("type_name").unwrap().as_string().clone())
 }
