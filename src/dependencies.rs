@@ -353,6 +353,13 @@ impl DependencyValue {
             _ => panic!("Expected map"),
         }
     }
+
+    pub fn as_optional_list(&self) -> Option<&[DependencyValue]> {
+        match self {
+            Self::OptionalList(value) => value.as_deref(),
+            _ => panic!("Expected optional list"),
+        }
+    }
 }
 
 pub type InternalDependencyValue = ExternalDependencyValue;

@@ -38,6 +38,7 @@ pub enum CarverOrPopulator {
     UnionOrInterfaceTypePopulator(Box<dyn UnionOrInterfaceTypePopulator>, Populator),
     UnionOrInterfaceTypePopulatorList(Box<dyn UnionOrInterfaceTypePopulatorList>, PopulatorList),
     OptionalPopulator(OptionalPopulator),
+    OptionalPopulatorList(OptionalPopulatorList),
     OptionalUnionOrInterfaceTypePopulator(
         Box<dyn OptionalUnionOrInterfaceTypePopulator>,
         Populator,
@@ -791,6 +792,91 @@ impl PopulatorListInterface for ValuePopulatorList {
                 ret
             })
             .collect()
+    }
+}
+
+pub enum OptionalPopulatorList {
+    Value(OptionalValuePopulatorList),
+    Dyn(Box<dyn OptionalPopulatorListInterface>),
+}
+
+impl OptionalPopulatorList {
+    pub fn as_value(&self) -> &OptionalValuePopulatorList {
+        match self {
+            Self::Value(populator) => populator,
+            _ => panic!("Expected value"),
+        }
+    }
+}
+
+impl OptionalPopulatorListInterface for OptionalPopulatorList {
+    fn populate(
+        &self,
+        external_dependencies: &ExternalDependencyValues,
+        internal_dependencies: &InternalDependencyValues,
+    ) -> Option<Vec<ExternalDependencyValues>> {
+        match self {
+            Self::Value(populator) => {
+                populator.populate(external_dependencies, internal_dependencies)
+            }
+            Self::Dyn(populator) => {
+                populator.populate(external_dependencies, internal_dependencies)
+            }
+        }
+    }
+}
+
+impl From<OptionalValuePopulatorList> for OptionalPopulatorList {
+    fn from(value: OptionalValuePopulatorList) -> Self {
+        Self::Value(value)
+    }
+}
+
+pub trait OptionalPopulatorListInterface: Send + Sync {
+    fn populate(
+        &self,
+        external_dependencies: &ExternalDependencyValues,
+        internal_dependencies: &InternalDependencyValues,
+    ) -> Option<Vec<ExternalDependencyValues>>;
+}
+
+pub struct OptionalValuePopulatorList {
+    pub singular: SmolStr,
+    pub plural: SmolStr,
+}
+
+impl OptionalValuePopulatorList {
+    pub fn new(singular: SmolStr) -> Self {
+        Self {
+            plural: pluralize(&singular),
+            singular,
+        }
+    }
+}
+
+impl OptionalPopulatorListInterface for OptionalValuePopulatorList {
+    #[instrument(
+        level = "trace",
+        skip(self, _external_dependencies, internal_dependencies)
+    )]
+    fn populate(
+        &self,
+        _external_dependencies: &ExternalDependencyValues,
+        internal_dependencies: &InternalDependencyValues,
+    ) -> Option<Vec<ExternalDependencyValues>> {
+        internal_dependencies
+            .get(&self.plural)
+            .unwrap()
+            .as_optional_list()
+            .map(|list| {
+                list.into_iter()
+                    .map(|value| {
+                        let mut ret = ExternalDependencyValues::default();
+                        ret.insert(self.singular.clone(), value.clone()).unwrap();
+                        ret
+                    })
+                    .collect()
+            })
     }
 }
 

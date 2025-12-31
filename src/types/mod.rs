@@ -10,9 +10,9 @@ use crate::{
     ArgumentInternalDependencyResolver, Carver, CarverOrPopulator, DependencyType, DependencyValue,
     EmptyPopulator, EnumValueCarver, ExternalDependency, ExternalDependencyValues, FieldResolver,
     IndexMap, IndexSet, InternalDependency, InternalDependencyResolver, InternalDependencyValues,
-    LiteralValueInternalDependencyResolver, OperationType, Populator, PopulatorInterface,
-    PopulatorList, PopulatorListInterface, ResponseValue, StringCarver, ValuePopulator,
-    ValuePopulatorList,
+    LiteralValueInternalDependencyResolver, OperationType, OptionalPopulatorList,
+    OptionalPopulatorListInterface, Populator, PopulatorInterface, ResponseValue, StringCarver,
+    ValuePopulator, ValuePopulatorList,
 };
 
 #[derive(Clone)]
@@ -429,12 +429,14 @@ pub fn introspection_type_type() -> Type {
                         )],
                         vec![InternalDependency::new(
                             "names".into(),
-                            DependencyType::List(Box::new(DependencyType::String)),
+                            DependencyType::Optional(Box::new(DependencyType::List(Box::new(
+                                DependencyType::String,
+                            )))),
                             InternalDependencyResolver::IntrospectionTypeFields,
                         )],
-                        CarverOrPopulator::PopulatorList(PopulatorList::Dyn(Box::new(
-                            TypeFieldsPopulatorList::new(),
-                        ))),
+                        CarverOrPopulator::OptionalPopulatorList(OptionalPopulatorList::Dyn(
+                            Box::new(TypeFieldsPopulatorList::new()),
+                        )),
                     ))
                     .build()
                     .unwrap(),
@@ -582,7 +584,7 @@ impl TypeFieldsPopulatorList {
     }
 }
 
-impl PopulatorListInterface for TypeFieldsPopulatorList {
+impl OptionalPopulatorListInterface for TypeFieldsPopulatorList {
     #[instrument(
         level = "trace",
         skip(self, external_dependencies, internal_dependencies)
@@ -591,27 +593,27 @@ impl PopulatorListInterface for TypeFieldsPopulatorList {
         &self,
         external_dependencies: &ExternalDependencyValues,
         internal_dependencies: &InternalDependencyValues,
-    ) -> Vec<ExternalDependencyValues> {
-        let parent_type_name = external_dependencies
-            .get_any::<TypeFull>("name")
-            .unwrap()
-            .as_type();
+    ) -> Option<Vec<ExternalDependencyValues>> {
+        let parent_type = external_dependencies.get_any::<TypeFull>("name").unwrap();
         internal_dependencies
             .get("names")
             .unwrap()
-            .as_list()
-            .into_iter()
-            .map(|field_name| {
-                let mut ret = ExternalDependencyValues::default();
-                ret.insert("name".into(), field_name.clone()).unwrap();
-                ret.insert(
-                    "parent_type_name".into(),
-                    DependencyValue::String(parent_type_name.to_smolstr()),
-                )
-                .unwrap();
-                ret
+            .as_optional_list()
+            .map(|list| {
+                let parent_type_name = parent_type.as_type();
+                list.into_iter()
+                    .map(|field_name| {
+                        let mut ret = ExternalDependencyValues::default();
+                        ret.insert("name".into(), field_name.clone()).unwrap();
+                        ret.insert(
+                            "parent_type_name".into(),
+                            DependencyValue::String(parent_type_name.to_smolstr()),
+                        )
+                        .unwrap();
+                        ret
+                    })
+                    .collect()
             })
-            .collect()
     }
 }
 
