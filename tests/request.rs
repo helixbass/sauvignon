@@ -764,3 +764,44 @@ async fn test_introspection_schema_query_type() {
     )
     .await;
 }
+
+#[tokio::test]
+async fn test_introspection_type_fields() {
+    request_test(
+        r#"
+            {
+              __type(name: "Actor") {
+                fields {
+                  name
+                }
+              }
+            }
+        "#,
+        r#"
+            {
+              "data": {
+                "__type": {
+                  "fields": [
+                    {
+                      "name": "name"
+                    },
+                    {
+                      "name": "expression"
+                    },
+                    {
+                      "name": "favoriteDesigner"
+                    },
+                    {
+                      "name": "favoriteActorOrDesigner"
+                    },
+                    {
+                      "name": "favoriteDesigners"
+                    }
+                  ]
+                }
+              }
+            }
+        "#,
+    )
+    .await;
+}
