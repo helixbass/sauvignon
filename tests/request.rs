@@ -859,7 +859,7 @@ async fn test_introspection_type_fields() {
                     {
                       "name": "favoriteDesigners",
                       "type": {
-                        "kind": "LIST",
+                        "kind": "NON_NULL",
                         "name": null
                       }
                     }
@@ -877,6 +877,10 @@ async fn test_introspection_type_fields() {
               __type(name: "HasName") {
                 fields {
                   name
+                  type {
+                    kind
+                    name
+                  }
                 }
               }
             }
@@ -887,7 +891,11 @@ async fn test_introspection_type_fields() {
                 "__type": {
                   "fields": [
                     {
-                      "name": "name"
+                      "name": "name",
+                      "type": {
+                        "kind": "NON_NULL",
+                        "name": null
+                      }
                     }
                   ]
                 }
