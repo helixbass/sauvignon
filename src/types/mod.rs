@@ -47,6 +47,13 @@ impl Type {
             _ => panic!("expected object"),
         }
     }
+
+    pub fn as_enum(&self) -> &Enum {
+        match self {
+            Self::Enum(enum_) => enum_,
+            _ => panic!("expected enum"),
+        }
+    }
 }
 
 pub trait TypeInterface {
@@ -316,6 +323,7 @@ pub fn builtin_types() -> HashMap<SmolStr, Type> {
         ("Int".into(), int_type()),
         ("Float".into(), float_type()),
         ("__Type".into(), introspection_type_type()),
+        ("__EnumValue".into(), introspection_type_enum_value()),
         ("ID".into(), id_type()),
     ]
     .into_iter()
@@ -362,7 +370,9 @@ pub fn introspection_type_type() -> Type {
                     .unwrap(),
                 FieldBuilder::default()
                     .name("interfaces")
-                    .type_(TypeFull::List(Box::new(TypeFull::Type("__Type".into()))))
+                    .type_(TypeFull::List(Box::new(TypeFull::NonNull(Box::new(
+                        TypeFull::Type("__Type".into()),
+                    )))))
                     .resolver(FieldResolver::new(
                         vec![ExternalDependency::new(
                             "name".into(),
@@ -381,7 +391,9 @@ pub fn introspection_type_type() -> Type {
                     .unwrap(),
                 FieldBuilder::default()
                     .name("possibleTypes")
-                    .type_(TypeFull::List(Box::new(TypeFull::Type("__Type".into()))))
+                    .type_(TypeFull::List(Box::new(TypeFull::NonNull(Box::new(
+                        TypeFull::Type("__Type".into()),
+                    )))))
                     .resolver(FieldResolver::new(
                         vec![ExternalDependency::new(
                             "name".into(),
@@ -398,7 +410,50 @@ pub fn introspection_type_type() -> Type {
                     ))
                     .build()
                     .unwrap(),
+                FieldBuilder::default()
+                    .name("enumValues")
+                    .type_(TypeFull::List(Box::new(TypeFull::NonNull(Box::new(
+                        TypeFull::Type("__EnumValue".into()),
+                    )))))
+                    .resolver(FieldResolver::new(
+                        vec![ExternalDependency::new(
+                            "name".into(),
+                            DependencyType::String,
+                        )],
+                        vec![InternalDependency::new(
+                            "names".into(),
+                            DependencyType::List(Box::new(DependencyType::String)),
+                            InternalDependencyResolver::IntrospectionTypeEnumValues,
+                        )],
+                        CarverOrPopulator::PopulatorList(
+                            ValuePopulatorList::new("name".into()).into(),
+                        ),
+                    ))
+                    .build()
+                    .unwrap(),
             ])
+            .build()
+            .unwrap(),
+    )
+}
+
+pub fn introspection_type_enum_value() -> Type {
+    Type::Object(
+        ObjectTypeBuilder::default()
+            .name("__EnumValue")
+            .fields([FieldBuilder::default()
+                .name("name")
+                .type_(TypeFull::Type("String".into()))
+                .resolver(FieldResolver::new(
+                    vec![ExternalDependency::new(
+                        "name".into(),
+                        DependencyType::String,
+                    )],
+                    vec![],
+                    CarverOrPopulator::Carver(Box::new(StringCarver::new("name".into()))),
+                ))
+                .build()
+                .unwrap()])
             .build()
             .unwrap(),
     )

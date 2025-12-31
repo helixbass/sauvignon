@@ -697,3 +697,43 @@ async fn test_has_many_through() {
     )
     .await;
 }
+
+#[tokio::test]
+async fn test_introspection_enum_values() {
+    request_test(
+        r#"
+            {
+              __type(name: "CanadianCity") {
+                name
+                enumValues {
+                  name
+                }
+              }
+            }
+        "#,
+        r#"
+            {
+              "data": {
+                "__type": {
+                  "name": "CanadianCity",
+                  "enumValues": [
+                    {
+                      "name": "VANCOUVER"
+                    },
+                    {
+                      "name": "CORNER_BROOK"
+                    },
+                    {
+                      "name": "QUEBEC"
+                    },
+                    {
+                      "name": "MONTREAL"
+                    }
+                  ]
+                }
+              }
+            }
+        "#,
+    )
+    .await;
+}
