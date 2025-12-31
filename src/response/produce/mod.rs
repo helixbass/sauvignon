@@ -524,6 +524,21 @@ fn make_progress_selection_set<'a: 'b, 'b>(
                                 database,
                             );
                         }
+                        CarverOrPopulator::OptionalPopulatorList(populator) => {
+                            optionally_populate_list(
+                                &external_dependency_values,
+                                &internal_dependency_values,
+                                populator,
+                                produced,
+                                parent_object_index,
+                                index_of_field_in_object,
+                                field_name,
+                                field_plan,
+                                current_async_instructions,
+                                schema,
+                                database,
+                            );
+                        }
                         CarverOrPopulator::UnionOrInterfaceTypePopulator(type_populator, populator) => {
                             populate_union_or_interface_object(
                                 &external_dependency_values,
