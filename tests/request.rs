@@ -804,4 +804,30 @@ async fn test_introspection_type_fields() {
         "#,
     )
     .await;
+
+    request_test(
+        r#"
+            {
+              __type(name: "HasName") {
+                fields {
+                  name
+                }
+              }
+            }
+        "#,
+        r#"
+            {
+              "data": {
+                "__type": {
+                  "fields": [
+                    {
+                      "name": "name"
+                    }
+                  ]
+                }
+              }
+            }
+        "#,
+    )
+    .await;
 }
