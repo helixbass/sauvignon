@@ -16,6 +16,7 @@ use crate::{
     PopulatorInterface, PopulatorList, PopulatorListInterface, QueryPlan, ResponseValue, Schema,
     Type, UnionOrInterfaceTypePopulator, UnionOrInterfaceTypePopulatorList, Value, WhereResolved,
     WheresResolved, TypeFull, TypeKind,
+    OptionalPopulatorList, OptionalPopulatorListInterface,
 };
 
 mod async_step;
@@ -885,6 +886,60 @@ fn populate_list<'a: 'b, 'b>(
         parent_object_index,
         index_of_field_in_object,
         field_name,
+        field_plan,
+        current_async_instructions,
+        schema,
+        database,
+    )
+}
+
+#[instrument(
+    level = "trace",
+    skip(
+        external_dependency_values,
+        internal_dependency_values,
+        populator,
+        produced,
+        field_plan,
+        current_async_instructions,
+        schema,
+        database,
+    )
+)]
+fn optionally_populate_list<'a: 'b, 'b>(
+    external_dependency_values: &ExternalDependencyValues,
+    internal_dependency_values: &InternalDependencyValues,
+    populator: &OptionalPopulatorList,
+    produced: &mut Vec<Produced>,
+    parent_object_index: IndexInProduced,
+    index_of_field_in_object: usize,
+    field_name: &SmolStr,
+    field_plan: &'a FieldPlan<'a>,
+    current_async_instructions: &'b mut AsyncInstructions<'a>,
+    schema: &Schema,
+    database: &Database,
+) {
+    let Some(populated) =
+        populator.populate(external_dependency_values, internal_dependency_values)
+    else {
+        produced.push(Produced::FieldNewNull {
+            parent_object_index,
+            index_of_field_in_object,
+            field_name: field_name.clone(),
+        });
+        return;
+    };
+    let parent_list_index = push_list(
+        parent_object_index,
+        index_of_field_in_object,
+        field_name,
+        produced,
+    );
+    post_populate_and_push_concrete_or_union_or_interface_list(
+        SingleOrVec::Single(field_plan.field_type.type_.name().to_smolstr()),
+        populated,
+        parent_list_index,
+        produced,
         field_plan,
         current_async_instructions,
         schema,
