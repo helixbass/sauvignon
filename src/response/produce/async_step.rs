@@ -9,7 +9,7 @@ use tracing::instrument;
 use super::IndexInProduced;
 use crate::{
     Carver, CarverList, Database, DatabaseInterface, DependencyType, DependencyValue,
-    ExternalDependencyValues, FieldPlan, Id, OptionalPopulator,
+    ExternalDependencyValues, FieldPlan, Id, OptionalPopulator, OptionalPopulatorList,
     OptionalUnionOrInterfaceTypePopulator, Populator, PopulatorList, UnionOrInterfaceTypePopulator,
     UnionOrInterfaceTypePopulatorList, WheresResolved,
 };
@@ -397,6 +397,7 @@ pub enum IsInternalDependenciesOf<'a> {
         field_plan: &'a FieldPlan<'a>,
     },
     ObjectFieldListOfObjects(IsInternalDependenciesOfObjectFieldListOfObjects<'a>),
+    ObjectFieldListOfOptionalObjects(IsInternalDependenciesOfObjectFieldListOfOptionalObjects<'a>),
     ObjectFieldUnionOrInterfaceObject {
         parent_object_index: IndexInProduced,
         index_of_field_in_object: usize,
@@ -456,6 +457,15 @@ pub struct IsInternalDependenciesOfObjectFieldListOfObjects<'a> {
     pub parent_object_index: IndexInProduced,
     pub index_of_field_in_object: usize,
     pub populator: &'a PopulatorList,
+    pub external_dependency_values: ExternalDependencyValues,
+    pub field_name: SmolStr,
+    pub field_plan: &'a FieldPlan<'a>,
+}
+
+pub struct IsInternalDependenciesOfObjectFieldListOfOptionalObjects<'a> {
+    pub parent_object_index: IndexInProduced,
+    pub index_of_field_in_object: usize,
+    pub populator: &'a OptionalPopulatorList,
     pub external_dependency_values: ExternalDependencyValues,
     pub field_name: SmolStr,
     pub field_plan: &'a FieldPlan<'a>,

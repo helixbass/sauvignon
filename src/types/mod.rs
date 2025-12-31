@@ -1,18 +1,21 @@
 use std::collections::HashMap;
+use std::marker::PhantomData;
 
 use derive_builder::Builder;
-use smol_str::SmolStr;
+use smol_str::{SmolStr, ToSmolStr};
 use squalid::{OptionExt, _d};
 use tracing::instrument;
 
 use crate::{
-    ArgumentInternalDependencyResolver, CarverOrPopulator, DependencyType, DependencyValue,
-    EmptyPopulator, ExternalDependency, ExternalDependencyValues, FieldResolver, IndexMap,
-    IndexSet, InternalDependency, InternalDependencyResolver, InternalDependencyValues,
-    LiteralValueInternalDependencyResolver, OperationType, PopulatorList, PopulatorListInterface,
-    StringCarver, ValuePopulator, ValuePopulatorList,
+    ArgumentInternalDependencyResolver, Carver, CarverOrPopulator, DependencyType, DependencyValue,
+    EmptyPopulator, EnumValueCarver, ExternalDependency, ExternalDependencyValues, FieldResolver,
+    IndexMap, IndexSet, InternalDependency, InternalDependencyResolver, InternalDependencyValues,
+    LiteralValueInternalDependencyResolver, OperationType, OptionalPopulator,
+    OptionalPopulatorInterface, OptionalPopulatorList, OptionalPopulatorListInterface,
+    OptionalValuePopulatorList, Populator, PopulatorInterface, ResponseValue, StringCarver,
 };
 
+#[derive(Clone)]
 pub enum TypeFull {
     Type(SmolStr),
     List(Box<TypeFull>),
@@ -25,6 +28,13 @@ impl TypeFull {
             Self::Type(name) => name,
             Self::List(type_full) => type_full.name(),
             Self::NonNull(type_full) => type_full.name(),
+        }
+    }
+
+    pub fn as_type(&self) -> &str {
+        match self {
+            Self::Type(type_) => type_,
+            _ => panic!("Expected type"),
         }
     }
 }
@@ -51,9 +61,13 @@ impl Type {
     }
 
     pub fn as_enum(&self) -> &Enum {
+        self.maybe_as_enum().unwrap()
+    }
+
+    pub fn maybe_as_enum(&self) -> Option<&Enum> {
         match self {
-            Self::Enum(enum_) => enum_,
-            _ => panic!("expected enum"),
+            Self::Enum(enum_) => Some(enum_),
+            _ => None,
         }
     }
 }
@@ -286,19 +300,27 @@ impl Field {
             .type_(TypeFull::Type("__Type".into()))
             .resolver(FieldResolver::new(
                 vec![],
-                vec![InternalDependency::new(
-                    "name".into(),
-                    DependencyType::String,
-                    InternalDependencyResolver::Argument(ArgumentInternalDependencyResolver::new(
+                vec![
+                    InternalDependency::new(
+                        "type_name".into(),
+                        DependencyType::String,
+                        InternalDependencyResolver::Argument(
+                            ArgumentInternalDependencyResolver::new("name".into()),
+                        ),
+                    ),
+                    InternalDependency::new(
                         "name".into(),
-                    )),
-                )],
-                CarverOrPopulator::Populator(ValuePopulator::new("name".into()).into()),
+                        DependencyType::Any,
+                        InternalDependencyResolver::IntrospectionTypeFieldType,
+                    ),
+                ],
+                CarverOrPopulator::Populator(Populator::Dyn(Box::new(
+                    AnyValuePopulator::<TypeFull>::new("name".into()),
+                ))),
             ))
             .params([Param::new(
                 "name".into(),
-                // TODO: presumably non-null?
-                TypeFull::Type("String".into()),
+                TypeFull::NonNull(Box::new(TypeFull::Type("String".into()))),
             )])
             .build()
             .unwrap()
@@ -349,6 +371,7 @@ pub fn builtin_types() -> HashMap<SmolStr, Type> {
         ("__EnumValue".into(), introspection_type_enum_value()),
         ("__Schema".into(), introspection_type_schema()),
         ("__Field".into(), introspection_type_field()),
+        ("__TypeKind".into(), introspection_type_type_kind()),
         ("ID".into(), id_type()),
     ]
     .into_iter()
@@ -381,15 +404,28 @@ pub fn introspection_type_type() -> Type {
             .name("__Type")
             .fields([
                 FieldBuilder::default()
+                    .name("kind")
+                    .type_(TypeFull::Type("__TypeKind".into()))
+                    .resolver(FieldResolver::new(
+                        vec![ExternalDependency::new("name".into(), DependencyType::Any)],
+                        vec![InternalDependency::new(
+                            "kind".into(),
+                            DependencyType::String,
+                            InternalDependencyResolver::IntrospectionTypeKind,
+                        )],
+                        CarverOrPopulator::Carver(Box::new(EnumValueCarver::new("kind".into()))),
+                    ))
+                    .build()
+                    .unwrap(),
+                FieldBuilder::default()
                     .name("name")
                     .type_(TypeFull::Type("String".into()))
                     .resolver(FieldResolver::new(
-                        vec![ExternalDependency::new(
-                            "name".into(),
-                            DependencyType::String,
-                        )],
+                        vec![ExternalDependency::new("name".into(), DependencyType::Any)],
                         vec![],
-                        CarverOrPopulator::Carver(Box::new(StringCarver::new("name".into()))),
+                        CarverOrPopulator::Carver(Box::new(TypeFullNameStringCarver::new(
+                            "name".into(),
+                        ))),
                     ))
                     .build()
                     .unwrap(),
@@ -405,12 +441,14 @@ pub fn introspection_type_type() -> Type {
                         )],
                         vec![InternalDependency::new(
                             "names".into(),
-                            DependencyType::List(Box::new(DependencyType::String)),
+                            DependencyType::Optional(Box::new(DependencyType::List(Box::new(
+                                DependencyType::String,
+                            )))),
                             InternalDependencyResolver::IntrospectionTypeFields,
                         )],
-                        CarverOrPopulator::PopulatorList(PopulatorList::Dyn(Box::new(
-                            TypeFieldsPopulatorList::new(),
-                        ))),
+                        CarverOrPopulator::OptionalPopulatorList(OptionalPopulatorList::Dyn(
+                            Box::new(TypeFieldsPopulatorList::new()),
+                        )),
                     ))
                     .build()
                     .unwrap(),
@@ -429,9 +467,9 @@ pub fn introspection_type_type() -> Type {
                             DependencyType::List(Box::new(DependencyType::String)),
                             InternalDependencyResolver::IntrospectionTypeInterfaces,
                         )],
-                        CarverOrPopulator::PopulatorList(
-                            ValuePopulatorList::new("name".into()).into(),
-                        ),
+                        CarverOrPopulator::OptionalPopulatorList(OptionalPopulatorList::Dyn(
+                            Box::new(TypeNamePopulatorList::new()),
+                        )),
                     ))
                     .build()
                     .unwrap(),
@@ -450,9 +488,9 @@ pub fn introspection_type_type() -> Type {
                             DependencyType::List(Box::new(DependencyType::String)),
                             InternalDependencyResolver::IntrospectionTypePossibleTypes,
                         )],
-                        CarverOrPopulator::PopulatorList(
-                            ValuePopulatorList::new("name".into()).into(),
-                        ),
+                        CarverOrPopulator::OptionalPopulatorList(OptionalPopulatorList::Dyn(
+                            Box::new(TypeNamePopulatorList::new()),
+                        )),
                     ))
                     .build()
                     .unwrap(),
@@ -468,12 +506,33 @@ pub fn introspection_type_type() -> Type {
                         )],
                         vec![InternalDependency::new(
                             "names".into(),
-                            DependencyType::List(Box::new(DependencyType::String)),
+                            DependencyType::Optional(Box::new(DependencyType::List(Box::new(
+                                DependencyType::String,
+                            )))),
                             InternalDependencyResolver::IntrospectionTypeEnumValues,
                         )],
-                        CarverOrPopulator::PopulatorList(
-                            ValuePopulatorList::new("name".into()).into(),
+                        CarverOrPopulator::OptionalPopulatorList(
+                            OptionalValuePopulatorList::new("name".into()).into(),
                         ),
+                    ))
+                    .build()
+                    .unwrap(),
+                FieldBuilder::default()
+                    .name("ofType")
+                    .type_(TypeFull::Type("__Type".into()))
+                    .resolver(FieldResolver::new(
+                        vec![ExternalDependency::new(
+                            "name".into(),
+                            DependencyType::String,
+                        )],
+                        vec![InternalDependency::new(
+                            "of_type".into(),
+                            DependencyType::Any,
+                            InternalDependencyResolver::IntrospectionTypeOfType,
+                        )],
+                        CarverOrPopulator::OptionalPopulator(OptionalPopulator::Dyn(Box::new(
+                            OfTypePopulator::new(),
+                        ))),
                     ))
                     .build()
                     .unwrap(),
@@ -481,6 +540,112 @@ pub fn introspection_type_type() -> Type {
             .build()
             .unwrap(),
     )
+}
+
+pub struct AnyValuePopulator<TValue> {
+    pub key: SmolStr,
+    phantom_data: PhantomData<TValue>,
+}
+
+impl<TValue> AnyValuePopulator<TValue> {
+    pub fn new(key: SmolStr) -> Self {
+        Self {
+            key,
+            phantom_data: PhantomData,
+        }
+    }
+}
+
+impl<TValue: Clone + Send + Sync + 'static> PopulatorInterface for AnyValuePopulator<TValue> {
+    #[instrument(
+        level = "trace",
+        skip(self, _external_dependencies, internal_dependencies)
+    )]
+    fn populate(
+        &self,
+        _external_dependencies: &ExternalDependencyValues,
+        internal_dependencies: &InternalDependencyValues,
+    ) -> ExternalDependencyValues {
+        let mut ret = ExternalDependencyValues::default();
+        ret.insert_any(
+            self.key.clone(),
+            internal_dependencies
+                .get_any::<TValue>(&self.key)
+                .unwrap()
+                .clone(),
+        )
+        .unwrap();
+        ret
+    }
+}
+
+pub struct AnyValuesPopulator<TValue> {
+    pub keys: HashMap<SmolStr, SmolStr>,
+    phantom_data: PhantomData<TValue>,
+}
+
+impl<TValue> AnyValuesPopulator<TValue> {
+    pub fn new(keys: impl IntoIterator<Item = (SmolStr, SmolStr)>) -> Self {
+        Self {
+            keys: keys.into_iter().collect(),
+            phantom_data: PhantomData,
+        }
+    }
+}
+
+impl<TValue: Clone + Send + Sync + 'static> PopulatorInterface for AnyValuesPopulator<TValue> {
+    #[instrument(
+        level = "trace",
+        skip(self, _external_dependencies, internal_dependencies)
+    )]
+    fn populate(
+        &self,
+        _external_dependencies: &ExternalDependencyValues,
+        internal_dependencies: &InternalDependencyValues,
+    ) -> ExternalDependencyValues {
+        let mut ret = ExternalDependencyValues::default();
+        for (internal_dependency_key, populated_key) in &self.keys {
+            ret.insert_any(
+                populated_key.clone(),
+                internal_dependencies
+                    .get_any::<TValue>(internal_dependency_key)
+                    .unwrap()
+                    .clone(),
+            )
+            .unwrap();
+        }
+        ret
+    }
+}
+
+pub struct TypeFullNameStringCarver {
+    pub name: SmolStr,
+}
+
+impl TypeFullNameStringCarver {
+    pub fn new(name: SmolStr) -> Self {
+        Self { name }
+    }
+}
+
+impl Carver for TypeFullNameStringCarver {
+    // #[instrument(
+    //     level = "trace",
+    //     skip(self, external_dependencies, internal_dependencies)
+    // )]
+    fn carve(
+        &self,
+        external_dependencies: &ExternalDependencyValues,
+        _internal_dependencies: &InternalDependencyValues,
+    ) -> ResponseValue {
+        match external_dependencies
+            .get_any::<TypeFull>(&self.name)
+            .unwrap()
+        {
+            TypeFull::Type(name) => ResponseValue::String(name.clone()),
+            _ => ResponseValue::Null,
+        }
+    }
 }
 
 pub struct TypeFieldsPopulatorList {}
@@ -491,7 +656,7 @@ impl TypeFieldsPopulatorList {
     }
 }
 
-impl PopulatorListInterface for TypeFieldsPopulatorList {
+impl OptionalPopulatorListInterface for TypeFieldsPopulatorList {
     #[instrument(
         level = "trace",
         skip(self, external_dependencies, internal_dependencies)
@@ -500,21 +665,93 @@ impl PopulatorListInterface for TypeFieldsPopulatorList {
         &self,
         external_dependencies: &ExternalDependencyValues,
         internal_dependencies: &InternalDependencyValues,
-    ) -> Vec<ExternalDependencyValues> {
-        let parent_type_name = external_dependencies.get("name").unwrap();
+    ) -> Option<Vec<ExternalDependencyValues>> {
+        let parent_type = external_dependencies.get_any::<TypeFull>("name").unwrap();
         internal_dependencies
             .get("names")
             .unwrap()
-            .as_list()
-            .into_iter()
-            .map(|field_name| {
-                let mut ret = ExternalDependencyValues::default();
-                ret.insert("name".into(), field_name.clone()).unwrap();
-                ret.insert("parent_type_name".into(), parent_type_name.clone())
-                    .unwrap();
-                ret
+            .as_optional_list()
+            .map(|list| {
+                let parent_type_name = parent_type.as_type();
+                list.into_iter()
+                    .map(|field_name| {
+                        let mut ret = ExternalDependencyValues::default();
+                        ret.insert("name".into(), field_name.clone()).unwrap();
+                        ret.insert(
+                            "parent_type_name".into(),
+                            DependencyValue::String(parent_type_name.to_smolstr()),
+                        )
+                        .unwrap();
+                        ret
+                    })
+                    .collect()
             })
-            .collect()
+    }
+}
+
+pub struct TypeNamePopulatorList {}
+
+impl TypeNamePopulatorList {
+    pub fn new() -> Self {
+        Self {}
+    }
+}
+
+impl OptionalPopulatorListInterface for TypeNamePopulatorList {
+    #[instrument(
+        level = "trace",
+        skip(self, _external_dependencies, internal_dependencies)
+    )]
+    fn populate(
+        &self,
+        _external_dependencies: &ExternalDependencyValues,
+        internal_dependencies: &InternalDependencyValues,
+    ) -> Option<Vec<ExternalDependencyValues>> {
+        internal_dependencies
+            .get("names")
+            .unwrap()
+            .as_optional_list()
+            .map(|list| {
+                list.into_iter()
+                    .map(|type_name| {
+                        let mut ret = ExternalDependencyValues::default();
+                        ret.insert_any(
+                            "name".into(),
+                            TypeFull::Type(type_name.as_string().clone()),
+                        )
+                        .unwrap();
+                        ret
+                    })
+                    .collect()
+            })
+    }
+}
+
+pub struct OfTypePopulator {}
+
+impl OfTypePopulator {
+    pub fn new() -> Self {
+        Self {}
+    }
+}
+
+impl OptionalPopulatorInterface for OfTypePopulator {
+    #[instrument(
+        level = "trace",
+        skip(self, _external_dependencies, internal_dependencies)
+    )]
+    fn populate(
+        &self,
+        _external_dependencies: &ExternalDependencyValues,
+        internal_dependencies: &InternalDependencyValues,
+    ) -> Option<ExternalDependencyValues> {
+        let value = internal_dependencies
+            .get_any::<Option<TypeFull>>("of_type")
+            .unwrap()
+            .as_ref()?;
+        let mut ret = ExternalDependencyValues::default();
+        ret.insert_any("name".into(), value.clone()).unwrap();
+        Some(ret)
     }
 }
 
@@ -551,10 +788,14 @@ pub fn introspection_type_schema() -> Type {
                     vec![],
                     vec![InternalDependency::new(
                         "name".into(),
-                        DependencyType::String,
+                        DependencyType::Any,
                         InternalDependencyResolver::IntrospectionSchemaQueryType,
                     )],
-                    CarverOrPopulator::Populator(ValuePopulator::new("name".into()).into()),
+                    CarverOrPopulator::Populator(Populator::Dyn(Box::new(AnyValuePopulator::<
+                        TypeFull,
+                    >::new(
+                        "name".into()
+                    )))),
                 ))
                 .build()
                 .unwrap()])
@@ -567,25 +808,59 @@ pub fn introspection_type_field() -> Type {
     Type::Object(
         ObjectTypeBuilder::default()
             .name("__Field")
-            .fields([FieldBuilder::default()
-                .name("name")
-                .type_(TypeFull::NonNull(Box::new(TypeFull::Type("String".into()))))
-                .resolver(FieldResolver::new(
-                    vec![
-                        ExternalDependency::new("name".into(), DependencyType::String),
-                        // ExternalDependency::new(
-                        //     "parent_type_name".into(),
-                        //     DependencyType::String,
-                        // ),
-                    ],
-                    vec![],
-                    CarverOrPopulator::Carver(Box::new(StringCarver::new("name".into()))),
-                ))
-                .build()
-                .unwrap()])
+            .fields([
+                FieldBuilder::default()
+                    .name("name")
+                    .type_(TypeFull::NonNull(Box::new(TypeFull::Type("String".into()))))
+                    .resolver(FieldResolver::new(
+                        vec![ExternalDependency::new(
+                            "name".into(),
+                            DependencyType::String,
+                        )],
+                        vec![],
+                        CarverOrPopulator::Carver(Box::new(StringCarver::new("name".into()))),
+                    ))
+                    .build()
+                    .unwrap(),
+                FieldBuilder::default()
+                    .name("type")
+                    .type_(TypeFull::NonNull(Box::new(TypeFull::Type("__Type".into()))))
+                    .resolver(FieldResolver::new(
+                        vec![
+                            ExternalDependency::new("name".into(), DependencyType::String),
+                            ExternalDependency::new(
+                                "parent_type_name".into(),
+                                DependencyType::String,
+                            ),
+                        ],
+                        vec![InternalDependency::new(
+                            "type".into(),
+                            DependencyType::Any,
+                            InternalDependencyResolver::IntrospectionFieldType,
+                        )],
+                        CarverOrPopulator::Populator(Populator::Dyn(Box::new(
+                            AnyValuesPopulator::<TypeFull>::new([(
+                                "type".to_smolstr(),
+                                "name".to_smolstr(),
+                            )]),
+                        ))),
+                    ))
+                    .build()
+                    .unwrap(),
+            ])
             .build()
             .unwrap(),
     )
+}
+
+pub fn introspection_type_type_kind() -> Type {
+    use strum::VariantNames;
+    Type::Enum(Enum::new(
+        "__TypeKind".into(),
+        TypeKind::VARIANTS
+            .iter()
+            .map(|variant_name| variant_name.to_smolstr()),
+    ))
 }
 
 pub struct Union {
@@ -780,4 +1055,17 @@ impl TypeInterface for Enum {
     fn name(&self) -> &str {
         &self.name
     }
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, strum::Display, strum::VariantNames)]
+#[strum(serialize_all = "SCREAMING_SNAKE_CASE")]
+pub enum TypeKind {
+    Scalar,
+    Object,
+    Interface,
+    Union,
+    Enum,
+    InputObject,
+    List,
+    NonNull,
 }

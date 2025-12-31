@@ -307,6 +307,7 @@ async fn test_introspection_type_interfaces() {
         r#"
             {
               __type(name: "Actor") {
+                kind
                 name
                 interfaces {
                   name
@@ -318,6 +319,7 @@ async fn test_introspection_type_interfaces() {
             {
               "data": {
                 "__type": {
+                  "kind": "OBJECT",
                   "name": "Actor",
                   "interfaces": [
                     {
@@ -524,6 +526,7 @@ async fn test_introspection_possible_types() {
         r#"
             {
               __type(name: "ActorOrDesigner") {
+                kind
                 name
                 possibleTypes {
                   name
@@ -535,6 +538,7 @@ async fn test_introspection_possible_types() {
             {
               "data": {
                 "__type": {
+                  "kind": "UNION",
                   "name": "ActorOrDesigner",
                   "possibleTypes": [
                     {
@@ -555,6 +559,7 @@ async fn test_introspection_possible_types() {
         r#"
             {
               __type(name: "HasName") {
+                kind
                 name
                 possibleTypes {
                   name
@@ -566,6 +571,7 @@ async fn test_introspection_possible_types() {
             {
               "data": {
                 "__type": {
+                  "kind": "INTERFACE",
                   "name": "HasName",
                   "possibleTypes": [
                     {
@@ -704,6 +710,7 @@ async fn test_introspection_enum_values() {
         r#"
             {
               __type(name: "CanadianCity") {
+                kind
                 name
                 enumValues {
                   name
@@ -715,6 +722,7 @@ async fn test_introspection_enum_values() {
             {
               "data": {
                 "__type": {
+                  "kind": "ENUM",
                   "name": "CanadianCity",
                   "enumValues": [
                     {
@@ -745,6 +753,7 @@ async fn test_introspection_schema_query_type() {
             {
               __schema {
                 queryType {
+                  kind
                   name
                   fields {
                     name
@@ -758,6 +767,7 @@ async fn test_introspection_schema_query_type() {
               "data": {
                 "__schema": {
                   "queryType": {
+                    "kind": "OBJECT",
                     "name": "Query",
                     "fields": [
                       {
@@ -805,6 +815,22 @@ async fn test_introspection_type_fields() {
               __type(name: "Actor") {
                 fields {
                   name
+                  type {
+                    kind
+                    name
+                    ofType {
+                      kind
+                      name
+                      ofType {
+                        kind
+                        name
+                        ofType {
+                          kind
+                          name
+                        }
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -815,19 +841,71 @@ async fn test_introspection_type_fields() {
                 "__type": {
                   "fields": [
                     {
-                      "name": "name"
+                      "name": "name",
+                      "type": {
+                        "kind": "NON_NULL",
+                        "name": null,
+                        "ofType": {
+                          "kind": "SCALAR",
+                          "name": "String",
+                          "ofType": null
+                        }
+                      }
                     },
                     {
-                      "name": "expression"
+                      "name": "expression",
+                      "type": {
+                        "kind": "NON_NULL",
+                        "name": null,
+                        "ofType": {
+                          "kind": "SCALAR",
+                          "name": "String",
+                          "ofType": null
+                        }
+                      }
                     },
                     {
-                      "name": "favoriteDesigner"
+                      "name": "favoriteDesigner",
+                      "type": {
+                        "kind": "NON_NULL",
+                        "name": null,
+                        "ofType": {
+                          "kind": "OBJECT",
+                          "name": "Designer",
+                          "ofType": null
+                        }
+                      }
                     },
                     {
-                      "name": "favoriteActorOrDesigner"
+                      "name": "favoriteActorOrDesigner",
+                      "type": {
+                        "kind": "NON_NULL",
+                        "name": null,
+                        "ofType": {
+                          "kind": "UNION",
+                          "name": "ActorOrDesigner",
+                          "ofType": null
+                        }
+                      }
                     },
                     {
-                      "name": "favoriteDesigners"
+                      "name": "favoriteDesigners",
+                      "type": {
+                        "kind": "NON_NULL",
+                        "name": null,
+                        "ofType": {
+                          "kind": "LIST",
+                          "name": null,
+                          "ofType": {
+                            "kind": "NON_NULL",
+                            "name": null,
+                            "ofType": {
+                              "kind": "OBJECT",
+                              "name": "Designer"
+                            }
+                          }
+                        }
+                      }
                     }
                   ]
                 }
@@ -843,6 +921,14 @@ async fn test_introspection_type_fields() {
               __type(name: "HasName") {
                 fields {
                   name
+                  type {
+                    kind
+                    name
+                    ofType {
+                      kind
+                      name
+                    }
+                  }
                 }
               }
             }
@@ -853,7 +939,15 @@ async fn test_introspection_type_fields() {
                 "__type": {
                   "fields": [
                     {
-                      "name": "name"
+                      "name": "name",
+                      "type": {
+                        "kind": "NON_NULL",
+                        "name": null,
+                        "ofType": {
+                          "kind": "SCALAR",
+                          "name": "String"
+                        }
+                      }
                     }
                   ]
                 }

@@ -53,7 +53,8 @@ pub use crate::resolve::{
     Carver, CarverList, CarverOrPopulator, DateCarver, EmptyPopulator, EnumValueCarver,
     EnumValueCarverList, FieldResolver, IdCarver, IntCarver, OptionalEnumValueCarver,
     OptionalFloatCarver, OptionalIntCarver, OptionalPopulator, OptionalPopulatorInterface,
-    OptionalStringCarver, OptionalUnionOrInterfaceTypePopulator, OptionalValuePopulator,
+    OptionalPopulatorList, OptionalPopulatorListInterface, OptionalStringCarver,
+    OptionalUnionOrInterfaceTypePopulator, OptionalValuePopulator, OptionalValuePopulatorList,
     OptionalValuesPopulator, Populator, PopulatorInterface, PopulatorList, PopulatorListInterface,
     StringCarver, TimestampCarver, TypeDepluralizer, UnionOrInterfaceTypePopulator,
     UnionOrInterfaceTypePopulatorList, ValuePopulator, ValuePopulatorList, ValuesPopulator,
@@ -69,7 +70,7 @@ pub use crate::types::{
     builtin_types, float_type, id_type, string_type, BuiltInScalarType, DummyUnionTypenameField,
     Enum, Field as TypeField, FieldBuilder as TypeFieldBuilder, FieldInterface, Interface,
     InterfaceBuilder, InterfaceField, ObjectType, ObjectTypeBuilder, Param, ScalarType, StringType,
-    Type, TypeFull, TypeInterface, TypeOrInterfaceField, Union,
+    Type, TypeFull, TypeInterface, TypeKind, TypeOrInterfaceField, Union,
 };
 
 pub use proc_macros::{enum_optional_string_massager, enum_string_massager, schema};

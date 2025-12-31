@@ -15,7 +15,8 @@ use crate::{
     OptionalPopulatorInterface, OptionalUnionOrInterfaceTypePopulator, Populator,
     PopulatorInterface, PopulatorList, PopulatorListInterface, QueryPlan, ResponseValue, Schema,
     Type, UnionOrInterfaceTypePopulator, UnionOrInterfaceTypePopulatorList, Value, WhereResolved,
-    WheresResolved,
+    WheresResolved, TypeFull, TypeKind,
+    OptionalPopulatorList, OptionalPopulatorListInterface,
 };
 
 mod async_step;
@@ -26,6 +27,7 @@ use async_step::{
     AsyncInstruction, AsyncInstructionSimple, AsyncInstructions, AsyncStep, AsyncStepColumn,
     AsyncStepListOfColumn, AsyncSteps, DependencyNames, IsInternalDependenciesOf,
     IsInternalDependenciesOfObjectFieldListOfObjects,
+    IsInternalDependenciesOfObjectFieldListOfOptionalObjects,
     ColumnSpecs,
 };
 use chunk::Produced;
@@ -242,6 +244,30 @@ fn do_simple_async_instruction_follow<'a: 'b, 'b>(
             },
         ) => {
             populate_list(
+                &external_dependency_values,
+                &internal_dependency_values,
+                populator,
+                produced,
+                parent_object_index,
+                index_of_field_in_object,
+                &field_name,
+                field_plan,
+                current_async_instructions,
+                schema,
+                database,
+            );
+        }
+        IsInternalDependenciesOf::ObjectFieldListOfOptionalObjects(
+            IsInternalDependenciesOfObjectFieldListOfOptionalObjects {
+                parent_object_index,
+                index_of_field_in_object,
+                populator,
+                external_dependency_values,
+                field_name,
+                field_plan,
+            },
+        ) => {
+            optionally_populate_list(
                 &external_dependency_values,
                 &internal_dependency_values,
                 populator,
@@ -483,8 +509,38 @@ fn make_progress_selection_set<'a: 'b, 'b>(
                                 database,
                             )
                         }
+                        CarverOrPopulator::OptionalPopulator(populator) => {
+                            optionally_populate_object(
+                                &external_dependency_values,
+                                &internal_dependency_values,
+                                populator,
+                                produced,
+                                parent_object_index,
+                                index_of_field_in_object,
+                                field_name,
+                                field_plan,
+                                current_async_instructions,
+                                schema,
+                                database,
+                            )
+                        }
                         CarverOrPopulator::PopulatorList(populator) => {
                             populate_list(
+                                &external_dependency_values,
+                                &internal_dependency_values,
+                                populator,
+                                produced,
+                                parent_object_index,
+                                index_of_field_in_object,
+                                field_name,
+                                field_plan,
+                                current_async_instructions,
+                                schema,
+                                database,
+                            );
+                        }
+                        CarverOrPopulator::OptionalPopulatorList(populator) => {
+                            optionally_populate_list(
                                 &external_dependency_values,
                                 &internal_dependency_values,
                                 populator,
@@ -657,6 +713,23 @@ fn make_progress_selection_set<'a: 'b, 'b>(
                                     return;
                                 }
                             }
+                            current_async_instructions.push(AsyncInstruction::Simple(AsyncInstructionSimple {
+                                steps,
+                                internal_dependency_names,
+                                is_internal_dependencies_of,
+                            }));
+                        }
+                        CarverOrPopulator::OptionalPopulatorList(populator) => {
+                            let (steps, internal_dependency_names) = extract_dependency_steps(field_plan, &external_dependency_values);
+                            let is_internal_dependencies_of = IsInternalDependenciesOf::ObjectFieldListOfOptionalObjects(IsInternalDependenciesOfObjectFieldListOfOptionalObjects {
+                                parent_object_index,
+                                populator,
+                                external_dependency_values: external_dependency_values
+                                    .clone(),
+                                index_of_field_in_object,
+                                field_name: field_name.clone(),
+                                field_plan,
+                            });
                             current_async_instructions.push(AsyncInstruction::Simple(AsyncInstructionSimple {
                                 steps,
                                 internal_dependency_names,
@@ -855,6 +928,60 @@ fn populate_list<'a: 'b, 'b>(
     skip(
         external_dependency_values,
         internal_dependency_values,
+        populator,
+        produced,
+        field_plan,
+        current_async_instructions,
+        schema,
+        database,
+    )
+)]
+fn optionally_populate_list<'a: 'b, 'b>(
+    external_dependency_values: &ExternalDependencyValues,
+    internal_dependency_values: &InternalDependencyValues,
+    populator: &OptionalPopulatorList,
+    produced: &mut Vec<Produced>,
+    parent_object_index: IndexInProduced,
+    index_of_field_in_object: usize,
+    field_name: &SmolStr,
+    field_plan: &'a FieldPlan<'a>,
+    current_async_instructions: &'b mut AsyncInstructions<'a>,
+    schema: &Schema,
+    database: &Database,
+) {
+    let Some(populated) =
+        populator.populate(external_dependency_values, internal_dependency_values)
+    else {
+        produced.push(Produced::FieldNewNull {
+            parent_object_index,
+            index_of_field_in_object,
+            field_name: field_name.clone(),
+        });
+        return;
+    };
+    let parent_list_index = push_list(
+        parent_object_index,
+        index_of_field_in_object,
+        field_name,
+        produced,
+    );
+    post_populate_and_push_concrete_or_union_or_interface_list(
+        SingleOrVec::Single(field_plan.field_type.type_.name().to_smolstr()),
+        populated,
+        parent_list_index,
+        produced,
+        field_plan,
+        current_async_instructions,
+        schema,
+        database,
+    )
+}
+
+#[instrument(
+    level = "trace",
+    skip(
+        external_dependency_values,
+        internal_dependency_values,
         type_populator,
         populator,
         produced,
@@ -939,6 +1066,40 @@ fn populate_concrete_or_union_or_interface_list<'a: 'b, 'b>(
         produced,
     );
 
+    post_populate_and_push_concrete_or_union_or_interface_list(
+        type_names,
+        populated,
+        parent_list_index,
+        produced,
+        field_plan,
+        current_async_instructions,
+        schema,
+        database,
+    );
+}
+
+#[instrument(
+    level = "trace",
+    skip(
+        type_names,
+        populated,
+        produced,
+        field_plan,
+        current_async_instructions,
+        schema,
+        database,
+    )
+)]
+fn post_populate_and_push_concrete_or_union_or_interface_list<'a: 'b, 'b>(
+    type_names: SingleOrVec<SmolStr>,
+    populated: Vec<ExternalDependencyValues>,
+    parent_list_index: IndexInProduced,
+    produced: &mut Vec<Produced>,
+    field_plan: &'a FieldPlan<'a>,
+    current_async_instructions: &'b mut AsyncInstructions<'a>,
+    schema: &Schema,
+    database: &Database,
+) {
     let selection_set_by_type = field_plan.selection_set_by_type.as_ref().unwrap();
     enum SingleOrIterator<'a, TIterator: Iterator<Item = &'a IndexMap<SmolStr, FieldPlan<'a>>>> {
         Single(&'a IndexMap<SmolStr, FieldPlan<'a>>),
@@ -999,12 +1160,28 @@ fn populate_and_push_list(
     produced: &mut Vec<Produced>,
 ) -> (Vec<ExternalDependencyValues>, IndexInProduced) {
     let populated = populator.populate(external_dependency_values, &internal_dependency_values);
+    let index_in_produced = push_list(parent_object_index, index_of_field_in_object, field_name, produced);
+    (populated, index_in_produced)
+}
+
+#[instrument(
+    level = "trace",
+    skip(
+        produced,
+    )
+)]
+fn push_list(
+    parent_object_index: IndexInProduced,
+    index_of_field_in_object: usize,
+    field_name: &SmolStr,
+    produced: &mut Vec<Produced>,
+) -> IndexInProduced {
     produced.push(Produced::FieldNewListOfObjects {
         parent_object_index,
         index_of_field_in_object,
         field_name: field_name.clone(),
     });
-    (populated, produced.len() - 1)
+    produced.len() - 1
 }
 
 #[instrument(
@@ -1334,19 +1511,50 @@ pub fn get_internal_dependency_values_synchronous(
         .resolver
         .internal_dependencies
     {
-        let internal_dependency_value = 
-            get_internal_dependency_value_synchronous(
-                field_plan.arguments.as_ref(),
-                &external_dependency_values,
-                &internal_dependency_values,
-                internal_dependency,
-                schema,
-                database,
-            );
-        internal_dependency_values.insert(
-            internal_dependency.name.clone(),
-            internal_dependency_value,
-        ).unwrap();
+         match &internal_dependency.resolver {
+            InternalDependencyResolver::IntrospectionSchemaQueryType => {
+                let value = get_introspection_schema_query_type_value(schema);
+                internal_dependency_values.insert_any(
+                    internal_dependency.name.clone(),
+                    value,
+                ).unwrap();
+            }
+            InternalDependencyResolver::IntrospectionTypeFieldType => {
+                let value = get_introspection_type_field_type_value(&internal_dependency_values);
+                internal_dependency_values.insert_any(
+                    internal_dependency.name.clone(),
+                    value,
+                ).unwrap();
+            }
+            InternalDependencyResolver::IntrospectionFieldType => {
+                let value = get_introspection_field_type_value(schema, &external_dependency_values);
+                internal_dependency_values.insert_any(
+                    internal_dependency.name.clone(),
+                    value,
+                ).unwrap();
+            }
+            InternalDependencyResolver::IntrospectionTypeOfType => {
+                let value = get_introspection_type_of_type_value(&external_dependency_values);
+                internal_dependency_values.insert_any(
+                    internal_dependency.name.clone(),
+                    value,
+                ).unwrap();
+            }
+            _ => {
+                let internal_dependency_value = get_internal_dependency_value_synchronous(
+                    field_plan.arguments.as_ref(),
+                    &external_dependency_values,
+                    &internal_dependency_values,
+                    internal_dependency,
+                    schema,
+                    database,
+                );
+                internal_dependency_values.insert(
+                    internal_dependency.name.clone(),
+                    internal_dependency_value,
+                ).unwrap();
+            }
+        }
     }
     internal_dependency_values
 }
@@ -1374,113 +1582,152 @@ pub fn get_internal_dependency_value_synchronous(
         InternalDependencyResolver::LiteralValue(literal_value) => literal_value.0.clone(),
         InternalDependencyResolver::IntrospectionTypeInterfaces => {
             let _ = trace_span!("resolve introspection type interfaces").entered();
-            let type_name = external_dependency_values.get("name").unwrap().as_string();
-            DependencyValue::List(
-                schema
-                    .maybe_type(type_name)
-                    .filter(|type_| matches!(type_, Type::Object(_)))
-                    .map(|type_| {
-                        type_
-                            .as_object()
-                            .implements
-                            .iter()
-                            .map(|implement| DependencyValue::String(implement.clone()))
-                            .collect()
-                    })
-                    .or_else(|| {
-                        schema.interfaces.get(type_name).map(|interface| {
-                            interface
+            let type_ = external_dependency_values.get_any::<TypeFull>("name").unwrap();
+            match type_ {
+                TypeFull::NonNull(_) | TypeFull::List(_) => DependencyValue::OptionalList(None),
+                TypeFull::Type(type_) => {
+                    schema
+                        .maybe_type(type_)
+                        .filter(|type_| matches!(type_, Type::Object(_)))
+                        .map(|type_| {
+                            type_
+                                .as_object()
                                 .implements
                                 .iter()
                                 .map(|implement| DependencyValue::String(implement.clone()))
                                 .collect()
                         })
-                    })
-                    // TODO: this needs to be optional for
-                    // things other than object types and interfaces
-                    .unwrap(),
-            )
+                        .or_else(|| {
+                            schema.interfaces.get(type_).map(|interface| {
+                                interface
+                                    .implements
+                                    .iter()
+                                    .map(|implement| DependencyValue::String(implement.clone()))
+                                    .collect()
+                            })
+                        })
+                        .map(|interfaces| DependencyValue::OptionalList(Some(interfaces)))
+                        .unwrap_or(DependencyValue::OptionalList(None))
+                }
+            }
         }
         InternalDependencyResolver::IntrospectionTypePossibleTypes => {
             let _ = trace_span!("resolve introspection type possible types").entered();
-            let type_name = external_dependency_values.get("name").unwrap().as_string();
-            DependencyValue::List(
-                schema
-                    .interface_all_concrete_types
-                    .get(type_name)
-                    .map(|all_concrete_type_names| {
-                        all_concrete_type_names
-                            .into_iter()
-                            .sorted()
-                            .map(|concrete_type_name| {
-                                DependencyValue::String(concrete_type_name.clone())
-                            })
-                            .collect()
-                    })
-                    .or_else(|| {
-                        schema.unions.get(type_name).map(|union| {
-                            union
-                                .types
-                                .iter()
+            let type_ = external_dependency_values.get_any::<TypeFull>("name").unwrap();
+            match type_ {
+                TypeFull::NonNull(_) | TypeFull::List(_) => DependencyValue::OptionalList(None),
+                TypeFull::Type(type_) => {
+                    schema
+                        .interface_all_concrete_types
+                        .get(type_)
+                        .map(|all_concrete_type_names| {
+                            all_concrete_type_names
+                                .into_iter()
+                                .sorted()
                                 .map(|concrete_type_name| {
                                     DependencyValue::String(concrete_type_name.clone())
                                 })
                                 .collect()
                         })
-                    })
-                    // TODO: this needs to be optional for
-                    // things other than interfaces and unions
-                    .unwrap(),
-            )
+                        .or_else(|| {
+                            schema.unions.get(type_).map(|union| {
+                                union
+                                    .types
+                                    .iter()
+                                    .map(|concrete_type_name| {
+                                        DependencyValue::String(concrete_type_name.clone())
+                                    })
+                                    .collect()
+                            })
+                        })
+                        .map(|possible_types| DependencyValue::OptionalList(Some(possible_types)))
+                        .unwrap_or(DependencyValue::OptionalList(None))
+                }
+            }
         }
         InternalDependencyResolver::IntrospectionTypeEnumValues => {
             let _ = trace_span!("resolve introspection type enum values").entered();
-            let enum_name = external_dependency_values.get("name").unwrap().as_string();
-            // TODO: this needs to be optional for
-            // things other than enums
-            DependencyValue::List(
-                schema
-                    .type_(enum_name)
-                    .as_enum()
-                    .variants
-                    .iter()
-                    .map(|variant| {
-                        DependencyValue::String(variant.clone())
-                    })
-                    .collect()
-            )
+            let enum_name = external_dependency_values.get_any::<TypeFull>("name").unwrap();
+            match enum_name {
+                TypeFull::NonNull(_) | TypeFull::List(_) => DependencyValue::OptionalList(None),
+                TypeFull::Type(enum_name) => {
+                    schema
+                        .maybe_type(enum_name)
+                        .and_then(|type_| type_.maybe_as_enum())
+                        .map(|enum_| {
+                            DependencyValue::OptionalList(Some(
+                                enum_
+                                .variants
+                                .iter()
+                                .map(|variant| {
+                                    DependencyValue::String(variant.clone())
+                                })
+                                .collect()
+                            ))
+                        })
+                        .unwrap_or(DependencyValue::OptionalList(None))
+                }
+            }
         }
         InternalDependencyResolver::IntrospectionTypeFields => {
             let _ = trace_span!("resolve introspection type fields").entered();
-            let type_name = external_dependency_values.get("name").unwrap().as_string();
-            DependencyValue::List(
-                schema
-                    .maybe_type(type_name)
-                    .filter(|type_| matches!(type_, Type::Object(_)))
-                    .map(|type_| {
-                        type_
-                            .as_object()
-                            .fields
-                            .keys()
-                            .map(|field_name| DependencyValue::String(field_name.clone()))
-                            .collect()
-                    })
-                    .or_else(|| {
-                        schema.interfaces.get(type_name).map(|interface| {
-                            interface
+            let type_ = external_dependency_values.get_any::<TypeFull>("name").unwrap();
+            match type_ {
+                TypeFull::NonNull(_) => DependencyValue::OptionalList(None),
+                TypeFull::List(_) => DependencyValue::OptionalList(None),
+                TypeFull::Type(type_) => {
+                    schema
+                        .maybe_type(type_)
+                        .filter(|type_| matches!(type_, Type::Object(_)))
+                        .map(|type_| {
+                            type_
+                                .as_object()
                                 .fields
                                 .keys()
                                 .map(|field_name| DependencyValue::String(field_name.clone()))
                                 .collect()
                         })
-                    })
-                    // TODO: this needs to be optional for
-                    // things other than object types and interfaces
-                    .unwrap(),
-            )
+                        .or_else(|| {
+                            schema.interfaces.get(type_).map(|interface| {
+                                interface
+                                    .fields
+                                    .keys()
+                                    .map(|field_name| DependencyValue::String(field_name.clone()))
+                                    .collect()
+                            })
+                        })
+                        .map(|fields| DependencyValue::OptionalList(Some(fields)))
+                        .unwrap_or(DependencyValue::OptionalList(None))
+                }
+            }
         }
-        InternalDependencyResolver::IntrospectionSchemaQueryType => {
-            DependencyValue::String(schema.query_type_name.clone())
+        InternalDependencyResolver::IntrospectionTypeKind => {
+            let _ = trace_span!("resolve introspection type kind").entered();
+            let type_name = external_dependency_values.get_any::<TypeFull>("name").unwrap();
+            DependencyValue::String(
+                match type_name {
+                    TypeFull::NonNull(_) => TypeKind::NonNull,
+                    TypeFull::List(_) => TypeKind::List,
+                    TypeFull::Type(type_name) => {
+                        schema
+                            .maybe_type(type_name)
+                            .map(|type_| {
+                                match type_ {
+                                    Type::Scalar(_) => TypeKind::Scalar,
+                                    Type::Object(_) => TypeKind::Object,
+                                    Type::Enum(_) => TypeKind::Enum,
+                                }
+                            })
+                            .or_else(|| {
+                                schema.interfaces.get(type_name).map(|_| TypeKind::Interface)
+                            })
+                            .or_else(|| {
+                                schema.unions.get(type_name).map(|_| TypeKind::Union)
+                            })
+                            .unwrap()
+                    }
+                }.to_smolstr()
+            )
         }
         InternalDependencyResolver::Argument(argument_resolver) => {
             let argument = arguments.unwrap().get(&argument_resolver.name).unwrap();
@@ -1502,5 +1749,30 @@ pub fn get_internal_dependency_value_synchronous(
             resolve_internal_dependency_sync.resolve(external_dependency_values, preceding_internal_dependency_values, database)
         }
         _ => unreachable!(),
+    }
+}
+
+fn get_introspection_schema_query_type_value(schema: &Schema) -> TypeFull {
+    TypeFull::Type(schema.query_type_name.clone())
+}
+
+fn get_introspection_type_field_type_value(internal_dependency_values: &InternalDependencyValues) -> TypeFull {
+    TypeFull::Type(internal_dependency_values.get("type_name").unwrap().as_string().clone())
+}
+
+fn get_introspection_field_type_value(schema: &Schema, external_dependency_values: &ExternalDependencyValues) -> TypeFull {
+    let parent_type_name = external_dependency_values.get("parent_type_name").unwrap().as_string();
+    let field_name = external_dependency_values.get("name").unwrap().as_string();
+    schema.maybe_type(parent_type_name).map(|type_| type_.as_object().fields[field_name].type_.clone())
+        .unwrap_or_else(|| {
+            schema.interfaces[parent_type_name].fields[field_name].type_.clone()
+        })
+}
+
+fn get_introspection_type_of_type_value(external_dependency_values: &ExternalDependencyValues) -> Option<TypeFull> {
+    match external_dependency_values.get_any::<TypeFull>("name").unwrap() {
+        TypeFull::NonNull(type_) => Some((**type_).clone()),
+        TypeFull::List(type_) => Some((**type_).clone()),
+        _ => None,
     }
 }

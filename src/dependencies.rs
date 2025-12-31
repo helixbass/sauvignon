@@ -23,6 +23,7 @@ pub enum DependencyType {
     Float,
     Date,
     Map(HashMap<SmolStr, DependencyType>),
+    Any,
 }
 
 impl DependencyType {
@@ -70,7 +71,11 @@ pub enum InternalDependencyResolver {
     IntrospectionTypePossibleTypes,
     IntrospectionTypeEnumValues,
     IntrospectionTypeFields,
+    IntrospectionTypeKind,
     IntrospectionSchemaQueryType,
+    IntrospectionTypeFieldType,
+    IntrospectionTypeOfType,
+    IntrospectionFieldType,
     CustomSync(Box<dyn ResolveInternalDependencySync>),
 }
 
@@ -85,7 +90,11 @@ impl InternalDependencyResolver {
             Self::IntrospectionTypePossibleTypes => true,
             Self::IntrospectionTypeEnumValues => true,
             Self::IntrospectionTypeFields => true,
+            Self::IntrospectionTypeKind => true,
             Self::IntrospectionSchemaQueryType => true,
+            Self::IntrospectionTypeFieldType => true,
+            Self::IntrospectionTypeOfType => true,
+            Self::IntrospectionFieldType => true,
             Self::CustomSync(_) => true,
         }
     }
@@ -251,6 +260,7 @@ pub enum DependencyValue {
     Id(Id),
     String(SmolStr),
     List(Vec<DependencyValue>),
+    OptionalList(Option<Vec<DependencyValue>>),
     Float(f64),
     OptionalInt(Option<i32>),
     OptionalFloat(Option<f64>),
@@ -347,6 +357,13 @@ impl DependencyValue {
         match self {
             Self::Map(map) => map,
             _ => panic!("Expected map"),
+        }
+    }
+
+    pub fn as_optional_list(&self) -> Option<&[DependencyValue]> {
+        match self {
+            Self::OptionalList(value) => value.as_deref(),
+            _ => panic!("Expected optional list"),
         }
     }
 }
