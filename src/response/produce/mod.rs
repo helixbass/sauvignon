@@ -26,6 +26,7 @@ use async_step::{
     AsyncInstruction, AsyncInstructionSimple, AsyncInstructions, AsyncStep, AsyncStepColumn,
     AsyncStepListOfColumn, AsyncSteps, DependencyNames, IsInternalDependenciesOf,
     IsInternalDependenciesOfObjectFieldListOfObjects,
+    IsInternalDependenciesOfObjectFieldListOfOptionalObjects,
     ColumnSpecs,
 };
 use chunk::Produced;
@@ -242,6 +243,30 @@ fn do_simple_async_instruction_follow<'a: 'b, 'b>(
             },
         ) => {
             populate_list(
+                &external_dependency_values,
+                &internal_dependency_values,
+                populator,
+                produced,
+                parent_object_index,
+                index_of_field_in_object,
+                &field_name,
+                field_plan,
+                current_async_instructions,
+                schema,
+                database,
+            );
+        }
+        IsInternalDependenciesOf::ObjectFieldListOfOptionalObjects(
+            IsInternalDependenciesOfObjectFieldListOfOptionalObjects {
+                parent_object_index,
+                index_of_field_in_object,
+                populator,
+                external_dependency_values,
+                field_name,
+                field_plan,
+            },
+        ) => {
+            optionally_populate_list(
                 &external_dependency_values,
                 &internal_dependency_values,
                 populator,
@@ -663,6 +688,23 @@ fn make_progress_selection_set<'a: 'b, 'b>(
                                 is_internal_dependencies_of,
                             }));
                         }
+                        CarverOrPopulator::OptionalPopulatorList(populator) => {
+                            let (mut steps, internal_dependency_names) = extract_dependency_steps(field_plan, &external_dependency_values);
+                            let is_internal_dependencies_of = IsInternalDependenciesOf::ObjectFieldListOfOptionalObjects(IsInternalDependenciesOfObjectFieldListOfOptionalObjects {
+                                parent_object_index,
+                                populator,
+                                external_dependency_values: external_dependency_values
+                                    .clone(),
+                                index_of_field_in_object,
+                                field_name: field_name.clone(),
+                                field_plan,
+                            });
+                            current_async_instructions.push(AsyncInstruction::Simple(AsyncInstructionSimple {
+                                steps,
+                                internal_dependency_names,
+                                is_internal_dependencies_of,
+                            }));
+                        }
                         CarverOrPopulator::CarverList(carver) => {
                             let (steps, internal_dependency_names) = extract_dependency_steps(field_plan, &external_dependency_values);
                             current_async_instructions.push(AsyncInstruction::Simple(AsyncInstructionSimple {
@@ -939,6 +981,40 @@ fn populate_concrete_or_union_or_interface_list<'a: 'b, 'b>(
         produced,
     );
 
+    post_populate_and_push_concrete_or_union_or_interface_list(
+        type_names,
+        populated,
+        parent_list_index,
+        produced,
+        field_plan,
+        current_async_instructions,
+        schema,
+        database,
+    );
+}
+
+#[instrument(
+    level = "trace",
+    skip(
+        type_names,
+        populated,
+        produced,
+        field_plan,
+        current_async_instructions,
+        schema,
+        database,
+    )
+)]
+fn post_populate_and_push_concrete_or_union_or_interface_list<'a: 'b, 'b>(
+    type_names: SingleOrVec<SmolStr>,
+    populated: Vec<ExternalDependencyValues>,
+    parent_list_index: IndexInProduced,
+    produced: &mut Vec<Produced>,
+    field_plan: &'a FieldPlan<'a>,
+    current_async_instructions: &'b mut AsyncInstructions<'a>,
+    schema: &Schema,
+    database: &Database,
+) {
     let selection_set_by_type = field_plan.selection_set_by_type.as_ref().unwrap();
     enum SingleOrIterator<'a, TIterator: Iterator<Item = &'a IndexMap<SmolStr, FieldPlan<'a>>>> {
         Single(&'a IndexMap<SmolStr, FieldPlan<'a>>),
@@ -999,12 +1075,28 @@ fn populate_and_push_list(
     produced: &mut Vec<Produced>,
 ) -> (Vec<ExternalDependencyValues>, IndexInProduced) {
     let populated = populator.populate(external_dependency_values, &internal_dependency_values);
+    let index_in_produced = push_list(parent_object_index, index_of_field_in_object, field_name, produced);
+    (populated, index_in_produced)
+}
+
+#[instrument(
+    level = "trace",
+    skip(
+        produced,
+    )
+)]
+fn push_list(
+    parent_object_index: IndexInProduced,
+    index_of_field_in_object: usize,
+    field_name: &SmolStr,
+    produced: &mut Vec<Produced>,
+) -> IndexInProduced {
     produced.push(Produced::FieldNewListOfObjects {
         parent_object_index,
         index_of_field_in_object,
         field_name: field_name.clone(),
     });
-    (populated, produced.len() - 1)
+    produced.len() - 1
 }
 
 #[instrument(
