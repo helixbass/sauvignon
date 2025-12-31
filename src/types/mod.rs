@@ -467,9 +467,9 @@ pub fn introspection_type_type() -> Type {
                             DependencyType::List(Box::new(DependencyType::String)),
                             InternalDependencyResolver::IntrospectionTypeInterfaces,
                         )],
-                        CarverOrPopulator::OptionalPopulatorList(
-                            OptionalValuePopulatorList::new("name".into()).into(),
-                        ),
+                        CarverOrPopulator::OptionalPopulatorList(OptionalPopulatorList::Dyn(
+                            Box::new(TypeNamePopulatorList::new()),
+                        )),
                     ))
                     .build()
                     .unwrap(),
@@ -622,6 +622,44 @@ impl OptionalPopulatorListInterface for TypeFieldsPopulatorList {
                         ret.insert(
                             "parent_type_name".into(),
                             DependencyValue::String(parent_type_name.to_smolstr()),
+                        )
+                        .unwrap();
+                        ret
+                    })
+                    .collect()
+            })
+    }
+}
+
+pub struct TypeNamePopulatorList {}
+
+impl TypeNamePopulatorList {
+    pub fn new() -> Self {
+        Self {}
+    }
+}
+
+impl OptionalPopulatorListInterface for TypeNamePopulatorList {
+    #[instrument(
+        level = "trace",
+        skip(self, _external_dependencies, internal_dependencies)
+    )]
+    fn populate(
+        &self,
+        _external_dependencies: &ExternalDependencyValues,
+        internal_dependencies: &InternalDependencyValues,
+    ) -> Option<Vec<ExternalDependencyValues>> {
+        internal_dependencies
+            .get("names")
+            .unwrap()
+            .as_optional_list()
+            .map(|list| {
+                list.into_iter()
+                    .map(|type_name| {
+                        let mut ret = ExternalDependencyValues::default();
+                        ret.insert_any(
+                            "name".into(),
+                            TypeFull::Type(type_name.as_string().clone()),
                         )
                         .unwrap();
                         ret
