@@ -15,7 +15,7 @@ use crate::{
     OptionalPopulatorInterface, OptionalUnionOrInterfaceTypePopulator, Populator,
     PopulatorInterface, PopulatorList, PopulatorListInterface, QueryPlan, ResponseValue, Schema,
     Type, UnionOrInterfaceTypePopulator, UnionOrInterfaceTypePopulatorList, Value, WhereResolved,
-    WheresResolved,
+    WheresResolved, TypeFull, TypeKind,
 };
 
 mod async_step;
@@ -1477,6 +1477,34 @@ pub fn get_internal_dependency_value_synchronous(
                     // TODO: this needs to be optional for
                     // things other than object types and interfaces
                     .unwrap(),
+            )
+        }
+        InternalDependencyResolver::IntrospectionTypeKind => {
+            let _ = trace_span!("resolve introspection type kind").entered();
+            let type_name = external_dependency_values.get_any::<TypeFull>("name").unwrap();
+            DependencyValue::String(
+                match type_name {
+                    TypeFull::NonNull(_) => TypeKind::NonNull,
+                    TypeFull::List(_) => TypeKind::List,
+                    TypeFull::Type(type_name) => {
+                        schema
+                            .maybe_type(type_name)
+                            .map(|type_| {
+                                match type_ {
+                                    Type::Scalar(_) => TypeKind::Scalar,
+                                    Type::Object(_) => TypeKind::Object,
+                                    Type::Enum(_) => TypeKind::Enum,
+                                }
+                            })
+                            .or_else(|| {
+                                schema.interfaces.get(type_name).map(|_| TypeKind::Interface)
+                            })
+                            .or_else(|| {
+                                schema.unions.get(type_name).map(|_| TypeKind::Union)
+                            })
+                            .unwrap()
+                    }
+                }
             )
         }
         InternalDependencyResolver::IntrospectionSchemaQueryType => {

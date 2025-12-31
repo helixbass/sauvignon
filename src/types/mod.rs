@@ -2,14 +2,14 @@ use std::collections::HashMap;
 use std::marker::PhantomData;
 
 use derive_builder::Builder;
-use smol_str::{SmolStr, ToSmolStr};
+use smol_str::SmolStr;
 use squalid::{OptionExt, _d};
 use tracing::instrument;
 
 use crate::{
     ArgumentInternalDependencyResolver, Carver, CarverOrPopulator, DependencyType, DependencyValue,
-    EmptyPopulator, ExternalDependency, ExternalDependencyValues, FieldResolver, IndexMap,
-    IndexSet, InternalDependency, InternalDependencyResolver, InternalDependencyValues,
+    EmptyPopulator, EnumValueCarver, ExternalDependency, ExternalDependencyValues, FieldResolver,
+    IndexMap, IndexSet, InternalDependency, InternalDependencyResolver, InternalDependencyValues,
     LiteralValueInternalDependencyResolver, OperationType, PopulatorInterface, PopulatorList,
     PopulatorListInterface, ResponseValue, StringCarver, ValuePopulator, ValuePopulatorList,
 };
@@ -382,6 +382,20 @@ pub fn introspection_type_type() -> Type {
             .name("__Type")
             .fields([
                 FieldBuilder::default()
+                    .name("kind")
+                    .type_(TypeFull::Type("__TypeKind".into()))
+                    .resolver(FieldResolver::new(
+                        vec![ExternalDependency::new("name".into(), DependencyType::Any)],
+                        vec![InternalDependency::new(
+                            "kind".into(),
+                            DependencyType::String,
+                            InternalDependencyResolver::IntrospectionTypeKind,
+                        )],
+                        CarverOrPopulator::Carver(Box::new(EnumValueCarver::new("kind".into()))),
+                    ))
+                    .build()
+                    .unwrap(),
+                FieldBuilder::default()
                     .name("name")
                     .type_(TypeFull::Type("String".into()))
                     .resolver(FieldResolver::new(
@@ -540,13 +554,13 @@ impl Carver for TypeFullNameStringCarver {
         external_dependencies: &ExternalDependencyValues,
         _internal_dependencies: &InternalDependencyValues,
     ) -> ResponseValue {
-        ResponseValue::String(
-            external_dependencies
-                .get_any::<TypeFull>(&self.name)
-                .unwrap()
-                .name()
-                .to_smolstr(),
-        )
+        match external_dependencies
+            .get_any::<TypeFull>(&self.name)
+            .unwrap()
+        {
+            TypeFull::Type(name) => ResponseValue::String(name.clone()),
+            _ => ResponseValue::Null,
+        }
     }
 }
 
@@ -847,4 +861,16 @@ impl TypeInterface for Enum {
     fn name(&self) -> &str {
         &self.name
     }
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum TypeKind {
+    Scalar,
+    Object,
+    Interface,
+    Union,
+    Enum,
+    InputObject,
+    List,
+    NonNull,
 }

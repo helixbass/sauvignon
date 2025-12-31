@@ -805,6 +805,9 @@ async fn test_introspection_type_fields() {
               __type(name: "Actor") {
                 fields {
                   name
+                  type {
+                    name
+                  }
                 }
               }
             }
@@ -815,19 +818,34 @@ async fn test_introspection_type_fields() {
                 "__type": {
                   "fields": [
                     {
-                      "name": "name"
+                      "name": "name",
+                      "type": {
+                        "name": null
+                      }
                     },
                     {
-                      "name": "expression"
+                      "name": "expression",
+                      "type": {
+                        "name": null
+                      }
                     },
                     {
-                      "name": "favoriteDesigner"
+                      "name": "favoriteDesigner",
+                      "type": {
+                        "name": null
+                      }
                     },
                     {
-                      "name": "favoriteActorOrDesigner"
+                      "name": "favoriteActorOrDesigner",
+                      "type": {
+                        "name": null
+                      }
                     },
                     {
-                      "name": "favoriteDesigners"
+                      "name": "favoriteDesigners",
+                      "type": {
+                        "name": null
+                      }
                     }
                   ]
                 }
