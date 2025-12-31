@@ -690,7 +690,7 @@ fn make_progress_selection_set<'a: 'b, 'b>(
                             }));
                         }
                         CarverOrPopulator::OptionalPopulatorList(populator) => {
-                            let (mut steps, internal_dependency_names) = extract_dependency_steps(field_plan, &external_dependency_values);
+                            let (steps, internal_dependency_names) = extract_dependency_steps(field_plan, &external_dependency_values);
                             let is_internal_dependencies_of = IsInternalDependenciesOf::ObjectFieldListOfOptionalObjects(IsInternalDependenciesOfObjectFieldListOfOptionalObjects {
                                 parent_object_index,
                                 populator,
