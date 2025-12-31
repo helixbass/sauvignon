@@ -722,22 +722,41 @@ pub fn introspection_type_field() -> Type {
     Type::Object(
         ObjectTypeBuilder::default()
             .name("__Field")
-            .fields([FieldBuilder::default()
-                .name("name")
-                .type_(TypeFull::NonNull(Box::new(TypeFull::Type("String".into()))))
-                .resolver(FieldResolver::new(
-                    vec![
-                        ExternalDependency::new("name".into(), DependencyType::String),
-                        // ExternalDependency::new(
-                        //     "parent_type_name".into(),
-                        //     DependencyType::String,
-                        // ),
-                    ],
-                    vec![],
-                    CarverOrPopulator::Carver(Box::new(StringCarver::new("name".into()))),
-                ))
-                .build()
-                .unwrap()])
+            .fields([
+                FieldBuilder::default()
+                    .name("name")
+                    .type_(TypeFull::NonNull(Box::new(TypeFull::Type("String".into()))))
+                    .resolver(FieldResolver::new(
+                        vec![ExternalDependency::new(
+                            "name".into(),
+                            DependencyType::String,
+                        )],
+                        vec![],
+                        CarverOrPopulator::Carver(Box::new(StringCarver::new("name".into()))),
+                    ))
+                    .build()
+                    .unwrap(),
+                FieldBuilder::default()
+                    .name("type")
+                    .type_(TypeFull::NonNull(Box::new(TypeFull::Type("__Type".into()))))
+                    .resolver(FieldResolver::new(
+                        vec![
+                            ExternalDependency::new("name".into(), DependencyType::String),
+                            ExternalDependency::new(
+                                "parent_type_name".into(),
+                                DependencyType::String,
+                            ),
+                        ],
+                        vec![InternalDependency::new(
+                            "type".into(),
+                            DependencyType::Any,
+                            InternalDependencyResolver::IntrospectionFieldType,
+                        )],
+                        CarverOrPopulator::Carver(Box::new(StringCarver::new("name".into()))),
+                    ))
+                    .build()
+                    .unwrap(),
+            ])
             .build()
             .unwrap(),
     )
