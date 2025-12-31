@@ -3,11 +3,13 @@ use std::collections::HashMap;
 use derive_builder::Builder;
 use smol_str::SmolStr;
 use squalid::{OptionExt, _d};
+use tracing::instrument;
 
 use crate::{
     ArgumentInternalDependencyResolver, CarverOrPopulator, DependencyType, DependencyValue,
-    ExternalDependency, FieldResolver, IndexMap, IndexSet, InternalDependency,
-    InternalDependencyResolver, LiteralValueInternalDependencyResolver, OperationType,
+    EmptyPopulator, ExternalDependency, ExternalDependencyValues, FieldResolver, IndexMap,
+    IndexSet, InternalDependency, InternalDependencyResolver, InternalDependencyValues,
+    LiteralValueInternalDependencyResolver, OperationType, PopulatorList, PopulatorListInterface,
     StringCarver, ValuePopulator, ValuePopulatorList,
 };
 
@@ -109,9 +111,12 @@ impl ObjectTypeBuilder {
             .flatten()
             .if_is(OperationType::Query)
             .map(|_| {
-                [("__type".into(), Field::new_introspection_type())]
-                    .into_iter()
-                    .collect()
+                [
+                    ("__type".into(), Field::new_introspection_type()),
+                    ("__schema".into(), Field::new_introspection_schema()),
+                ]
+                .into_iter()
+                .collect()
             })
     }
 }
@@ -126,6 +131,9 @@ impl ObjectType {
             "__typename" => Some(&self.typename_field),
             "__type" if self.introspection_fields.is_some() => {
                 Some(&self.introspection_fields.as_ref().unwrap()["__type"])
+            }
+            "__schema" if self.introspection_fields.is_some() => {
+                Some(&self.introspection_fields.as_ref().unwrap()["__schema"])
             }
             name => self.fields.get(name),
         }
@@ -295,6 +303,21 @@ impl Field {
             .build()
             .unwrap()
     }
+
+    pub fn new_introspection_schema() -> Self {
+        FieldBuilder::default()
+            .name("__schema")
+            .type_(TypeFull::NonNull(Box::new(TypeFull::Type(
+                "__Schema".into(),
+            ))))
+            .resolver(FieldResolver::new(
+                vec![],
+                vec![],
+                CarverOrPopulator::Populator(EmptyPopulator::new().into()),
+            ))
+            .build()
+            .unwrap()
+    }
 }
 
 impl FieldInterface for Field {
@@ -324,6 +347,8 @@ pub fn builtin_types() -> HashMap<SmolStr, Type> {
         ("Float".into(), float_type()),
         ("__Type".into(), introspection_type_type()),
         ("__EnumValue".into(), introspection_type_enum_value()),
+        ("__Schema".into(), introspection_type_schema()),
+        ("__Field".into(), introspection_type_field()),
         ("ID".into(), id_type()),
     ]
     .into_iter()
@@ -365,6 +390,27 @@ pub fn introspection_type_type() -> Type {
                         )],
                         vec![],
                         CarverOrPopulator::Carver(Box::new(StringCarver::new("name".into()))),
+                    ))
+                    .build()
+                    .unwrap(),
+                FieldBuilder::default()
+                    .name("fields")
+                    .type_(TypeFull::List(Box::new(TypeFull::NonNull(Box::new(
+                        TypeFull::Type("__Field".into()),
+                    )))))
+                    .resolver(FieldResolver::new(
+                        vec![ExternalDependency::new(
+                            "name".into(),
+                            DependencyType::String,
+                        )],
+                        vec![InternalDependency::new(
+                            "names".into(),
+                            DependencyType::List(Box::new(DependencyType::String)),
+                            InternalDependencyResolver::IntrospectionTypeFields,
+                        )],
+                        CarverOrPopulator::PopulatorList(PopulatorList::Dyn(Box::new(
+                            TypeFieldsPopulatorList::new(),
+                        ))),
                     ))
                     .build()
                     .unwrap(),
@@ -437,6 +483,41 @@ pub fn introspection_type_type() -> Type {
     )
 }
 
+pub struct TypeFieldsPopulatorList {}
+
+impl TypeFieldsPopulatorList {
+    pub fn new() -> Self {
+        Self {}
+    }
+}
+
+impl PopulatorListInterface for TypeFieldsPopulatorList {
+    #[instrument(
+        level = "trace",
+        skip(self, external_dependencies, internal_dependencies)
+    )]
+    fn populate(
+        &self,
+        external_dependencies: &ExternalDependencyValues,
+        internal_dependencies: &InternalDependencyValues,
+    ) -> Vec<ExternalDependencyValues> {
+        let parent_type_name = external_dependencies.get("name").unwrap();
+        internal_dependencies
+            .get("names")
+            .unwrap()
+            .as_list()
+            .into_iter()
+            .map(|field_name| {
+                let mut ret = ExternalDependencyValues::default();
+                ret.insert("name".into(), field_name.clone()).unwrap();
+                ret.insert("parent_type_name".into(), parent_type_name.clone())
+                    .unwrap();
+                ret
+            })
+            .collect()
+    }
+}
+
 pub fn introspection_type_enum_value() -> Type {
     Type::Object(
         ObjectTypeBuilder::default()
@@ -449,6 +530,54 @@ pub fn introspection_type_enum_value() -> Type {
                         "name".into(),
                         DependencyType::String,
                     )],
+                    vec![],
+                    CarverOrPopulator::Carver(Box::new(StringCarver::new("name".into()))),
+                ))
+                .build()
+                .unwrap()])
+            .build()
+            .unwrap(),
+    )
+}
+
+pub fn introspection_type_schema() -> Type {
+    Type::Object(
+        ObjectTypeBuilder::default()
+            .name("__Schema")
+            .fields([FieldBuilder::default()
+                .name("queryType")
+                .type_(TypeFull::NonNull(Box::new(TypeFull::Type("__Type".into()))))
+                .resolver(FieldResolver::new(
+                    vec![],
+                    vec![InternalDependency::new(
+                        "name".into(),
+                        DependencyType::String,
+                        InternalDependencyResolver::IntrospectionSchemaQueryType,
+                    )],
+                    CarverOrPopulator::Populator(ValuePopulator::new("name".into()).into()),
+                ))
+                .build()
+                .unwrap()])
+            .build()
+            .unwrap(),
+    )
+}
+
+pub fn introspection_type_field() -> Type {
+    Type::Object(
+        ObjectTypeBuilder::default()
+            .name("__Field")
+            .fields([FieldBuilder::default()
+                .name("name")
+                .type_(TypeFull::NonNull(Box::new(TypeFull::Type("String".into()))))
+                .resolver(FieldResolver::new(
+                    vec![
+                        ExternalDependency::new("name".into(), DependencyType::String),
+                        // ExternalDependency::new(
+                        //     "parent_type_name".into(),
+                        //     DependencyType::String,
+                        // ),
+                    ],
                     vec![],
                     CarverOrPopulator::Carver(Box::new(StringCarver::new("name".into()))),
                 ))

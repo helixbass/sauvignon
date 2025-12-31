@@ -737,3 +737,129 @@ async fn test_introspection_enum_values() {
     )
     .await;
 }
+
+#[tokio::test]
+async fn test_introspection_schema_query_type() {
+    request_test(
+        r#"
+            {
+              __schema {
+                queryType {
+                  name
+                  fields {
+                    name
+                  }
+                }
+              }
+            }
+        "#,
+        r#"
+            {
+              "data": {
+                "__schema": {
+                  "queryType": {
+                    "name": "Query",
+                    "fields": [
+                      {
+                        "name": "actor"
+                      },
+                      {
+                        "name": "actorKatie"
+                      },
+                      {
+                        "name": "actors"
+                      },
+                      {
+                        "name": "certainActorOrDesigner"
+                      },
+                      {
+                        "name": "bestHasName"
+                      },
+                      {
+                        "name": "actorsAndDesigners"
+                      },
+                      {
+                        "name": "bestCanadianCity"
+                      },
+                      {
+                        "name": "canadianCityQuote"
+                      },
+                      {
+                        "name": "designers"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+        "#,
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn test_introspection_type_fields() {
+    request_test(
+        r#"
+            {
+              __type(name: "Actor") {
+                fields {
+                  name
+                }
+              }
+            }
+        "#,
+        r#"
+            {
+              "data": {
+                "__type": {
+                  "fields": [
+                    {
+                      "name": "name"
+                    },
+                    {
+                      "name": "expression"
+                    },
+                    {
+                      "name": "favoriteDesigner"
+                    },
+                    {
+                      "name": "favoriteActorOrDesigner"
+                    },
+                    {
+                      "name": "favoriteDesigners"
+                    }
+                  ]
+                }
+              }
+            }
+        "#,
+    )
+    .await;
+
+    request_test(
+        r#"
+            {
+              __type(name: "HasName") {
+                fields {
+                  name
+                }
+              }
+            }
+        "#,
+        r#"
+            {
+              "data": {
+                "__type": {
+                  "fields": [
+                    {
+                      "name": "name"
+                    }
+                  ]
+                }
+              }
+            }
+        "#,
+    )
+    .await;
+}
