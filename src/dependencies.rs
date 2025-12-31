@@ -74,6 +74,7 @@ pub enum InternalDependencyResolver {
     IntrospectionTypeKind,
     IntrospectionSchemaQueryType,
     IntrospectionTypeFieldType,
+    IntrospectionTypeOfType,
     IntrospectionFieldType,
     CustomSync(Box<dyn ResolveInternalDependencySync>),
 }
@@ -92,6 +93,7 @@ impl InternalDependencyResolver {
             Self::IntrospectionTypeKind => true,
             Self::IntrospectionSchemaQueryType => true,
             Self::IntrospectionTypeFieldType => true,
+            Self::IntrospectionTypeOfType => true,
             Self::IntrospectionFieldType => true,
             Self::CustomSync(_) => true,
         }

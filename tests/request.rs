@@ -818,6 +818,18 @@ async fn test_introspection_type_fields() {
                   type {
                     kind
                     name
+                    ofType {
+                      kind
+                      name
+                      ofType {
+                        kind
+                        name
+                        ofType {
+                          kind
+                          name
+                        }
+                      }
+                    }
                   }
                 }
               }
@@ -832,35 +844,67 @@ async fn test_introspection_type_fields() {
                       "name": "name",
                       "type": {
                         "kind": "NON_NULL",
-                        "name": null
+                        "name": null,
+                        "ofType": {
+                          "kind": "SCALAR",
+                          "name": "String",
+                          "ofType": null
+                        }
                       }
                     },
                     {
                       "name": "expression",
                       "type": {
                         "kind": "NON_NULL",
-                        "name": null
+                        "name": null,
+                        "ofType": {
+                          "kind": "SCALAR",
+                          "name": "String",
+                          "ofType": null
+                        }
                       }
                     },
                     {
                       "name": "favoriteDesigner",
                       "type": {
                         "kind": "NON_NULL",
-                        "name": null
+                        "name": null,
+                        "ofType": {
+                          "kind": "OBJECT",
+                          "name": "Designer",
+                          "ofType": null
+                        }
                       }
                     },
                     {
                       "name": "favoriteActorOrDesigner",
                       "type": {
                         "kind": "NON_NULL",
-                        "name": null
+                        "name": null,
+                        "ofType": {
+                          "kind": "UNION",
+                          "name": "ActorOrDesigner",
+                          "ofType": null
+                        }
                       }
                     },
                     {
                       "name": "favoriteDesigners",
                       "type": {
                         "kind": "NON_NULL",
-                        "name": null
+                        "name": null,
+                        "ofType": {
+                          "kind": "LIST",
+                          "name": null,
+                          "ofType": {
+                            "kind": "NON_NULL",
+                            "name": null,
+                            "ofType": {
+                              "kind": "OBJECT",
+                              "name": "Designer"
+                            }
+                          }
+                        }
                       }
                     }
                   ]
@@ -880,6 +924,10 @@ async fn test_introspection_type_fields() {
                   type {
                     kind
                     name
+                    ofType {
+                      kind
+                      name
+                    }
                   }
                 }
               }
@@ -894,7 +942,11 @@ async fn test_introspection_type_fields() {
                       "name": "name",
                       "type": {
                         "kind": "NON_NULL",
-                        "name": null
+                        "name": null,
+                        "ofType": {
+                          "kind": "SCALAR",
+                          "name": "String"
+                        }
                       }
                     }
                   ]

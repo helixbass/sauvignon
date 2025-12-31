@@ -10,9 +10,9 @@ use crate::{
     ArgumentInternalDependencyResolver, Carver, CarverOrPopulator, DependencyType, DependencyValue,
     EmptyPopulator, EnumValueCarver, ExternalDependency, ExternalDependencyValues, FieldResolver,
     IndexMap, IndexSet, InternalDependency, InternalDependencyResolver, InternalDependencyValues,
-    LiteralValueInternalDependencyResolver, OperationType, OptionalPopulatorList,
-    OptionalPopulatorListInterface, OptionalValuePopulatorList, Populator, PopulatorInterface,
-    ResponseValue, StringCarver,
+    LiteralValueInternalDependencyResolver, OperationType, OptionalPopulator,
+    OptionalPopulatorInterface, OptionalPopulatorList, OptionalPopulatorListInterface,
+    OptionalValuePopulatorList, Populator, PopulatorInterface, ResponseValue, StringCarver,
 };
 
 #[derive(Clone)]
@@ -517,6 +517,25 @@ pub fn introspection_type_type() -> Type {
                     ))
                     .build()
                     .unwrap(),
+                FieldBuilder::default()
+                    .name("ofType")
+                    .type_(TypeFull::Type("__Type".into()))
+                    .resolver(FieldResolver::new(
+                        vec![ExternalDependency::new(
+                            "name".into(),
+                            DependencyType::String,
+                        )],
+                        vec![InternalDependency::new(
+                            "of_type".into(),
+                            DependencyType::Any,
+                            InternalDependencyResolver::IntrospectionTypeOfType,
+                        )],
+                        CarverOrPopulator::OptionalPopulator(OptionalPopulator::Dyn(Box::new(
+                            OfTypePopulator::new(),
+                        ))),
+                    ))
+                    .build()
+                    .unwrap(),
             ])
             .build()
             .unwrap(),
@@ -705,6 +724,34 @@ impl OptionalPopulatorListInterface for TypeNamePopulatorList {
                     })
                     .collect()
             })
+    }
+}
+
+pub struct OfTypePopulator {}
+
+impl OfTypePopulator {
+    pub fn new() -> Self {
+        Self {}
+    }
+}
+
+impl OptionalPopulatorInterface for OfTypePopulator {
+    #[instrument(
+        level = "trace",
+        skip(self, _external_dependencies, internal_dependencies)
+    )]
+    fn populate(
+        &self,
+        _external_dependencies: &ExternalDependencyValues,
+        internal_dependencies: &InternalDependencyValues,
+    ) -> Option<ExternalDependencyValues> {
+        let value = internal_dependencies
+            .get_any::<Option<TypeFull>>("of_type")
+            .unwrap()
+            .as_ref()?;
+        let mut ret = ExternalDependencyValues::default();
+        ret.insert_any("name".into(), value.clone()).unwrap();
+        Some(ret)
     }
 }
 
